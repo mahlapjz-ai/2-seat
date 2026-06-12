@@ -1,0 +1,2062 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1890ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="座位管理">
+<title>图书馆座位分时段图片管理</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;font-size:15px;color:#333;background:#f0f2f5;-webkit-tap-highlight-color:transparent}
+#app{max-width:480px;margin:0 auto;padding:12px 10px 100px;min-height:100vh}
+
+.page-header{display:flex;align-items:center;justify-content:center;padding:14px 0 10px;gap:8px;flex-wrap:wrap}
+.page-title{font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:1px}
+.header-btn{padding:6px 12px;font-size:12px;font-weight:600;border:none;border-radius:6px;color:#fff;cursor:pointer;white-space:nowrap}
+.header-btn:active{opacity:.7}
+.btn-cleanup{background:#ff4d4f}
+.btn-batch-dl{background:#722ed1}
+
+/* 【修改1】删除座位按钮受开关控制 */
+.btn-delete-seat{padding:4px 12px;font-size:12px;font-weight:600;border:1px solid #ff4d4f;border-radius:4px;background:#fff;color:#ff4d4f;cursor:pointer;margin-left:auto;display:none}
+.btn-delete-seat.visible{display:inline-block}
+.btn-delete-seat:active{background:#fff1f0}
+
+/* 【修改3】功能面板 */
+.func-panel-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:260}
+.func-panel-overlay.show{display:block}
+.func-panel{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:16px 16px 0 0;z-index:261;transform:translateY(100%);transition:transform .3s ease;max-width:480px;margin:0 auto;padding-bottom:env(safe-area-inset-bottom)}
+.func-panel.show{transform:translateY(0)}
+.func-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid #f0f0f0}
+.func-panel-title{font-size:17px;font-weight:700;color:#1a1a1a}
+.func-panel-close{width:36px;height:36px;border:none;background:#f5f5f5;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#999;min-width:44px;min-height:44px}
+.func-panel-close:active{background:#e8e8e8}
+.func-panel-body{padding:8px 20px 24px}
+.func-item{display:flex;align-items:center;justify-content:space-between;padding:14px 0;min-height:48px;border-bottom:1px solid #f5f5f5;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.func-item:last-child{border-bottom:none}
+.func-item:active{background:#fafafa;border-radius:8px}
+.func-item-label{font-size:15px;color:#333;font-weight:500}
+.func-item-label .func-item-desc{font-size:12px;color:#999;font-weight:400;margin-top:2px}
+/* 开关样式 */
+.func-toggle{width:48px;height:28px;border-radius:14px;background:#bfbfbf;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0}
+.func-toggle.on{background:#52c41a}
+.func-toggle::after{content:'';position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s}
+.func-toggle.on::after{transform:translateX(20px)}
+
+/* 【修改4】预览保存按钮淡出 */
+#preview-save-btn{position:absolute;bottom:50px;left:50%;transform:translateX(-50%);padding:10px 28px;font-size:14px;font-weight:600;border:none;border-radius:8px;background:rgba(24,144,255,.9);color:#fff;cursor:pointer;z-index:202;box-shadow:0 2px 12px rgba(24,144,255,.4);transition:opacity .5s ease}
+#preview-save-btn:active{opacity:.8}
+#preview-save-btn.faded{opacity:.1}
+
+.floor-btn{display:block;width:100%;padding:16px 20px;margin:8px 0;font-size:18px;font-weight:600;border:none;border-radius:10px;color:#fff;cursor:pointer;text-align:left;transition:transform .1s}
+.floor-btn:active{transform:scale(.97)}
+.floor-btn .arrow{float:right;font-size:14px;transition:transform .25s;display:inline-block}
+.floor-btn.expanded .arrow{transform:rotate(90deg)}
+.floor-btn .floor-count{float:right;font-size:13px;font-weight:400;margin-right:8px;opacity:.85}
+.floor-1{background:linear-gradient(135deg,#667eea,#764ba2)}
+.floor-2{background:linear-gradient(135deg,#f093fb,#f5576c)}
+.floor-3{background:linear-gradient(135deg,#4facfe,#00f2fe)}
+.floor-4{background:linear-gradient(135deg,#43e97b,#38f9d7)}
+.floor-5{background:linear-gradient(135deg,#fa709a,#fee140)}
+
+.area-container{display:none;padding:4px 0 8px 16px}
+.area-container.show{display:block}
+.area-btn{display:inline-flex;flex-direction:column;align-items:center;padding:12px 20px;margin:5px 4px;font-size:16px;font-weight:600;border:none;border-radius:8px;background:#fff;color:#333;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12);transition:transform .1s}
+.area-btn:active{transform:scale(.95)}
+.area-btn .arrow{margin-left:6px;font-size:12px;transition:transform .25s;display:inline-block}
+.area-btn .area-count{font-size:11px;font-weight:400;color:#999;margin-top:2px}
+.area-btn.expanded .arrow{transform:rotate(90deg)}
+.area-btn.expanded{background:#e6f7ff;box-shadow:0 2px 8px rgba(24,144,255,.2)}
+.area-btn.has-images{border:2px solid #52c41a;background:linear-gradient(135deg,#f6ffed,#d9f7be);color:#389e0d}
+.area-btn.has-images.expanded{border-color:#1890ff;background:#e6f7ff;color:#333}
+
+.seat-container{display:none;padding:8px 0}
+.seat-container.show{display:block}
+.seat-flow{display:flex;flex-wrap:wrap;gap:6px;padding:0 2px}
+.seat-btn{width:calc(20% - 5px);padding:10px 2px;font-size:13px;font-weight:500;border:2px solid #d9d9d9;border-radius:6px;background:#fff;cursor:pointer;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .15s,border-color .15s}
+.seat-btn:active{background:#e6f7ff}
+.seat-btn.expanded{background:#e6f7ff;border-color:#1890ff}
+.seat-btn.has-images{border-color:#52c41a;background:linear-gradient(135deg,#f6ffed,#d9f7be);color:#389e0d;font-weight:700}
+.seat-btn.has-images.expanded{border-color:#1890ff;background:#e6f7ff;color:#333;font-weight:500}
+.add-seat-btn{width:calc(20% - 5px);padding:10px 2px;font-size:20px;font-weight:700;border:2px dashed #bfbfbf;border-radius:6px;background:#fafafa;cursor:pointer;text-align:center;color:#8c8c8c;transition:all .15s}
+.add-seat-btn:active{background:#e6f7ff;border-color:#1890ff;color:#1890ff}
+
+.timeslot-container{display:none;width:100%;padding:8px 0}
+.timeslot-container.show{display:block}
+.seat-header{display:flex;align-items:center;padding:8px 4px 10px;gap:8px;flex-wrap:wrap}
+.seat-header-label{font-size:15px;color:#666}
+.seat-name-text{font-size:17px;font-weight:700;color:#1890ff;cursor:pointer;border-bottom:1px dashed #1890ff;padding-bottom:1px}
+.seat-name-hint{font-size:12px;color:#999;margin-left:4px}
+.seat-name-edit-input{font-size:17px;font-weight:700;color:#1890ff;border:none;border-bottom:2px solid #1890ff;outline:none;background:transparent;width:120px;padding-bottom:1px}
+
+.timeslot-card{background:#fff;border-radius:8px;margin:6px 0;padding:6px 10px;box-shadow:0 1px 3px rgba(0,0,0,.08);cursor:pointer;display:flex;align-items:center;gap:6px;min-height:44px;flex-wrap:wrap}
+.ts-top{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.ts-checkbox{width:22px;height:22px;border-radius:50%;border:2px solid #bbb;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.ts-checkbox.checked{background:#1890ff;border-color:#1890ff}
+.ts-checkbox.checked::after{content:'✓';color:#fff;font-size:14px;font-weight:700}
+.ts-checkbox.disabled{border-color:#e0e0e0;background:#f5f5f5;cursor:not-allowed;opacity:.5}
+.ts-time{font-size:15px;font-weight:600;color:#333;white-space:nowrap}
+.ts-btns{display:flex;gap:4px;flex-shrink:0;margin-left:auto}
+.ts-btn{padding:0 10px;font-size:13px;font-weight:600;border:none;border-radius:5px;cursor:pointer;transition:opacity .15s;min-height:36px;min-width:44px;display:flex;align-items:center;justify-content:center}
+.ts-btn:active{opacity:.7}
+.ts-btn-capture{background:#1890ff;color:#fff}
+.ts-btn-upload{background:#52c41a;color:#fff}
+.ts-btn:disabled{opacity:.4;cursor:not-allowed}
+.ts-thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;padding-left:28px;width:100%}
+.thumb-wrap{position:relative;width:80px;height:80px;border-radius:6px;overflow:hidden;border:1px solid #e8e8e8;flex-shrink:0}
+.thumb-wrap img{width:100%;height:100%;object-fit:cover;cursor:pointer;background:#f0f0f0}
+.thumb-wrap img[data-thumb-src]:not([src]){min-width:80px;min-height:80px}
+.thumb-del{position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:14px;line-height:22px;text-align:center;cursor:pointer;z-index:2}
+.thumb-del:active{background:rgba(255,0,0,.7)}
+
+#bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;box-shadow:0 -2px 8px rgba(0,0,0,.12);padding:10px 12px;z-index:100;max-width:480px;margin:0 auto;flex-wrap:wrap}
+#bottom-bar.show{display:flex;align-items:center;gap:8px}
+#selected-count{font-size:13px;color:#666;flex-shrink:0;white-space:nowrap}
+#btn-clear-select{padding:8px 12px;font-size:13px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;color:#666;cursor:pointer;flex-shrink:0}
+.bar-btn{padding:12px 10px;font-size:14px;font-weight:600;border:none;border-radius:8px;cursor:pointer;flex:1;min-width:0;white-space:nowrap}
+.bar-btn:active{opacity:.8}
+#btn-download-separate{background:#1890ff;color:#fff;flex-shrink:0;min-width:auto}
+#btn-download-concat{background:#fa8c16;color:#fff}
+
+#preview-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.92);z-index:200;overflow:hidden;touch-action:none}
+#preview-modal.show{display:block}
+#preview-close{position:absolute;top:12px;right:16px;font-size:32px;color:#fff;cursor:pointer;z-index:201;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.3);border-radius:50%}
+#preview-scroller{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;will-change:transform}
+.pv-slide{flex:0 0 100%;width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:relative}
+.pv-slide img{max-width:100vw;max-height:100vh;object-fit:contain;border-radius:4px;transform-origin:center center;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;pointer-events:none;will-change:transform}
+#preview-indicator{position:absolute;bottom:90px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.7);font-size:14px;pointer-events:none;z-index:201}
+#preview-hint{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.4);font-size:12px;pointer-events:none}
+
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:250;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal-box{background:#fff;border-radius:12px;padding:20px 16px;width:92%;max-width:400px;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);max-height:85vh;overflow-y:auto}
+.modal-box h3{font-size:17px;margin-bottom:12px;text-align:center}
+.modal-btns{display:flex;gap:10px;margin-top:16px}
+.modal-btns button{flex:1;padding:12px;font-size:15px;font-weight:600;border:none;border-radius:8px;cursor:pointer}
+.modal-btns button:active{opacity:.8}
+.modal-cancel{background:#f0f0f0;color:#333}
+.modal-confirm{background:#722ed1;color:#fff}
+
+.batch-section{margin-bottom:12px}
+.batch-section h4{font-size:14px;margin-bottom:8px;color:#666}
+.batch-grid{display:flex;flex-wrap:wrap;gap:6px}
+.batch-chip{padding:6px 12px;font-size:13px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;cursor:pointer;user-select:none;transition:all .1s}
+.batch-chip.checked{background:#722ed1;color:#fff;border-color:#722ed1}
+.batch-chip:active{opacity:.7}
+.batch-select-all{padding:6px 12px;font-size:12px;border:1px dashed #722ed1;border-radius:6px;background:#fff;color:#722ed1;cursor:pointer}
+.batch-select-all:active{opacity:.7}
+
+.picker-row{display:flex;gap:4px;margin-bottom:16px;height:160px;position:relative;background:#f5f5f5;border-radius:8px;overflow:hidden}
+.picker-col{flex:1;height:100%;overflow-y:auto;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;position:relative}
+.picker-col::-webkit-scrollbar{display:none}
+.picker-pad{height:60px}
+.picker-item{height:40px;line-height:40px;text-align:center;font-size:16px;scroll-snap-align:center;cursor:pointer;color:#666;transition:color .15s}
+.picker-item.active{color:#1890ff;font-weight:700;font-size:18px}
+.picker-highlight{position:absolute;top:60px;left:0;right:0;height:40px;border-top:1px solid #d9d9d9;border-bottom:1px solid #d9d9d9;background:rgba(24,144,255,.06);pointer-events:none;z-index:1}
+.picker-col-label{position:absolute;top:4px;width:100%;text-align:center;font-size:11px;color:#999;z-index:2;pointer-events:none}
+.cleanup-btns{display:flex;gap:10px}
+.cleanup-btns button{flex:1;padding:12px;font-size:15px;font-weight:600;border:none;border-radius:8px;cursor:pointer}
+.cleanup-btns button:active{opacity:.8}
+.cleanup-cancel{background:#f0f0f0;color:#333}
+.cleanup-exec{background:#ff4d4f;color:#fff}
+
+.toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);color:#fff;padding:14px 28px;border-radius:8px;font-size:15px;z-index:300;pointer-events:none;animation:toast-fade 2s forwards}
+@keyframes toast-fade{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
+
+/* 时段筛选按钮 */
+.btn-filter{background:#fa8c16;font-size:13px;padding:6px 12px;font-weight:600;border:none;border-radius:6px;color:#fff;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+.btn-filter:active{opacity:.7}
+.btn-filter .filter-icon{font-size:14px}
+
+/* 筛选底部面板 */
+.filter-sheet-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:260}
+.filter-sheet-overlay.show{display:block}
+.filter-sheet{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:16px 16px 0 0;z-index:261;transform:translateY(100%);transition:transform .3s ease;max-height:75vh;display:flex;flex-direction:column;max-width:480px;margin:0 auto}
+.filter-sheet.show{transform:translateY(0)}
+.filter-sheet-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid #f0f0f0;flex-shrink:0}
+.filter-sheet-title{font-size:17px;font-weight:700;color:#1a1a1a}
+.filter-sheet-close{width:36px;height:36px;border:none;background:#f5f5f5;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#999}
+.filter-sheet-close:active{background:#e8e8e8}
+.filter-sheet-actions{display:flex;gap:8px;padding:12px 20px;border-bottom:1px solid #f0f0f0;flex-shrink:0}
+.filter-action-btn{flex:1;padding:10px 0;font-size:13px;font-weight:600;border:1px solid #d9d9d9;border-radius:8px;background:#fff;color:#333;cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:center}
+.filter-action-btn:active{background:#f5f5f5}
+.filter-action-btn.primary{border-color:#1890ff;color:#1890ff;background:#e6f7ff}
+.filter-action-btn.primary:active{background:#bae7ff}
+.filter-sheet-body{overflow-y:auto;padding:8px 20px 24px;flex:1;-webkit-overflow-scrolling:touch}
+.filter-slot-item{display:flex;align-items:center;padding:10px 0;min-height:44px;gap:12px;border-bottom:1px solid #f5f5f5;cursor:pointer}
+.filter-slot-item:last-child{border-bottom:none}
+.filter-slot-item:active{background:#fafafa}
+.filter-slot-cb{width:22px;height:22px;border-radius:4px;border:2px solid #bbb;background:#fff;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.filter-slot-cb.checked{background:#1890ff;border-color:#1890ff}
+.filter-slot-cb.checked::after{content:'✓';color:#fff;font-size:14px;font-weight:700}
+.filter-slot-label{font-size:15px;color:#333;font-weight:500}
+.filter-slot-label.passed{color:#999}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="bottom-bar">
+  <span id="selected-count">已选 0 个时段</span>
+  <button id="btn-clear-select">取消全选</button>
+  <button class="bar-btn" id="btn-download-separate">分享选中图片</button>
+  <button class="bar-btn" id="btn-download-concat">拼接预览</button>
+</div>
+<div id="preview-modal">
+  <div id="preview-close">&times;</div>
+  <div id="preview-scroller"></div>
+  <div id="preview-indicator"></div>
+  <button id="preview-save-btn">保存图片</button>
+  <div id="preview-hint">双指缩放 · 左右滑动 · 下滑关闭</div>
+</div>
+<div class="modal-overlay" id="batch-modal">
+  <div class="modal-box">
+    <h3>批量下载</h3>
+    <div class="batch-section"><h4>选择区域 <button class="batch-select-all" data-target="area">全选/取消</button></h4><div class="batch-grid" id="batch-areas"></div></div>
+    <div class="batch-section"><h4>选择时段 <button class="batch-select-all" data-target="time">全选/取消</button></h4><div class="batch-grid" id="batch-times"></div></div>
+    <div class="modal-btns"><button class="modal-cancel" id="batch-cancel">取消</button><button class="modal-confirm" id="batch-exec">打包下载(ZIP)</button></div>
+  </div>
+</div>
+<div class="modal-overlay" id="cleanup-modal">
+  <div class="modal-box">
+    <h3>批量清理图片</h3>
+    <p style="font-size:13px;color:#666;margin-bottom:14px;text-align:center">删除所选日期<strong>之前</strong>添加的所有图片（默认今天）</p>
+    <div class="picker-row">
+      <div class="picker-highlight"></div>
+      <div class="picker-col" id="picker-year"><div class="picker-col-label">年</div><div class="picker-pad"></div></div>
+      <div class="picker-col" id="picker-month"><div class="picker-col-label">月</div><div class="picker-pad"></div></div>
+      <div class="picker-col" id="picker-day"><div class="picker-col-label">日</div><div class="picker-pad"></div></div>
+    </div>
+    <div class="cleanup-btns"><button class="cleanup-cancel" id="cleanup-cancel-btn">取消</button><button class="cleanup-exec" id="cleanup-exec-btn">执行清理</button></div>
+  </div>
+</div>
+<div class="filter-sheet-overlay" id="filter-overlay"></div>
+<div class="filter-sheet" id="filter-sheet">
+  <div class="filter-sheet-header"><span class="filter-sheet-title">选择显示时段（打勾为显示时段）</span><button class="filter-sheet-close" id="filter-close">&times;</button></div>
+  <div class="filter-sheet-actions">
+    <button class="filter-action-btn primary" id="filter-hide-passed">隐藏已过时段</button>
+    <button class="filter-action-btn" id="filter-select-all">全选</button>
+    <button class="filter-action-btn" id="filter-clear">清除</button>
+  </div>
+  <div class="filter-sheet-body" id="filter-body"></div>
+</div>
+<!-- 【修改3】功能面板 -->
+<div class="func-panel-overlay" id="func-panel-overlay"></div>
+<div class="func-panel" id="func-panel">
+  <div class="func-panel-header"><span class="func-panel-title">功能</span><button class="func-panel-close" id="func-panel-close">&times;</button></div>
+  <div class="func-panel-body" id="func-panel-body"></div>
+</div>
+<script>
+// ============================================================
+// 一、楼层/区域/座位配置
+// ============================================================
+// 每个区域：name=显示名, prefix=编号前缀, start=起始编号, count=座位数
+const FLOORS = [
+  { id: 1, name: '一楼', areas: [
+    { name: '中庭', prefix: '中', start: 1001, count: 96 },
+    { name: '报刊', prefix: '报', start: 1097, count: 130 }
+  ]},
+  { id: 2, name: '二楼', areas: [
+    { name: '东区', prefix: '东', start: 2001, count: 84 },
+    { name: '东区临时', prefix: '东临', start: 2085, count: 7 },
+    { name: '南区', prefix: '南', start: 2001, count: 74 },
+    { name: '西区', prefix: '西', start: 2001, count: 84 },
+    { name: '北区', prefix: '北', start: 2001, count: 61 },
+    { name: '青少年区', prefix: '青', start: 2001, count: 24 }
+  ]},
+  { id: 3, name: '三楼', areas: [
+    { name: '东区', prefix: '东', start: 3001, count: 156 },
+    { name: '东区临时', prefix: '东临', start: 3157, count: 42 },
+    { name: '南区', prefix: '南', start: 3001, count: 66 },
+    { name: '西区', prefix: '西', start: 3001, count: 110 },
+    { name: '北区', prefix: '北', start: 3001, count: 62 }
+  ]},
+  { id: 4, name: '四楼', areas: [
+    { name: '东区', prefix: '东', start: 4001, count: 36 },
+    { name: '东区临时', prefix: '东临', start: 4037, count: 30 },
+    { name: '南区', prefix: '南', start: 4001, count: 50 },
+    { name: '西区', prefix: '西', start: 4001, count: 64 },
+    { name: '北区', prefix: '北', start: 4001, count: 40 }
+  ]},
+  { id: 5, name: '五楼', areas: [
+    { name: '东区', prefix: '东', start: 5001, count: 114 },
+    { name: '东区临时', prefix: '东临', start: 5115, count: 28 },
+    { name: '西区', prefix: '西', start: 5001, count: 64 },
+    { name: '南区', prefix: '南', start: 5001, count: 16 }
+  ]}
+];
+
+const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
+const MAX_IMAGES = 3;
+const DB_NAME = 'SeatImageDB';
+const DB_VERSION = 4;
+
+// ============================================================
+// 二、IndexedDB
+// ============================================================
+let dbInstance = null;
+function openDB() {
+  if (dbInstance) return Promise.resolve(dbInstance);
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      // 【修复】onupgradeneeded 加 try-catch 防止建表异常导致整个 DB 打开失败
+      try {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('cells')) db.createObjectStore('cells', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('seatNames')) db.createObjectStore('seatNames', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('extraSeats')) db.createObjectStore('extraSeats', { keyPath: 'key' });
+        if (!db.objectStoreNames.contains('deletedSeats')) db.createObjectStore('deletedSeats', { keyPath: 'key' });
+      } catch (err) {
+        console.error('IndexedDB onupgradeneeded error:', err);
+      }
+    };
+    req.onsuccess = (e) => { dbInstance = e.target.result; resolve(dbInstance); };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+// 【修复】所有 DB 操作添加 tx.onabort 处理，避免事务中断时 Promise 永远 pending
+async function dbPut(s, d) { const db = await openDB(); return new Promise((r, j) => { const tx = db.transaction(s, 'readwrite'); tx.objectStore(s).put(d); tx.oncomplete = () => r(); tx.onerror = (e) => j(e.target.error); tx.onabort = (e) => j(e.target.error); }); }
+async function dbGet(s, k) { const db = await openDB(); return new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); const req = tx.objectStore(s).get(k); req.onsuccess = () => r(req.result || null); tx.oncomplete = () => r(req.result || null); tx.onerror = (e) => j(e.target.error); tx.onabort = (e) => j(e.target.error); }); }
+async function dbDelete(s, k) { const db = await openDB(); return new Promise((r, j) => { const tx = db.transaction(s, 'readwrite'); tx.objectStore(s).delete(k); tx.oncomplete = () => r(); tx.onerror = (e) => j(e.target.error); tx.onabort = (e) => j(e.target.error); }); }
+async function dbGetAll(s) { const db = await openDB(); return new Promise((r, j) => { const tx = db.transaction(s, 'readonly'); const req = tx.objectStore(s).getAll(); req.onsuccess = () => r(req.result); tx.oncomplete = () => r(req.result || []); tx.onerror = (e) => j(e.target.error); tx.onabort = (e) => j(e.target.error); }); }
+async function saveCellData(k, imgs) { await dbPut('cells', { key: k, images: imgs }); }
+async function getCellData(k) { return await dbGet('cells', k); }
+async function saveSeatName(k, n) { await dbPut('seatNames', { key: k, name: n }); }
+async function getAllSeatNames() { const a = await dbGetAll('seatNames'); const m = {}; a.forEach(r => m[r.key] = r.name); return m; }
+async function saveExtraSeat(k, n) { await dbPut('extraSeats', { key: k, count: n }); }
+async function getAllExtraSeats() { const a = await dbGetAll('extraSeats'); const m = {}; a.forEach(r => m[r.key] = r.count); return m; }
+async function saveDeletedSeat(k) { await dbPut('deletedSeats', { key: k }); }
+async function getAllDeletedSeats() { const a = await dbGetAll('deletedSeats'); return new Set(a.map(r => r.key)); }
+
+// 【优化】批量读取多个 key 的图片数据（单事务），避免逐条异步读取
+async function getCellDataBatch(keys) {
+  const db = await openDB();
+  return new Promise((r, j) => {
+    const tx = db.transaction('cells', 'readonly');
+    const results = {};
+    keys.forEach(k => {
+      const req = tx.objectStore('cells').get(k);
+      req.onsuccess = () => { if (req.result) results[k] = req.result; };
+    });
+    tx.oncomplete = () => r(results);
+    tx.onerror = (e) => j(e.target.error);
+    tx.onabort = (e) => j(e.target.error);
+  });
+}
+
+// ============================================================
+// 三、状态与工具函数
+// ============================================================
+const state = {
+  expandedFloors: new Set(), expandedAreas: new Set(), expandedSeats: new Set(),
+  selectedCells: [], seatNames: {}, seatHasImages: new Set(),
+  extraSeats: {}, deletedSeats: new Set(),
+  visibleTimeSlots: new Set(), _filterNone: false, // 时段筛选：空集+!_filterNone=全显，空集+_filterNone=全不显
+  autoShare: false, // 拍照后自动分享开关，默认关闭
+  allowDeleteSeat: false, // 【修改1】允许删除座位开关，默认关闭
+};
+
+/** 生成区域 key */
+function areaKey(fid, aname) { return `${fid}-${aname}`; }
+/** 生成座位 key */
+function seatKey(fid, aname, idx) { return `${fid}-${aname}-${idx}`; }
+/** 生成单元格 key */
+function cellKey(fid, aname, sidx, tidx) { return `${fid}-${aname}-${sidx}-${tidx}`; }
+/** 从单元格 key 提取座位 key */
+function cellToSeatKey(ck) { return ck.split('-').slice(0, 3).join('-'); }
+
+/** 获取某区域的配置（从 FLOORS 常量中查找） */
+function getAreaConfig(fid, aname) {
+  const floor = FLOORS.find(f => f.id === fid);
+  return floor ? floor.areas.find(a => a.name === aname) : null;
+}
+
+/** 获取某区域的座位数量（基础 + 新增） */
+function getAreaSeatCount(fid, aname) {
+  const cfg = getAreaConfig(fid, aname);
+  const base = cfg ? cfg.count : 0;
+  const ak = areaKey(fid, aname);
+  const extra = state.extraSeats[ak] || 0;
+  return base + extra;
+}
+
+/** 获取座位默认编号 */
+function defaultSeatName(fid, aname, idx) {
+  const cfg = getAreaConfig(fid, aname);
+  if (!cfg) return `${aname}${idx + 1}`;
+  const baseCount = cfg.count;
+  if (idx < baseCount) {
+    // 基础座位：prefix + (start + idx)
+    return `${cfg.prefix}${cfg.start + idx}`;
+  } else {
+    // 新增座位：prefix + (start + baseCount + (idx - baseCount))
+    return `${cfg.prefix}${cfg.start + idx}`;
+  }
+}
+
+/** 获取座位编号（优先自定义） */
+function getSeatNameSync(fid, aname, idx) {
+  const sk = seatKey(fid, aname, idx);
+  return state.seatNames[sk] || defaultSeatName(fid, aname, idx);
+}
+
+/** 获取北京时间字符串 */
+function getBeijingTime() {
+  const now = new Date();
+  const opts = { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+  const parts = new Intl.DateTimeFormat('zh-CN', opts).formatToParts(now);
+  const get = (type) => parts.find(p => p.type === type).value;
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
+}
+
+async function buildSeatHasImages() { const a = await dbGetAll('cells'); state.seatHasImages = new Set(); a.forEach(r => { if (r.images && r.images.length > 0) state.seatHasImages.add(r.key.split('-').slice(0, 3).join('-')); }); }
+function saveUIState() { try { localStorage.setItem('seat_ui_state', JSON.stringify({ f: [...state.expandedFloors], a: [...state.expandedAreas], s: [...state.expandedSeats] })); } catch (e) {} }
+function loadUIState() { try { const o = JSON.parse(localStorage.getItem('seat_ui_state')); if (o.f) state.expandedFloors = new Set(o.f); if (o.a) state.expandedAreas = new Set(o.a); if (o.s) state.expandedSeats = new Set(o.s); } catch (e) {} }
+// 拍照后分享开关状态持久化
+function saveAutoShareState() { try { localStorage.setItem('seat_auto_share', state.autoShare ? '1' : '0'); } catch (e) {} }
+function loadAutoShareState() { try { state.autoShare = localStorage.getItem('seat_auto_share') === '1'; } catch (e) {} }
+// 【修改1】允许删除座位开关状态持久化
+function saveAllowDeleteState() { try { localStorage.setItem('seat_allow_delete', state.allowDeleteSeat ? '1' : '0'); } catch (e) {} }
+function loadAllowDeleteState() { try { state.allowDeleteSeat = localStorage.getItem('seat_allow_delete') === '1'; } catch (e) {} }
+
+/** 保存时段筛选设置到 localStorage */
+function saveFilterState() { try { localStorage.setItem('seat_time_filter', JSON.stringify({ slots: [...state.visibleTimeSlots], none: state._filterNone })); } catch (e) {} }
+/** 加载时段筛选设置 */
+function loadFilterState() { try { const o = JSON.parse(localStorage.getItem('seat_time_filter')); if (o && Array.isArray(o.slots)) { state.visibleTimeSlots = new Set(o.slots); state._filterNone = !!o.none; } } catch (e) {} }
+
+/** 判断某时段索引是否在当前北京时间已过（严格大于时段时间为已过） */
+function isTimeSlotPassed(tIdx) {
+  const now = new Date();
+  const opts = { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false };
+  const parts = new Intl.DateTimeFormat('en-US', opts).formatToParts(now);
+  // 【修复】处理某些 locale 返回 hour=24 的边界情况
+  const h = parseInt(parts.find(p => p.type === 'hour').value) % 24;
+  const m = parseInt(parts.find(p => p.type === 'minute').value);
+  const nowMinutes = h * 60 + m;
+  const slot = TIME_SLOTS[tIdx];
+  const [sh, sm] = slot.split(':').map(Number);
+  const slotMinutes = sh * 60 + sm;
+  // 当前时间 > 时段时间表示该时段已过
+  return nowMinutes > slotMinutes;
+}
+
+/** 判断某时段是否应该显示 */
+function isTimeSlotVisible(tIdx) {
+  // visibleTimeSlots 为空且无特殊标记时，默认全部显示
+  if (state.visibleTimeSlots.size === 0 && !state._filterNone) return true;
+  return state.visibleTimeSlots.has(tIdx);
+}
+
+// ============================================================
+// 四、渲染
+// ============================================================
+const app = document.getElementById('app');
+function renderMain() {
+  // 【修改3】顶部只保留标题和功能按钮
+  let html = '<div class="page-header"><span class="page-title">图书馆座位图片管理</span><button class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">功能</button></div>';
+  // 【优化】预计算每个区域的已删除座位数，避免每个区域都遍历全量 deletedSeats
+  const deletedCountMap = {};
+  state.deletedSeats.forEach(sk => {
+    const parts = sk.split('-');
+    const ak = `${parts[0]}-${parts[1]}`;
+    deletedCountMap[ak] = (deletedCountMap[ak] || 0) + 1;
+  });
+  FLOORS.forEach(floor => {
+    const fid = floor.id, expanded = state.expandedFloors.has(fid);
+    // 计算楼层总座位数
+    let floorTotal = 0;
+    floor.areas.forEach(area => { floorTotal += getAreaSeatCount(fid, area.name) - (deletedCountMap[areaKey(fid, area.name)] || 0); });
+    html += `<button class="floor-btn floor-${fid} ${expanded ? 'expanded' : ''}" data-action="toggle-floor" data-floor="${fid}">${floor.name}<span class="floor-count">${floorTotal}座</span><span class="arrow">▶</span></button>`;
+    html += `<div class="area-container ${expanded ? 'show' : ''}" id="areas-${fid}">`;
+    floor.areas.forEach(area => {
+      const aname = area.name, ak = areaKey(fid, aname), aExp = state.expandedAreas.has(ak);
+      const areaTotal = getAreaSeatCount(fid, aname) - (deletedCountMap[ak] || 0);
+      // 判断区域是否有图片：遍历该区域所有座位检查 seatHasImages
+      let areaHasImages = false;
+      for (let si = 0; si < getAreaSeatCount(fid, aname); si++) {
+        if (state.seatHasImages.has(seatKey(fid, aname, si))) { areaHasImages = true; break; }
+      }
+      html += `<button class="area-btn ${aExp ? 'expanded' : ''} ${areaHasImages ? 'has-images' : ''}" data-action="toggle-area" data-floor="${fid}" data-area="${aname}"><span>${aname}<span class="arrow">▶</span></span><span class="area-count">${areaTotal}座</span></button>`;
+      html += `<div class="seat-container ${aExp ? 'show' : ''}" id="seats-${ak}">${renderSeatFlow(fid, aname)}</div>`;
+    });
+    html += '</div>';
+  });
+  app.innerHTML = html;
+  state.expandedSeats.forEach(sk => renderTimeSlots(sk));
+}
+
+function renderSeatFlow(fid, aname) {
+  const count = getAreaSeatCount(fid, aname);
+  let html = '<div class="seat-flow">';
+  for (let i = 0; i < count; i++) {
+    const sk = seatKey(fid, aname, i);
+    if (state.deletedSeats.has(sk)) continue;
+    const sName = getSeatNameSync(fid, aname, i), sExp = state.expandedSeats.has(sk), hasImg = state.seatHasImages.has(sk);
+    html += `<button class="seat-btn ${sExp ? 'expanded' : ''} ${hasImg ? 'has-images' : ''}" data-action="toggle-seat" data-floor="${fid}" data-area="${aname}" data-seat="${i}">${sName}</button>`;
+    html += `<div class="timeslot-container ${sExp ? 'show' : ''}" id="timeslots-${sk}"></div>`;
+  }
+  html += `<button class="add-seat-btn" data-action="add-seat" data-floor="${fid}" data-area="${aname}">+</button></div>`;
+  return html;
+}
+
+async function renderTimeSlots(sk) {
+  const container = document.getElementById('timeslots-' + sk);
+  if (!container) return;
+  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  const sName = getSeatNameSync(fid, aname, sidx);
+  // 【修改1】删除座位按钮受开关控制
+  const delBtnClass = state.allowDeleteSeat ? 'btn-delete-seat visible' : 'btn-delete-seat';
+  let html = `<div class="seat-header"><span class="seat-header-label">座位编号：</span><span class="seat-name-text" data-action="edit-seat-name" data-seat-key="${sk}">${sName}</span><span class="seat-name-hint">（点击修改）</span><button class="${delBtnClass}" data-action="delete-seat" data-seat-key="${sk}">删除座位</button></div>`;
+  // 【优化】批量读取该座位所有可见时段的数据，单事务避免多次异步
+  const visibleKeys = [];
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    if (isTimeSlotVisible(t)) visibleKeys.push(cellKey(fid, aname, sidx, t));
+  }
+  const cellDataMap = await getCellDataBatch(visibleKeys);
+  let needThumbGen = false;
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    if (!isTimeSlotVisible(t)) continue; // 筛选：跳过不可见时段
+    const ck = cellKey(fid, aname, sidx, t);
+    const cellData = cellDataMap[ck] || null;
+    const images = (cellData && cellData.images) ? cellData.images : [];
+    const hasImages = images.length > 0, isFull = images.length >= MAX_IMAGES, isSel = state.selectedCells.includes(ck);
+    const cbClass = hasImages ? `ts-checkbox ${isSel ? 'checked' : ''}` : 'ts-checkbox disabled';
+    html += `<div class="timeslot-card" data-action="toggle-card" data-cell-key="${ck}" data-has-images="${hasImages ? '1' : '0'}"><div class="ts-top"><div class="${cbClass}" data-action="toggle-select" data-cell-key="${ck}"></div><span class="ts-time">${TIME_SLOTS[t]}</span><div class="ts-btns"><button class="ts-btn ts-btn-capture" ${isFull ? 'disabled' : ''} data-action="capture" data-cell-key="${ck}">拍照</button><button class="ts-btn ts-btn-upload" ${isFull ? 'disabled' : ''} data-action="upload" data-cell-key="${ck}">上传</button></div></div>`;
+    if (images.length > 0) {
+      html += '<div class="ts-thumbs">';
+      images.forEach((img, idx) => {
+        const thumbSrc = img.thumbnail || img.thumb || '';
+        if (!img.thumbnail && !img.thumb) needThumbGen = true;
+        html += `<div class="thumb-wrap"><img ${thumbSrc ? `data-thumb-src="${thumbSrc}"` : `src="${img.data}"`} data-action="preview" data-cell-key="${ck}" data-img-idx="${idx}" /><div class="thumb-del" data-action="delete-img" data-cell-key="${ck}" data-img-idx="${idx}">&times;</div></div>`;
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  container.innerHTML = html;
+  container.querySelectorAll('img[data-thumb-src]').forEach(img => thumbObserver.observe(img));
+  if (needThumbGen) generateMissingThumbnails(fid, aname, sidx);
+}
+
+function updateSeatVisual(sk) {
+  document.querySelectorAll('.seat-btn').forEach(btn => {
+    const k = seatKey(parseInt(btn.dataset.floor), btn.dataset.area, parseInt(btn.dataset.seat));
+    if (k === sk) btn.classList.toggle('has-images', state.seatHasImages.has(sk));
+  });
+  // 同步更新区域按钮视觉
+  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+  updateAreaVisual(fid, aname);
+}
+/** 更新区域按钮的 has-images 状态 */
+function updateAreaVisual(fid, aname) {
+  let areaHasImages = false;
+  for (let si = 0; si < getAreaSeatCount(fid, aname); si++) {
+    if (state.seatHasImages.has(seatKey(fid, aname, si))) { areaHasImages = true; break; }
+  }
+  document.querySelectorAll(`.area-btn[data-floor="${fid}"][data-area="${aname}"]`).forEach(btn => {
+    btn.classList.toggle('has-images', areaHasImages);
+  });
+}
+
+// ============================================================
+// 五、图片压缩与水印
+// ============================================================
+
+/** 将图片重新编码为 JPEG，保持原分辨率，用于统一存储格式 */
+function compressImage(imageData, quality = 0.95) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => reject(new Error('图片压缩失败'));
+    img.src = imageData;
+  });
+}
+
+/** 添加水印（左下角，动态字体，两行：座位编号 + 北京时间），输出 JPEG 0.95 */
+function addWatermark(imageData, seatName, beijingTime) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      // 字体大小根据图片短边动态计算：短边×8%，限制在24~120px
+      const shortSide = Math.min(img.naturalWidth, img.naturalHeight);
+      const fs = Math.max(24, Math.min(120, Math.round(shortSide * 0.08)));
+      const pad = Math.max(8, Math.round(fs * 0.17)), lineGap = Math.max(4, Math.round(fs * 0.13));
+      const r = Math.max(4, Math.round(fs * 0.13));
+      ctx.font = `bold ${fs}px sans-serif`;
+      // 第一行：座位编号
+      const line1 = seatName;
+      const tw1 = ctx.measureText(line1).width;
+      // 第二行：北京时间
+      const line2 = beijingTime;
+      const tw2 = ctx.measureText(line2).width;
+      const maxTW = Math.max(tw1, tw2);
+      const totalH = fs * 2 + lineGap;
+      const bgX = pad, bgY = canvas.height - totalH - pad * 2 - pad;
+      const bgW = maxTW + pad * 2, bgH = totalH + pad * 2;
+      // 半透明圆角背景
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath();
+      ctx.moveTo(bgX + r, bgY); ctx.lineTo(bgX + bgW - r, bgY);
+      ctx.quadraticCurveTo(bgX + bgW, bgY, bgX + bgW, bgY + r);
+      ctx.lineTo(bgX + bgW, bgY + bgH - r);
+      ctx.quadraticCurveTo(bgX + bgW, bgY + bgH, bgX + bgW - r, bgY + bgH);
+      ctx.lineTo(bgX + r, bgY + bgH);
+      ctx.quadraticCurveTo(bgX, bgY + bgH, bgX, bgY + bgH - r);
+      ctx.lineTo(bgX, bgY + r);
+      ctx.quadraticCurveTo(bgX, bgY, bgX + r, bgY);
+      ctx.closePath(); ctx.fill();
+      // 绘制两行白色文本
+      ctx.textBaseline = 'top'; ctx.fillStyle = '#ffffff';
+      const textX = pad + pad;
+      ctx.fillText(line1, textX, bgY + pad);
+      ctx.fillText(line2, textX, bgY + pad + fs + lineGap);
+      resolve(canvas.toDataURL('image/jpeg', 0.95));
+    };
+    img.onerror = () => reject(new Error('图片加载失败'));
+    img.src = imageData;
+  });
+}
+
+// ============================================================
+// 五-B、缩略图生成与懒加载
+// ============================================================
+
+/** 生成缩略图：宽度 200px，等比缩放，JPEG 质量 0.8 */
+function generateThumbnail(imageData, targetWidth = 200) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const scale = Math.min(targetWidth / img.naturalWidth, 1);
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = () => resolve(imageData);
+    img.src = imageData;
+  });
+}
+
+const thumbObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const img = entry.target;
+      if (img.dataset.thumbSrc) {
+        img.src = img.dataset.thumbSrc;
+        delete img.dataset.thumbSrc;
+      }
+      thumbObserver.unobserve(img);
+    }
+  });
+}, { rootMargin: '300px' });
+
+// 【优化】批量读取后生成缺失缩略图，避免逐条异步读取
+async function generateMissingThumbnails(fid, aname, sidx) {
+  const keys = [];
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    keys.push(cellKey(fid, aname, sidx, t));
+  }
+  const cellDataMap = await getCellDataBatch(keys);
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    const ck = cellKey(fid, aname, sidx, t);
+    const cd = cellDataMap[ck];
+    if (!cd || !cd.images) continue;
+    let changed = false;
+    for (let i = 0; i < cd.images.length; i++) {
+      if (!cd.images[i].thumbnail && cd.images[i].data) {
+        cd.images[i].thumbnail = await generateThumbnail(cd.images[i].data);
+        changed = true;
+      }
+    }
+    if (changed) await saveCellData(ck, cd.images);
+  }
+}
+
+// ============================================================
+// 六、文件输入
+// ============================================================
+const captureInput = document.createElement('input');
+captureInput.type = 'file'; captureInput.capture = 'environment'; captureInput.accept = 'image/*'; captureInput.style.display = 'none';
+document.body.appendChild(captureInput);
+const uploadInput = document.createElement('input');
+uploadInput.type = 'file'; uploadInput.accept = 'image/*'; uploadInput.style.display = 'none';
+document.body.appendChild(uploadInput);
+let currentCaptureCellKey = null, currentUploadCellKey = null;
+function readFileAsDataURL(file) { return new Promise((r, j) => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.onerror = () => j(rd.error); rd.readAsDataURL(file); }); }
+
+captureInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentCaptureCellKey) { captureInput.value = ''; return; }
+  const ck = currentCaptureCellKey; currentCaptureCellKey = null;
+  try {
+    const rawOriginal = await readFileAsDataURL(file);
+    const cellData = await getCellData(ck);
+    const images = (cellData && cellData.images) ? [...cellData.images] : [];
+    if (images.length >= MAX_IMAGES) { showToast('该时段图片已满'); captureInput.value = ''; return; }
+    const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+    const sName = getSeatNameSync(fid, aname, sidx);
+    const bTime = getBeijingTime();
+    // 压缩原图（JPEG 0.95，保持分辨率），用于水印重生成
+    const original = await compressImage(rawOriginal, 0.95);
+    const watermarked = await addWatermark(original, sName, bTime);
+    const thumbnail = await generateThumbnail(watermarked);
+    images.push({ data: watermarked, original, thumbnail, type: 'capture', createdAt: Date.now(), seatName: sName, beijingTime: bTime });
+    await saveCellData(ck, images);
+    const sk = cellToSeatKey(ck);
+    state.seatHasImages.add(sk); updateSeatVisual(sk);
+    await renderTimeSlots(sk); updateBottomBar();
+    // 【修改3】拍照后自动分享受开关控制，默认关闭
+    if (state.autoShare) {
+      const shareName = `${sName}_${bTime.replace(/[: ]/g, '-')}.jpg`;
+      const shareBlob = dataURLtoBlob(watermarked);
+      if (navigator.share && navigator.canShare) {
+        const shareFile = new File([shareBlob], shareName, { type: 'image/jpeg' });
+        if (navigator.canShare({ files: [shareFile] })) {
+          try { await navigator.share({ files: [shareFile] }); } catch (err) { if (err.name !== 'AbortError') console.error('分享出错:', err); }
+        } else { downloadBlob(shareBlob, shareName); }
+      } else { downloadBlob(shareBlob, shareName); }
+    }
+  } catch (err) {
+    if (err.name === 'QuotaExceededError') showToast('存储空间不足！');
+    else { console.error('拍照处理出错:', err); showToast('拍照处理出错'); }
+  }
+  captureInput.value = '';
+});
+
+uploadInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentUploadCellKey) { uploadInput.value = ''; return; }
+  const ck = currentUploadCellKey; currentUploadCellKey = null;
+  try {
+    const rawOriginal = await readFileAsDataURL(file);
+    const cellData = await getCellData(ck);
+    const images = (cellData && cellData.images) ? [...cellData.images] : [];
+    if (images.length >= MAX_IMAGES) { showToast('该时段图片已满'); uploadInput.value = ''; return; }
+    const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+    const sName = getSeatNameSync(fid, aname, sidx);
+    const bTime = getBeijingTime();
+    // 压缩原图（JPEG 0.95，保持分辨率），用于水印重生成
+    const original = await compressImage(rawOriginal, 0.95);
+    const watermarked = await addWatermark(original, sName, bTime);
+    const thumbnail = await generateThumbnail(watermarked);
+    images.push({ data: watermarked, original, thumbnail, type: 'upload', createdAt: Date.now(), seatName: sName, beijingTime: bTime });
+    await saveCellData(ck, images);
+    const sk = cellToSeatKey(ck);
+    state.seatHasImages.add(sk); updateSeatVisual(sk);
+    await renderTimeSlots(sk); updateBottomBar();
+  } catch (err) {
+    if (err.name === 'QuotaExceededError') showToast('存储空间不足！');
+    else { console.error('上传处理出错:', err); showToast('上传处理出错'); }
+  }
+  uploadInput.value = '';
+});
+
+// ============================================================
+// 七、下载
+// ============================================================
+function dataURLtoBlob(dataurl) {
+  const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]);
+  const u8arr = new Uint8Array(bstr.length);
+  for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
+  return new Blob([u8arr], { type: mime });
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function getProcessedData(imgObj, fid, aname, sidx) {
+  let data = imgObj.data;
+  if (imgObj.original) {
+    const sName = getSeatNameSync(fid, aname, sidx);
+    const bTime = imgObj.beijingTime || getBeijingTime();
+    data = await addWatermark(imgObj.original, sName, bTime);
+  }
+  return data;
+}
+
+// 【优化】分享选中图片：一次性读取所有数据，避免逐条异步读取
+async function shareSelectedImages() {
+  if (state.selectedCells.length === 0) return;
+  // 收集所有图片 blob 和文件名
+  const allCells = await dbGetAll('cells');
+  const cellMap = new Map();
+  allCells.forEach(r => { if (r.images && r.images.length > 0) cellMap.set(r.key, r); });
+  const items = [];
+  for (const ck of state.selectedCells) {
+    const cellData = cellMap.get(ck);
+    if (!cellData || !cellData.images || cellData.images.length === 0) continue;
+    const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]), tidx = parseInt(parts[3]);
+    const sName = getSeatNameSync(fid, aname, sidx), timeSlot = TIME_SLOTS[tidx];
+    for (let i = 0; i < cellData.images.length; i++) {
+      const data = await getProcessedData(cellData.images[i], fid, aname, sidx);
+      const blob = dataURLtoBlob(data);
+      const filename = `${sName}_${timeSlot}_${i + 1}.jpg`;
+      items.push({ blob, filename });
+    }
+  }
+  if (items.length === 0) { showToast('无图片可分享'); return; }
+
+  // 优先使用系统分享
+  if (navigator.share && navigator.canShare) {
+    const files = items.map(it => new File([it.blob], it.filename, { type: 'image/jpeg' }));
+    if (navigator.canShare({ files })) {
+      try { await navigator.share({ files }); return; }
+      catch (err) { if (err.name === 'AbortError') return; }
+    }
+  }
+
+  // 回退：单张直接下载，多张打包 zip
+  if (items.length === 1) {
+    downloadBlob(items[0].blob, items[0].filename);
+    showToast('已开始下载');
+  } else {
+    showToast('正在打包...');
+    try {
+      const zip = new JSZip();
+      items.forEach(it => zip.file(it.filename, it.blob));
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      downloadBlob(zipBlob, `图片导出_${Date.now()}.zip`);
+      showToast(`已下载 ${items.length} 张图片`);
+    } catch (err) { console.error('打包出错:', err); showToast('打包出错'); }
+  }
+}
+
+// 【修改1】拼接下载改为拼接预览：拼接后打开全屏预览，不直接下载
+async function downloadConcatenated() {
+  if (state.selectedCells.length === 0) return;
+  // 拼接功能最多选择 2 个时段
+  const uniqueTimeSlots = new Set(state.selectedCells.map(ck => ck.split('-')[3]));
+  if (uniqueTimeSlots.size > 2) { showToast('拼接功能只能选择 2 个时段'); return; }
+  const allCells = await dbGetAll('cells');
+  const cellMap = new Map();
+  allCells.forEach(r => cellMap.set(r.key, r));
+  const allImageData = [];
+  for (const ck of state.selectedCells) {
+    const cellData = cellMap.get(ck);
+    if (!cellData || !cellData.images || cellData.images.length === 0) continue;
+    const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+    for (const imgObj of cellData.images) allImageData.push({ ...imgObj, fid, aname, sidx });
+  }
+  if (allImageData.length === 0) { showToast('无图片可拼接'); return; }
+  showToast('正在拼接...');
+  const processedImages = [];
+  for (const imgObj of allImageData) {
+    processedImages.push(await getProcessedData(imgObj, imgObj.fid, imgObj.aname, imgObj.sidx));
+  }
+  const imgs = await Promise.all(processedImages.map(src => new Promise((r, j) => { const img = new Image(); img.onload = () => r(img); img.onerror = () => j(); img.src = src; })));
+  const maxW = Math.max(...imgs.map(i => i.naturalWidth));
+  const scaledH = imgs.map(i => Math.round(i.naturalHeight * maxW / i.naturalWidth));
+  const totalH = scaledH.reduce((a, b) => a + b, 0);
+  const canvas = document.createElement('canvas'); canvas.width = maxW; canvas.height = totalH;
+  const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, maxW, totalH);
+  let y = 0;
+  for (let i = 0; i < imgs.length; i++) { ctx.drawImage(imgs[i], 0, y, maxW, scaledH[i]); y += scaledH[i]; }
+  // 【修改1】拼接后打开预览而非直接下载
+  const dataURL = canvas.toDataURL('image/jpeg', 0.95);
+  showPreviewFromDataURL(dataURL, '拼接结果');
+}
+
+// ============================================================
+// 八、批量下载
+// ============================================================
+const batchModal = document.getElementById('batch-modal');
+const batchAreasDiv = document.getElementById('batch-areas');
+const batchTimesDiv = document.getElementById('batch-times');
+let batchSelectedAreas = new Set(), batchSelectedTimes = new Set();
+
+async function initBatchModal() {
+  batchSelectedAreas = new Set(); batchSelectedTimes = new Set();
+  // 扫描 IndexedDB，仅显示有图片的区域和时段
+  const allCells = await dbGetAll('cells');
+  const areasWithImages = new Set(); // 存储有图片的 areaKey
+  const timesWithImages = new Set(); // 存储有图片的时段索引
+  allCells.forEach(r => {
+    if (r.images && r.images.length > 0) {
+      const p = r.key.split('-');
+      areasWithImages.add(`${p[0]}-${p[1]}`);
+      timesWithImages.add(parseInt(p[3]));
+    }
+  });
+  let ahtml = '';
+  FLOORS.forEach(floor => {
+    floor.areas.forEach(area => {
+      const ak = areaKey(floor.id, area.name);
+      if (!areasWithImages.has(ak)) return; // 跳过无图片的区域
+      ahtml += `<div class="batch-chip" data-ak="${ak}">${floor.name}${area.name}</div>`;
+    });
+  });
+  batchAreasDiv.innerHTML = ahtml;
+  let thtml = '';
+  TIME_SLOTS.forEach((ts, idx) => {
+    if (!timesWithImages.has(idx)) return; // 跳过无图片的时段
+    thtml += `<div class="batch-chip" data-tidx="${idx}">${ts}</div>`;
+  });
+  batchTimesDiv.innerHTML = thtml;
+}
+
+batchModal.addEventListener('click', (e) => {
+  const chip = e.target.closest('.batch-chip');
+  if (chip) {
+    chip.classList.toggle('checked');
+    if (chip.dataset.ak) { chip.classList.contains('checked') ? batchSelectedAreas.add(chip.dataset.ak) : batchSelectedAreas.delete(chip.dataset.ak); }
+    if (chip.dataset.tidx !== undefined) { const ti = chip.dataset.tidx; chip.classList.contains('checked') ? batchSelectedTimes.add(ti) : batchSelectedTimes.delete(ti); }
+    return;
+  }
+  const selAll = e.target.closest('.batch-select-all');
+  if (selAll) {
+    const target = selAll.dataset.target;
+    const container = target === 'area' ? batchAreasDiv : batchTimesDiv;
+    const chips = container.querySelectorAll('.batch-chip');
+    const allChecked = [...chips].every(c => c.classList.contains('checked'));
+    chips.forEach(c => {
+      if (allChecked) { c.classList.remove('checked'); if (c.dataset.ak) batchSelectedAreas.delete(c.dataset.ak); if (c.dataset.tidx !== undefined) batchSelectedTimes.delete(c.dataset.tidx); }
+      else { c.classList.add('checked'); if (c.dataset.ak) batchSelectedAreas.add(c.dataset.ak); if (c.dataset.tidx !== undefined) batchSelectedTimes.add(c.dataset.tidx); }
+    });
+  }
+});
+
+document.getElementById('batch-cancel').addEventListener('click', () => batchModal.classList.remove('show'));
+document.getElementById('batch-exec').addEventListener('click', async () => {
+  if (batchSelectedAreas.size === 0 || batchSelectedTimes.size === 0) { showToast('请选择区域和时段'); return; }
+  batchModal.classList.remove('show'); showToast('正在打包...');
+  try {
+    // 【优化】一次性读取所有图片数据，避免逐条异步读取
+    const allCells = await dbGetAll('cells');
+    const cellMap = new Map();
+    allCells.forEach(r => { if (r.images && r.images.length > 0) cellMap.set(r.key, r); });
+    const zip = new JSZip(); let count = 0;
+    for (const ak of batchSelectedAreas) {
+      const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+      const seatCount = getAreaSeatCount(fid, aname);
+      const floorObj = FLOORS.find(f => f.id === fid);
+      for (const tidx of batchSelectedTimes) {
+        const tIdx = parseInt(tidx);
+        for (let sidx = 0; sidx < seatCount; sidx++) {
+          const sk = seatKey(fid, aname, sidx);
+          if (state.deletedSeats.has(sk)) continue;
+          const ck = cellKey(fid, aname, sidx, tIdx);
+          const cellData = cellMap.get(ck);
+          if (!cellData) continue;
+          const sName = getSeatNameSync(fid, aname, sidx);
+          for (let i = 0; i < cellData.images.length; i++) {
+            const data = await getProcessedData(cellData.images[i], fid, aname, sidx);
+            const folder = `${floorObj.name}_${aname}`;
+            zip.folder(folder).file(`${sName}_${TIME_SLOTS[tIdx]}_${i + 1}.jpg`, dataURLtoBlob(data));
+            count++;
+          }
+        }
+      }
+    }
+    if (count === 0) { showToast('所选范围内无图片'); return; }
+    const blob = await zip.generateAsync({ type: 'blob' });
+    downloadBlob(blob, `批量下载_${count}张.zip`);
+    showToast(`已下载 ${count} 张图片`);
+  } catch (err) { console.error('批量下载出错:', err); showToast('下载出错'); }
+});
+
+// ============================================================
+// 九、全屏预览（自定义手势管理器，类 iOS 相册体验）
+// ============================================================
+const previewModal = document.getElementById('preview-modal');
+const previewScroller = document.getElementById('preview-scroller');
+const previewClose = document.getElementById('preview-close');
+const previewIndicator = document.getElementById('preview-indicator');
+const previewSaveBtn = document.getElementById('preview-save-btn');
+
+// ---- 预览状态 ----
+let pvImages = [], pvIndex = 0;
+const pvCache = new Map();
+const pvStates = []; // 每张图片独立的变换状态 { scale, tx, ty }
+
+// 手势状态
+let pvGesture = 'idle'; // 'idle' | 'pinch' | 'pan' | 'swipe-down' | 'slide'
+let pvStartX = 0, pvStartY = 0;
+let pvLastX = 0, pvLastY = 0;
+let pvLastDist = 0;
+let pvSlideOffset = 0; // 容器水平偏移量（px）
+let pvSlideVelocity = 0;
+let pvLastSlideTime = 0;
+let pvDownStartY = 0, pvDownOffset = 0;
+// 边缘溢出累积：放大平移到边缘后，继续拖动的距离累积，超过阈值才触发切换
+let pvEdgeOverflow = 0;
+const PV_EDGE_THRESHOLD = 20; // 边缘触发切换的阈值（px）
+let pvSaveBtnTimer = null; // 【修改4】保存按钮淡出计时器
+
+// 【修改4】保存按钮淡出控制
+function pvShowSaveBtn() {
+  previewSaveBtn.classList.remove('faded');
+  clearTimeout(pvSaveBtnTimer);
+  pvSaveBtnTimer = setTimeout(() => { previewSaveBtn.classList.add('faded'); }, 3000);
+}
+function pvHideSaveBtnNow() {
+  previewSaveBtn.classList.add('faded');
+}
+
+// 双击检测
+let pvLastTapTime = 0, pvLastTapX = 0, pvLastTapY = 0;
+
+// 动画
+let pvAnimId = null;
+
+// ---- 工具函数 ----
+
+function pvCurState() { return pvStates[pvIndex] || { scale: 1, tx: 0, ty: 0 }; }
+function pvCurrentSlide() { return previewScroller.children[pvIndex] || null; }
+function pvCurrentImg() { const s = pvCurrentSlide(); return s ? s.querySelector('img') : null; }
+
+/** 获取图片在屏幕上的显示尺寸（受 max-width:100vw max-height:100vh 约束） */
+function pvImgDisplaySize(imgEl) {
+  if (!imgEl || !imgEl.naturalWidth) return { w: 0, h: 0 };
+  const nw = imgEl.naturalWidth, nh = imgEl.naturalHeight;
+  const maxW = window.innerWidth, maxH = window.innerHeight;
+  const ratio = Math.min(maxW / nw, maxH / nh, 1);
+  return { w: nw * ratio, h: nh * ratio };
+}
+
+/**
+ * 计算平移边界。
+ * 【修复Bug1】transform-origin:center center 时，tx=0 即图片居中。
+ * 当 scale>1 且图片超出屏幕时，允许平移直到图片边缘对齐屏幕边缘。
+ * @param {boolean} withOverDrag 是否包含过界余量（拖动时用 true，边缘检测用 false）
+ */
+function pvPanBounds(st, withOverDrag) {
+  const imgEl = pvCurrentImg();
+  if (!imgEl) return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+  const { w, h } = pvImgDisplaySize(imgEl);
+  const sw = window.innerWidth, sh = window.innerHeight;
+  const scaledW = w * st.scale, scaledH = h * st.scale;
+  const over = withOverDrag ? 50 : 0;
+
+  // 水平边界
+  let minX, maxX;
+  if (scaledW <= sw) {
+    // 缩放后仍比屏幕窄，居中不可平移
+    // 但边缘检测时，tx=0 即可视为同时到达左右边缘
+    minX = 0; maxX = 0;
+  } else {
+    // 缩放后比屏幕宽，可平移查看
+    minX = -(scaledW - sw) / 2 - over;
+    maxX = (scaledW - sw) / 2 + over;
+  }
+
+  // 垂直边界
+  let minY, maxY;
+  if (scaledH <= sh) {
+    minY = 0; maxY = 0;
+  } else {
+    minY = -(scaledH - sh) / 2 - over;
+    maxY = (scaledH - sh) / 2 + over;
+  }
+
+  return { minX, maxX, minY, maxY };
+}
+
+/**
+ * 判断图片在水平方向是否到达真实边缘（不含 overDrag）
+ * 当 scaledW <= sw 时，图片比屏幕窄，tx=0 即视为同时到达两侧边缘
+ */
+function pvAtRealEdge(st, direction) {
+  const imgEl = pvCurrentImg();
+  if (!imgEl) return false;
+  const { w } = pvImgDisplaySize(imgEl);
+  const sw = window.innerWidth;
+  const scaledW = w * st.scale;
+  // 图片比屏幕窄，任何水平拖动都应触发切换
+  if (scaledW <= sw) return true;
+  // 图片比屏幕宽，检查是否到达指定方向边缘
+  const bounds = pvPanBounds(st, false);
+  if (direction > 0) return st.tx >= bounds.maxX - 1;
+  if (direction < 0) return st.tx <= bounds.minX + 1;
+  return false;
+}
+
+function pvClampPan(st) {
+  const bounds = pvPanBounds(st, true);
+  st.tx = Math.max(bounds.minX, Math.min(bounds.maxX, st.tx));
+  st.ty = Math.max(bounds.minY, Math.min(bounds.maxY, st.ty));
+}
+
+/** 应用变换到指定图片 */
+function pvApplyImg(idx) {
+  if (idx === undefined) idx = pvIndex;
+  const slide = previewScroller.children[idx];
+  if (!slide) return;
+  const imgEl = slide.querySelector('img');
+  if (!imgEl) return;
+  const st = pvStates[idx];
+  if (!st) return;
+  imgEl.style.transform = `translate(${st.tx}px, ${st.ty}px) scale(${st.scale})`;
+  imgEl.style.transition = 'none';
+}
+
+/** 重置指定图片为原始尺寸居中（tx=0, ty=0，CSS flex 负责居中） */
+function pvResetImg(idx) {
+  if (idx === undefined) idx = pvIndex;
+  pvStates[idx] = { scale: 1, tx: 0, ty: 0 };
+  pvApplyImg(idx);
+}
+
+function pvUpdateIndicator() {
+  previewIndicator.textContent = pvImages.length > 1 ? `${pvIndex + 1} / ${pvImages.length}` : '';
+}
+
+function pvApplySlideOffset() {
+  previewScroller.style.transform = `translateX(${-pvIndex * window.innerWidth + pvSlideOffset}px)`;
+  previewScroller.style.transition = 'none';
+}
+
+// ---- 异步加载完整水印图 ----
+async function pvLoadFullImage(idx) {
+  if (idx < 0 || idx >= pvImages.length) return;
+  const slide = previewScroller.children[idx];
+  if (!slide || slide.dataset.loaded === '1') return;
+  const imgEl = slide ? slide.querySelector('img') : null;
+  if (!imgEl) return;
+  try {
+    let data = pvImages[idx].data;
+    const cacheKey = `${pvImages[idx]._cellKey}_${idx}`;
+    if (pvCache.has(cacheKey)) {
+      data = pvCache.get(cacheKey);
+    } else if (pvImages[idx].original) {
+      const ck = pvImages[idx]._cellKey;
+      if (ck) {
+        const parts = ck.split('-');
+        const sName = getSeatNameSync(parseInt(parts[0]), parts[1], parseInt(parts[2]));
+        const bTime = pvImages[idx].beijingTime || getBeijingTime();
+        data = await addWatermark(pvImages[idx].original, sName, bTime);
+        pvCache.set(cacheKey, data);
+      }
+    }
+    imgEl.src = data;
+    slide.dataset.loaded = '1';
+  } catch (err) { console.error('预览图片加载失败:', err); }
+}
+
+// ---- 动画 ----
+
+function pvAnimateTransition(targetSlideOffset, targetIndex, duration, onDone) {
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  const startOffset = pvSlideOffset;
+  const startTime = performance.now();
+  function frame(now) {
+    const elapsed = now - startTime;
+    const t = Math.min(elapsed / duration, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    pvSlideOffset = startOffset + (targetSlideOffset - startOffset) * ease;
+    pvApplySlideOffset();
+    if (t < 1) {
+      pvAnimId = requestAnimationFrame(frame);
+    } else {
+      pvAnimId = null;
+      pvSlideOffset = 0;
+      if (targetIndex !== pvIndex) {
+        pvResetImg(pvIndex);
+        pvIndex = targetIndex;
+        pvResetImg(pvIndex);
+        pvUpdateIndicator();
+        // 异步加载相邻图片
+        pvLoadFullImage(pvIndex - 1);
+        pvLoadFullImage(pvIndex + 1);
+      }
+      pvApplySlideOffset();
+      if (onDone) onDone();
+    }
+  }
+  pvAnimId = requestAnimationFrame(frame);
+}
+
+function pvAnimatePanBounce(targetState, duration, idx) {
+  if (idx === undefined) idx = pvIndex;
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  const st = pvStates[idx];
+  if (!st) return;
+  const startScale = st.scale, startTX = st.tx, startTY = st.ty;
+  const startTime = performance.now();
+  function frame(now) {
+    const elapsed = now - startTime;
+    const t = Math.min(elapsed / duration, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    st.scale = startScale + (targetState.scale - startScale) * ease;
+    st.tx = startTX + (targetState.tx - startTX) * ease;
+    st.ty = startTY + (targetState.ty - startTY) * ease;
+    pvApplyImg(idx);
+    if (t < 1) pvAnimId = requestAnimationFrame(frame);
+    else pvAnimId = null;
+  }
+  pvAnimId = requestAnimationFrame(frame);
+}
+
+function pvAnimateDownBounce() {
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  const st = pvStates[pvIndex];
+  if (!st) return;
+  const imgEl = pvCurrentImg();
+  const startTY = st.ty, startOpacity = imgEl ? parseFloat(imgEl.style.opacity || '1') : 1;
+  const startTime = performance.now();
+  function frame(now) {
+    const elapsed = now - startTime;
+    const t = Math.min(elapsed / 300, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    st.ty = startTY * (1 - ease);
+    pvApplyImg();
+    if (imgEl) imgEl.style.opacity = startOpacity + (1 - startOpacity) * ease;
+    if (t < 1) pvAnimId = requestAnimationFrame(frame);
+    else pvAnimId = null;
+  }
+  pvAnimId = requestAnimationFrame(frame);
+}
+
+// ---- 打开 / 关闭预览 ----
+
+async function showPreview(cellKeyStr, imgIdx) {
+  try {
+    // 【修复Bug2+Bug3】先读取数据，再构建DOM，最后显示弹窗
+    // 避免先显示空弹窗导致黑屏，避免用缩略图导致先缩小再放大跳动
+    const cellData = await getCellData(cellKeyStr);
+    if (!cellData || !cellData.images || !cellData.images[imgIdx]) return;
+
+    pvImages = cellData.images.map((img, i) => ({ ...img, _cellKey: cellKeyStr }));
+    pvIndex = imgIdx;
+
+    // 初始化变换状态：scale=1, tx=0, ty=0（transform-origin:center center 时即居中）
+    pvStates.length = 0;
+    for (let i = 0; i < pvImages.length; i++) pvStates.push({ scale: 1, tx: 0, ty: 0 });
+
+    // 构建 DOM：所有图片直接用 data（完整水印图）作为 src，确保尺寸正确不跳动
+    previewScroller.innerHTML = '';
+    for (let i = 0; i < pvImages.length; i++) {
+      const slide = document.createElement('div');
+      slide.className = 'pv-slide';
+      const imgEl = document.createElement('img');
+      const cacheKey = `${pvImages[i]._cellKey}_${i}`;
+      if (pvCache.has(cacheKey)) {
+        imgEl.src = pvCache.get(cacheKey);
+      } else {
+        // 【修复】直接用 data（完整图），不用缩略图，避免尺寸跳变
+        imgEl.src = pvImages[i].data || '';
+      }
+      slide.dataset.loaded = '1';
+      slide.appendChild(imgEl);
+      previewScroller.appendChild(slide);
+    }
+
+    pvSlideOffset = 0;
+    pvGesture = 'idle';
+    pvEdgeOverflow = 0;
+
+    // 数据和DOM都就绪后再显示弹窗
+    previewModal.classList.add('show');
+    pvApplySlideOffset();
+    pvUpdateIndicator();
+    pvShowSaveBtn(); // 【修改4】打开预览后启动保存按钮淡出计时
+  } catch (err) {
+    console.error('打开预览失败:', err);
+    showToast('预览打开失败');
+  }
+}
+
+/** 用 dataURL 直接打开预览（用于拼接预览等场景，单张图禁用左右切换） */
+function showPreviewFromDataURL(dataURL, title) {
+  pvImages = [{ data: dataURL, _cellKey: '', _concatTitle: title || '图片' }];
+  pvIndex = 0;
+  pvStates.length = 0;
+  pvStates.push({ scale: 1, tx: 0, ty: 0 });
+
+  previewScroller.innerHTML = '';
+  const slide = document.createElement('div');
+  slide.className = 'pv-slide';
+  const imgEl = document.createElement('img');
+  imgEl.src = dataURL;
+  slide.dataset.loaded = '1';
+  slide.appendChild(imgEl);
+  previewScroller.appendChild(slide);
+
+  pvSlideOffset = 0;
+  pvGesture = 'idle';
+  pvEdgeOverflow = 0;
+
+  previewModal.classList.add('show');
+  pvApplySlideOffset();
+  pvUpdateIndicator();
+  pvShowSaveBtn(); // 【修改4】打开预览后启动保存按钮淡出计时
+}
+
+function closePreview() {
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  clearTimeout(pvSaveBtnTimer); // 【修改4】清除保存按钮计时器
+  previewModal.classList.remove('show');
+  previewScroller.innerHTML = '';
+  pvImages = [];
+  pvStates.length = 0;
+  pvCache.clear();
+  pvSlideOffset = 0;
+  pvGesture = 'idle';
+}
+
+previewClose.addEventListener('click', closePreview);
+previewModal.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// ---- 统一触摸手势管理器 ----
+
+previewModal.addEventListener('touchstart', (e) => {
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  pvShowSaveBtn(); // 【修改4】触摸时立即显示保存按钮
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    pvGesture = 'pinch';
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const dx = t1.clientX - t0.clientX, dy = t1.clientY - t0.clientY;
+    pvLastDist = Math.sqrt(dx * dx + dy * dy);
+  } else if (e.touches.length === 1) {
+    const t = e.touches[0];
+    pvStartX = t.clientX; pvStartY = t.clientY;
+    pvLastX = t.clientX; pvLastY = t.clientY;
+    pvDownStartY = t.clientY;
+    pvDownOffset = 0;
+    pvSlideVelocity = 0;
+    pvLastSlideTime = Date.now();
+    pvEdgeOverflow = 0;
+    pvGesture = 'idle';
+  }
+}, { passive: false });
+
+previewModal.addEventListener('touchmove', (e) => {
+  // 【修改2】双指缩放期间，忽略单指移动，防止误触发平移/滑动
+  if (pvGesture === 'pinch' && e.touches.length < 2) {
+    e.preventDefault();
+    return;
+  }
+  // ---- 双指缩放 ----
+  if (e.touches.length === 2 && pvGesture === 'pinch') {
+    e.preventDefault();
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const dx = t1.clientX - t0.clientX, dy = t1.clientY - t0.clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (pvLastDist > 0) {
+      const st = pvCurState();
+      const ratio = dist / pvLastDist;
+      const newScale = Math.max(1, Math.min(4, st.scale * ratio));
+      const midX = (t0.clientX + t1.clientX) / 2;
+      const midY = (t0.clientY + t1.clientY) / 2;
+      // 【修复Bug1】transform-origin:center center 时，缩放锚点需相对屏幕中心计算
+      const pcx = midX - window.innerWidth / 2;
+      const pcy = midY - window.innerHeight / 2;
+      st.tx = pcx - (pcx - st.tx) * (newScale / st.scale);
+      st.ty = pcy - (pcy - st.ty) * (newScale / st.scale);
+      st.scale = newScale;
+      pvClampPan(st);
+      pvApplyImg();
+    }
+    pvLastDist = dist;
+    return;
+  }
+
+  if (e.touches.length !== 1 || pvGesture === 'pinch') return;
+  const t = e.touches[0];
+  const curX = t.clientX, curY = t.clientY;
+  const dx = curX - pvStartX, dy = curY - pvStartY;
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+  const st = pvCurState();
+
+  // ---- 手势方向判定（首次移动超过 8px 时判定） ----
+  if (pvGesture === 'idle' && (adx > 8 || ady > 8)) {
+    if (st.scale <= 1.01) {
+      // 未缩放：水平→切换，向下→关闭
+      if (ady > adx && dy > 0) pvGesture = 'swipe-down';
+      else pvGesture = 'slide';
+    } else {
+      // 已缩放：检查图片在水平方向是否可以平移
+      const imgEl = pvCurrentImg();
+      const { w } = pvImgDisplaySize(imgEl);
+      const scaledW = w * st.scale;
+      if (scaledW <= window.innerWidth && adx > ady) {
+        // 放大后水平方向仍比屏幕窄，水平拖动直接切换
+        pvGesture = 'slide';
+      } else {
+        // 放大后水平方向超出屏幕，先平移图片
+        pvGesture = 'pan';
+      }
+    }
+  }
+
+  // ---- 下滑关闭 ----
+  if (pvGesture === 'swipe-down') {
+    e.preventDefault();
+    pvDownOffset = curY - pvDownStartY;
+    const imgEl = pvCurrentImg();
+    if (imgEl) {
+      imgEl.style.transform = `translate(0px, ${pvDownOffset}px) scale(1)`;
+      imgEl.style.transition = 'none';
+      imgEl.style.opacity = Math.max(0.3, 1 - pvDownOffset / 400);
+    }
+    return;
+  }
+
+  // ---- 水平滑动切换（未缩放时） ----
+  if (pvGesture === 'slide') {
+    e.preventDefault();
+    pvSlideOffset = dx;
+    pvApplySlideOffset();
+    const now = Date.now(), dt = now - pvLastSlideTime;
+    if (dt > 0) pvSlideVelocity = (curX - pvLastX) / dt * 1000;
+    pvLastX = curX; pvLastY = curY; pvLastSlideTime = now;
+    return;
+  }
+
+  // ---- 平移图片（已缩放时） ----
+  if (pvGesture === 'pan') {
+    e.preventDefault();
+    const moveX = curX - pvLastX;
+    const moveY = curY - pvLastY;
+
+    // 先应用平移
+    st.tx += moveX;
+    st.ty += moveY;
+    pvClampPan(st);
+    pvApplyImg();
+
+    // 检查是否到达真实边缘，累积溢出距离
+    if (st.scale > 1.01 && adx > ady) {
+      let atEdge = false;
+      let overflowDir = 0;
+      // 使用 pvAtRealEdge 进行精确边缘检测
+      if (moveX > 0 && pvAtRealEdge(st, 1)) {
+        atEdge = true; overflowDir = 1; // 右边缘，想看上一张
+      } else if (moveX < 0 && pvAtRealEdge(st, -1)) {
+        atEdge = true; overflowDir = -1; // 左边缘，想看下一张
+      }
+
+      if (atEdge) {
+        pvEdgeOverflow += Math.abs(moveX);
+        if (pvEdgeOverflow >= PV_EDGE_THRESHOLD) {
+          // 超过阈值，转为切换图片
+          pvGesture = 'slide';
+          pvSlideOffset = overflowDir * (pvEdgeOverflow - PV_EDGE_THRESHOLD);
+          pvStartX = curX;
+          pvApplySlideOffset();
+          pvLastX = curX; pvLastY = curY;
+          pvLastSlideTime = Date.now();
+          pvEdgeOverflow = 0;
+          return;
+        }
+      } else {
+        pvEdgeOverflow = 0;
+      }
+    } else {
+      pvEdgeOverflow = 0;
+    }
+
+    pvLastX = curX; pvLastY = curY;
+  }
+}, { passive: false });
+
+previewModal.addEventListener('touchend', (e) => {
+  // ---- 双指缩放结束 ----
+  if (pvGesture === 'pinch' && e.touches.length < 2) {
+    pvLastDist = 0;
+    const st = pvCurState();
+    if (st.scale < 1.05) {
+      pvAnimatePanBounce({ scale: 1, tx: 0, ty: 0 }, 200);
+    } else {
+      pvClampPan(st);
+      pvApplyImg();
+    }
+    // 【修改2】如果还有手指在屏幕上，保持 pinch 状态防止误触发平移/滑动
+    if (e.touches.length > 0) return;
+    pvGesture = 'idle';
+    return;
+  }
+
+  if (e.touches.length > 0) return;
+  pvShowSaveBtn(); // 【修改4】手指全部抬起后重启3秒淡出计时
+  const st = pvCurState();
+
+  // ---- 下滑关闭结束 ----
+  if (pvGesture === 'swipe-down') {
+    if (pvDownOffset > 80) closePreview();
+    else pvAnimateDownBounce();
+    pvGesture = 'idle';
+    return;
+  }
+
+  // ---- 水平滑动切换结束 ----
+  if (pvGesture === 'slide') {
+    const sw = window.innerWidth;
+    const velocity = pvSlideVelocity;
+    let targetIndex = pvIndex;
+    if (pvSlideOffset < -sw * 0.3 || (pvSlideOffset < -30 && velocity < -300)) {
+      if (pvIndex < pvImages.length - 1) targetIndex = pvIndex + 1;
+    } else if (pvSlideOffset > sw * 0.3 || (pvSlideOffset > 30 && velocity > 300)) {
+      if (pvIndex > 0) targetIndex = pvIndex - 1;
+    }
+    const targetOffset = -(targetIndex - pvIndex) * sw;
+    pvAnimateTransition(targetOffset, targetIndex, 250);
+    pvGesture = 'idle';
+    pvEdgeOverflow = 0;
+    return;
+  }
+
+  // ---- 平移结束：回弹到边界 ----
+  if (pvGesture === 'pan') {
+    const bounds = pvPanBounds(st, true);
+    const needsBounce = st.tx < bounds.minX || st.tx > bounds.maxX || st.ty < bounds.minY || st.ty > bounds.maxY;
+    if (needsBounce) {
+      pvClampPan(st);
+      pvAnimatePanBounce(st, 200);
+    }
+    pvGesture = 'idle';
+    pvEdgeOverflow = 0;
+    return;
+  }
+
+  // ---- 双击缩放 ----
+  if (pvGesture === 'idle') {
+    const now = Date.now();
+    const touch = e.changedTouches[0];
+    if (touch) {
+      const tx = touch.clientX, ty = touch.clientY;
+      if (now - pvLastTapTime < 300 && Math.abs(tx - pvLastTapX) < 30 && Math.abs(ty - pvLastTapY) < 30) {
+        e.preventDefault();
+        // 【修复Bug1】transform-origin:center center 时，缩放锚点需相对屏幕中心计算
+        const pcx = tx - window.innerWidth / 2;
+        const pcy = ty - window.innerHeight / 2;
+        if (st.scale > 1.05) {
+          pvAnimatePanBounce({ scale: 1, tx: 0, ty: 0 }, 250);
+        } else {
+          const newScale = 2.5;
+          const newTX = pcx - (pcx - st.tx) * (newScale / st.scale);
+          const newTY = pcy - (pcy - st.ty) * (newScale / st.scale);
+          const targetSt = { scale: newScale, tx: newTX, ty: newTY };
+          pvClampPan(targetSt);
+          pvAnimatePanBounce(targetSt, 250);
+        }
+        pvLastTapTime = 0;
+      } else {
+        pvLastTapTime = now; pvLastTapX = tx; pvLastTapY = ty;
+      }
+    }
+  }
+  pvGesture = 'idle';
+}, { passive: false });
+
+// ---- 鼠标滚轮缩放（PC 端） ----
+previewModal.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  const st = pvCurState();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.max(1, Math.min(4, st.scale * factor));
+  // 【修复Bug1】transform-origin:center center 时，缩放锚点需相对屏幕中心计算
+  const pcx = e.clientX - window.innerWidth / 2;
+  const pcy = e.clientY - window.innerHeight / 2;
+  st.tx = pcx - (pcx - st.tx) * (newScale / st.scale);
+  st.ty = pcy - (pcy - st.ty) * (newScale / st.scale);
+  st.scale = newScale;
+  pvClampPan(st);
+  pvApplyImg();
+  if (st.scale < 1.05 && factor < 1) {
+    pvAnimatePanBounce({ scale: 1, tx: 0, ty: 0 }, 200);
+  }
+}, { passive: false });
+
+// ---- 鼠标拖拽（PC 端） ----
+let pvMouseDrag = false;
+previewModal.addEventListener('mousedown', (e) => {
+  if (e.target.closest('#preview-close') || e.target.closest('#preview-save-btn')) return;
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  pvShowSaveBtn(); // 【修改4】鼠标操作时显示保存按钮
+  pvMouseDrag = true;
+  pvStartX = e.clientX; pvStartY = e.clientY;
+  pvLastX = e.clientX; pvLastY = e.clientY;
+  pvSlideOffset = 0; pvSlideVelocity = 0; pvEdgeOverflow = 0;
+  pvLastSlideTime = Date.now();
+  const st = pvCurState();
+  pvGesture = st.scale > 1.05 ? 'pan' : 'slide';
+  e.preventDefault();
+});
+window.addEventListener('mousemove', (e) => {
+  if (!pvMouseDrag) return;
+  const curX = e.clientX, curY = e.clientY;
+  const dx = curX - pvStartX, dy = curY - pvStartY;
+  const st = pvCurState();
+
+  if (pvGesture === 'slide') {
+    pvSlideOffset = dx;
+    pvApplySlideOffset();
+    const now = Date.now(), dt = now - pvLastSlideTime;
+    if (dt > 0) pvSlideVelocity = (curX - pvLastX) / dt * 1000;
+    pvLastX = curX; pvLastY = curY; pvLastSlideTime = now;
+  } else if (pvGesture === 'pan') {
+    const moveX = curX - pvLastX, moveY = curY - pvLastY;
+    st.tx += moveX; st.ty += moveY;
+    pvClampPan(st);
+    pvApplyImg();
+
+    // 边缘溢出检测
+    if (st.scale > 1.01 && Math.abs(dx) > Math.abs(dy)) {
+      const realBounds = pvPanBounds(st, false);
+      let atEdge = false;
+      if (moveX > 0 && st.tx >= realBounds.maxX - 1 && pvIndex > 0) atEdge = true;
+      else if (moveX < 0 && st.tx <= realBounds.minX + 1 && pvIndex < pvImages.length - 1) atEdge = true;
+      if (atEdge) {
+        pvEdgeOverflow += Math.abs(moveX);
+        if (pvEdgeOverflow >= PV_EDGE_THRESHOLD) {
+          pvGesture = 'slide';
+          pvSlideOffset = (moveX > 0 ? 1 : -1) * (pvEdgeOverflow - PV_EDGE_THRESHOLD);
+          pvStartX = curX;
+          pvApplySlideOffset();
+          pvLastX = curX; pvLastY = curY; pvLastSlideTime = Date.now();
+          pvEdgeOverflow = 0;
+          return;
+        }
+      } else {
+        pvEdgeOverflow = 0;
+      }
+    }
+    pvLastX = curX; pvLastY = curY;
+  }
+});
+window.addEventListener('mouseup', () => {
+  if (!pvMouseDrag) return;
+  pvMouseDrag = false;
+  pvShowSaveBtn(); // 【修改4】鼠标释放后重启3秒淡出计时
+  const st = pvCurState();
+  if (pvGesture === 'slide') {
+    const sw = window.innerWidth;
+    let targetIndex = pvIndex;
+    if (pvSlideOffset < -sw * 0.3 || (pvSlideOffset < -30 && pvSlideVelocity < -300)) {
+      if (pvIndex < pvImages.length - 1) targetIndex = pvIndex + 1;
+    } else if (pvSlideOffset > sw * 0.3 || (pvSlideOffset > 30 && pvSlideVelocity > 300)) {
+      if (pvIndex > 0) targetIndex = pvIndex - 1;
+    }
+    pvAnimateTransition(-(targetIndex - pvIndex) * sw, targetIndex, 250);
+  } else if (pvGesture === 'pan') {
+    const bounds = pvPanBounds(st, true);
+    if (st.tx < bounds.minX || st.tx > bounds.maxX || st.ty < bounds.minY || st.ty > bounds.maxY) {
+      pvClampPan(st);
+      pvAnimatePanBounce(st, 200);
+    }
+  }
+  pvGesture = 'idle'; pvEdgeOverflow = 0;
+});
+
+// ---- 保存当前预览图片 ----
+previewSaveBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  pvShowSaveBtn(); // 【修改4】点击保存后重新显示按钮
+  if (pvImages.length === 0) return;
+  const img = pvImages[pvIndex];
+  // 【修改1】拼接预览时用 _concatTitle 作文件名
+  if (img._concatTitle) {
+    const imgEl = pvCurrentImg();
+    const blob = dataURLtoBlob(imgEl ? imgEl.src : '');
+    downloadBlob(blob, `${img._concatTitle}_${Date.now()}.jpg`);
+    showToast('已保存');
+    return;
+  }
+  const ck = img._cellKey;
+  let sName = '', bTime = '';
+  if (ck) {
+    const parts = ck.split('-');
+    sName = getSeatNameSync(parseInt(parts[0]), parts[1], parseInt(parts[2]));
+  }
+  bTime = img.beijingTime || getBeijingTime();
+  const filename = `${sName || '图片'}_${bTime.replace(/[: ]/g, '-')}.jpg`;
+  const imgEl = pvCurrentImg();
+  const blob = dataURLtoBlob(imgEl ? imgEl.src : '');
+  downloadBlob(blob, filename);
+  showToast('已保存');
+});
+
+// ============================================================
+// 十、批量清理
+// ============================================================
+const cleanupModal = document.getElementById('cleanup-modal');
+const pickerYear = document.getElementById('picker-year');
+const pickerMonth = document.getElementById('picker-month');
+const pickerDay = document.getElementById('picker-day');
+let cleanupYear = 2026, cleanupMonth = 6, cleanupDay = 10;
+
+function fillPickerCol(colEl, items, selectedVal) {
+  const label = colEl.querySelector('.picker-col-label'), pad = colEl.querySelector('.picker-pad');
+  colEl.innerHTML = ''; colEl.appendChild(label); colEl.appendChild(pad);
+  items.forEach(val => { const div = document.createElement('div'); div.className = 'picker-item' + (val === selectedVal ? ' active' : ''); div.textContent = val; div.dataset.val = val; colEl.appendChild(div); });
+  const padB = document.createElement('div'); padB.className = 'picker-pad'; colEl.appendChild(padB);
+  requestAnimationFrame(() => { const a = colEl.querySelector('.picker-item.active'); if (a) a.scrollIntoView({ block: 'center', behavior: 'auto' }); });
+}
+function readPickerCol(colEl) { const items = colEl.querySelectorAll('.picker-item'), st = colEl.scrollTop, ch = colEl.clientHeight, center = st + ch / 2; let closest = null, minDist = Infinity; items.forEach(item => { const mid = item.offsetTop + item.offsetHeight / 2, dist = Math.abs(mid - center); if (dist < minDist) { minDist = dist; closest = item; } }); return closest ? parseInt(closest.dataset.val) : null; }
+function highlightPickerCol(colEl) { const val = readPickerCol(colEl); colEl.querySelectorAll('.picker-item').forEach(item => item.classList.toggle('active', parseInt(item.dataset.val) === val)); return val; }
+function getDaysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
+function updateDayPicker() { const y = readPickerCol(pickerYear) || cleanupYear, m = readPickerCol(pickerMonth) || cleanupMonth; const maxDay = getDaysInMonth(y, m), days = []; for (let dd = 1; dd <= maxDay; dd++) days.push(dd); fillPickerCol(pickerDay, days, Math.min(readPickerCol(pickerDay) || cleanupDay, maxDay)); }
+function initCleanupDate() { const d = new Date(); cleanupYear = d.getFullYear(); cleanupMonth = d.getMonth() + 1; cleanupDay = d.getDate(); const years = []; for (let y = d.getFullYear() + 1; y >= d.getFullYear() - 5; y--) years.push(y); fillPickerCol(pickerYear, years, cleanupYear); const months = []; for (let m = 1; m <= 12; m++) months.push(m); fillPickerCol(pickerMonth, months, cleanupMonth); const maxDay = getDaysInMonth(cleanupYear, cleanupMonth), days = []; for (let dd = 1; dd <= maxDay; dd++) days.push(dd); fillPickerCol(pickerDay, days, cleanupDay); }
+let pickerScrollTimer = null;
+[pickerYear, pickerMonth, pickerDay].forEach(col => {
+  col.addEventListener('scroll', () => { highlightPickerCol(col); if (col === pickerYear || col === pickerMonth) { clearTimeout(pickerScrollTimer); pickerScrollTimer = setTimeout(updateDayPicker, 200); } }, { passive: true });
+  col.addEventListener('click', (e) => { const item = e.target.closest('.picker-item'); if (item) { item.scrollIntoView({ block: 'center', behavior: 'smooth' }); if (col === pickerYear || col === pickerMonth) setTimeout(updateDayPicker, 300); } });
+});
+document.getElementById('cleanup-cancel-btn').addEventListener('click', () => cleanupModal.classList.remove('show'));
+document.getElementById('cleanup-exec-btn').addEventListener('click', async () => {
+  cleanupYear = readPickerCol(pickerYear) || cleanupYear; cleanupMonth = readPickerCol(pickerMonth) || cleanupMonth; cleanupDay = readPickerCol(pickerDay) || cleanupDay;
+  const dateVal = `${cleanupYear}-${String(cleanupMonth).padStart(2, '0')}-${String(cleanupDay).padStart(2, '0')}`;
+  const threshold = new Date(dateVal + 'T00:00:00+08:00').getTime();
+  if (isNaN(threshold)) { showToast('日期无效'); return; }
+  cleanupModal.classList.remove('show'); showToast('正在清理...');
+  try { const all = await dbGetAll('cells'); let total = 0; for (const rec of all) { if (!rec.images) continue; const filtered = rec.images.filter(img => (img.createdAt || 0) >= threshold); if (filtered.length < rec.images.length) { total += rec.images.length - filtered.length; if (filtered.length > 0) await saveCellData(rec.key, filtered); else await dbDelete('cells', rec.key); } } await buildSeatHasImages(); renderMain(); showToast(`已清理 ${total} 张图片`); } catch (err) { console.error('清理出错:', err); showToast('清理出错'); }
+});
+
+// ============================================================
+// 十一、提示与底部栏
+// ============================================================
+function showToast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2100); }
+const bottomBar = document.getElementById('bottom-bar'), selectedCount = document.getElementById('selected-count');
+function updateBottomBar() { if (state.selectedCells.length > 0) { bottomBar.classList.add('show'); selectedCount.textContent = `已选 ${state.selectedCells.length} 个时段`; } else bottomBar.classList.remove('show'); }
+document.getElementById('btn-download-separate').addEventListener('click', shareSelectedImages);
+document.getElementById('btn-download-concat').addEventListener('click', downloadConcatenated);
+document.getElementById('btn-clear-select').addEventListener('click', () => { state.selectedCells = []; document.querySelectorAll('.ts-checkbox.checked').forEach(cb => cb.classList.remove('checked')); updateBottomBar(); });
+
+// ============================================================
+// 十二、事件委托
+// ============================================================
+app.addEventListener('click', async (e) => {
+  const target = e.target;
+  const floorBtn = target.closest('[data-action="toggle-floor"]');
+  if (floorBtn) { const fid = parseInt(floorBtn.dataset.floor); state.expandedFloors.has(fid) ? state.expandedFloors.delete(fid) : state.expandedFloors.add(fid); saveUIState(); renderMain(); return; }
+  const areaBtn = target.closest('[data-action="toggle-area"]');
+  if (areaBtn) { const fid = parseInt(areaBtn.dataset.floor), aname = areaBtn.dataset.area, ak = areaKey(fid, aname); state.expandedAreas.has(ak) ? state.expandedAreas.delete(ak) : state.expandedAreas.add(ak); saveUIState(); renderMain(); return; }
+  const seatBtn = target.closest('[data-action="toggle-seat"]');
+  if (seatBtn) { const fid = parseInt(seatBtn.dataset.floor), aname = seatBtn.dataset.area, sidx = parseInt(seatBtn.dataset.seat), sk = seatKey(fid, aname, sidx); const prev = [...state.expandedSeats]; state.expandedSeats.clear(); if (!prev.includes(sk)) state.expandedSeats.add(sk); saveUIState(); renderMain(); return; }
+  const addBtn = target.closest('[data-action="add-seat"]');
+  if (addBtn) {
+    const fid = parseInt(addBtn.dataset.floor), aname = addBtn.dataset.area, ak = areaKey(fid, aname);
+    const nc = (state.extraSeats[ak] || 0) + 1;
+    state.extraSeats[ak] = nc;
+    await saveExtraSeat(ak, nc);
+    const sc = document.getElementById('seats-' + ak);
+    if (sc) { sc.innerHTML = renderSeatFlow(fid, aname); state.expandedSeats.forEach(sk => renderTimeSlots(sk)); }
+    const newIdx = getAreaSeatCount(fid, aname) - 1;
+    showToast(`已新增座位 ${getSeatNameSync(fid, aname, newIdx)}`);
+    return;
+  }
+  const delSeatBtn = target.closest('[data-action="delete-seat"]');
+  if (delSeatBtn) {
+    const sk = delSeatBtn.dataset.seatKey;
+    if (!confirm('确定删除该座位及其所有图片？')) return;
+    const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+    for (let t = 0; t < TIME_SLOTS.length; t++) await dbDelete('cells', cellKey(fid, aname, sidx, t));
+    await dbDelete('seatNames', sk); delete state.seatNames[sk];
+    state.deletedSeats.add(sk); await saveDeletedSeat(sk);
+    state.seatHasImages.delete(sk); state.expandedSeats.delete(sk);
+    state.selectedCells = state.selectedCells.filter(ck => cellToSeatKey(ck) !== sk);
+    updateBottomBar(); saveUIState(); renderMain(); showToast('座位已删除'); return;
+  }
+  const checkbox = target.closest('[data-action="toggle-select"]');
+  if (checkbox) { if (checkbox.classList.contains('disabled')) return; const ck = checkbox.dataset.cellKey, idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); checkbox.classList.remove('checked'); } else { state.selectedCells.push(ck); checkbox.classList.add('checked'); } updateBottomBar(); return; }
+  const captureBtn = target.closest('[data-action="capture"]');
+  if (captureBtn) { const ck = captureBtn.dataset.cellKey, cd = await getCellData(ck); if (cd && cd.images && cd.images.length >= MAX_IMAGES) { showToast('该时段图片已满'); return; } currentCaptureCellKey = ck; captureInput.value = ''; captureInput.click(); return; }
+  const uploadBtn = target.closest('[data-action="upload"]');
+  if (uploadBtn) { const ck = uploadBtn.dataset.cellKey, cd = await getCellData(ck); if (cd && cd.images && cd.images.length >= MAX_IMAGES) { showToast('该时段图片已满'); return; } currentUploadCellKey = ck; uploadInput.value = ''; uploadInput.click(); return; }
+  const delBtn = target.closest('[data-action="delete-img"]');
+  // 【修改2】删除图片后，若该时段图片清零则自动取消勾选并更新UI
+  if (delBtn) {
+    const ck = delBtn.dataset.cellKey, imgIdx = parseInt(delBtn.dataset.imgIdx);
+    const cd = await getCellData(ck);
+    let imgs = (cd && cd.images) ? [...cd.images] : [];
+    if (imgIdx >= 0 && imgIdx < imgs.length) {
+      imgs.splice(imgIdx, 1);
+      const sk = cellToSeatKey(ck);
+      if (imgs.length > 0) {
+        await saveCellData(ck, imgs);
+        state.seatHasImages.add(sk);
+      } else {
+        await dbDelete('cells', ck);
+        // 【修改2】图片删光后，从勾选集合中移除该时段
+        const selIdx = state.selectedCells.indexOf(ck);
+        if (selIdx >= 0) state.selectedCells.splice(selIdx, 1);
+        const p = ck.split('-');
+        let still = false;
+        for (let t = 0; t < TIME_SLOTS.length; t++) {
+          const td = await getCellData(`${p[0]}-${p[1]}-${p[2]}-${t}`);
+          if (td && td.images && td.images.length > 0) { still = true; break; }
+        }
+        still ? state.seatHasImages.add(sk) : state.seatHasImages.delete(sk);
+      }
+      updateSeatVisual(sk);
+      await renderTimeSlots(sk);
+      updateBottomBar();
+    }
+    return;
+  }
+  const previewBtn = target.closest('[data-action="preview"]');
+  if (previewBtn) { showPreview(previewBtn.dataset.cellKey, parseInt(previewBtn.dataset.imgIdx)); return; }
+  // 点击时段卡片空白区域切换勾选
+  const card = target.closest('[data-action="toggle-card"]');
+  if (card) { if (card.dataset.hasImages !== '1') return; const ck = card.dataset.cellKey, cb = card.querySelector('.ts-checkbox'); if (!cb || cb.classList.contains('disabled')) return; const idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); cb.classList.remove('checked'); } else { state.selectedCells.push(ck); cb.classList.add('checked'); } updateBottomBar(); return; }
+  const nameEl = target.closest('[data-action="edit-seat-name"]');
+  if (nameEl) { const sk = nameEl.dataset.seatKey, curName = nameEl.textContent; const input = document.createElement('input'); input.type = 'text'; input.value = curName; input.className = 'seat-name-edit-input'; const doSave = async () => { const newName = input.value.trim() || curName; if (newName === curName) { const sp = document.createElement('span'); sp.className = 'seat-name-text'; sp.dataset.action = 'edit-seat-name'; sp.dataset.seatKey = sk; sp.textContent = newName; if (input.parentNode) input.replaceWith(sp); return; } state.seatNames[sk] = newName; await saveSeatName(sk, newName); const sp = document.createElement('span'); sp.className = 'seat-name-text'; sp.dataset.action = 'edit-seat-name'; sp.dataset.seatKey = sk; sp.textContent = newName; if (input.parentNode) input.replaceWith(sp); updateSeatButtonText(sk, newName); await regenerateWatermarksForSeat(sk); }; input.addEventListener('blur', doSave); input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') input.blur(); }); nameEl.replaceWith(input); input.focus(); input.select(); return; }
+  const cleanupBtn = target.closest('[data-action="open-cleanup"]');
+  if (cleanupBtn) { initCleanupDate(); cleanupModal.classList.add('show'); return; }
+  const batchDlBtn = target.closest('[data-action="open-batch-dl"]');
+  if (batchDlBtn) { initBatchModal(); batchModal.classList.add('show'); return; }
+  const filterBtn = target.closest('[data-action="open-filter"]');
+  if (filterBtn) { openFilterSheet(); return; }
+  // 【修改3】功能面板入口
+  const funcPanelBtn = target.closest('[data-action="open-func-panel"]');
+  if (funcPanelBtn) { openFuncPanel(); return; }
+});
+
+// ============================================================
+// 十二-B、时段筛选面板
+// ============================================================
+const filterOverlay = document.getElementById('filter-overlay');
+const filterSheet = document.getElementById('filter-sheet');
+const filterBody = document.getElementById('filter-body');
+
+/** 打开筛选面板 */
+function openFilterSheet() {
+  renderFilterBody();
+  filterOverlay.classList.add('show');
+  requestAnimationFrame(() => filterSheet.classList.add('show'));
+}
+
+/** 关闭筛选面板 */
+function closeFilterSheet() {
+  filterSheet.classList.remove('show');
+  setTimeout(() => filterOverlay.classList.remove('show'), 300);
+}
+
+/** 渲染筛选面板内容 */
+function renderFilterBody() {
+  let html = '';
+  TIME_SLOTS.forEach((ts, idx) => {
+    const checked = isTimeSlotVisible(idx);
+    const passed = isTimeSlotPassed(idx);
+    html += `<div class="filter-slot-item" data-tidx="${idx}"><div class="filter-slot-cb ${checked ? 'checked' : ''}"></div><span class="filter-slot-label ${passed ? 'passed' : ''}">${ts}${passed ? ' (已过)' : ''}</span></div>`;
+  });
+  filterBody.innerHTML = html;
+}
+
+/** 切换单个时段勾选 */
+filterBody.addEventListener('click', (e) => {
+  const item = e.target.closest('.filter-slot-item');
+  if (!item) return;
+  const tidx = parseInt(item.dataset.tidx);
+  const cb = item.querySelector('.filter-slot-cb');
+  // 如果当前是全显状态（空集+_filterNone=false），先初始化为全部勾选
+  if (state.visibleTimeSlots.size === 0 && !state._filterNone) {
+    state.visibleTimeSlots = new Set(TIME_SLOTS.map((_, i) => i));
+  }
+  state._filterNone = false;
+  if (state.visibleTimeSlots.has(tidx)) {
+    state.visibleTimeSlots.delete(tidx);
+    cb.classList.remove('checked');
+  } else {
+    state.visibleTimeSlots.add(tidx);
+    cb.classList.add('checked');
+  }
+  // 如果全部勾选，等价于无筛选
+  if (state.visibleTimeSlots.size === TIME_SLOTS.length) {
+    state.visibleTimeSlots = new Set();
+    state._filterNone = false;
+  }
+  saveFilterState();
+  refreshExpandedSeats();
+});
+
+/** 隐藏已过时段 */
+document.getElementById('filter-hide-passed').addEventListener('click', () => {
+  state.visibleTimeSlots = new Set();
+  state._filterNone = false;
+  for (let i = 0; i < TIME_SLOTS.length; i++) {
+    if (!isTimeSlotPassed(i)) state.visibleTimeSlots.add(i);
+  }
+  // 如果所有时段都已过（如 21:00 之后），至少保留最后一个时段
+  if (state.visibleTimeSlots.size === 0) {
+    state.visibleTimeSlots.add(TIME_SLOTS.length - 1);
+  }
+  saveFilterState();
+  renderFilterBody();
+  refreshExpandedSeats();
+});
+
+/** 全选 */
+document.getElementById('filter-select-all').addEventListener('click', () => {
+  state.visibleTimeSlots = new Set(); // 空集+_filterNone=false = 全部显示
+  state._filterNone = false;
+  saveFilterState();
+  renderFilterBody();
+  refreshExpandedSeats();
+});
+
+/** 清除所有勾选 */
+document.getElementById('filter-clear').addEventListener('click', () => {
+  state.visibleTimeSlots = new Set();
+  state._filterNone = true; // 空集+_filterNone=true = 全不显示
+  saveFilterState();
+  renderFilterBody();
+  refreshExpandedSeats();
+});
+
+/** 关闭面板 */
+filterOverlay.addEventListener('click', closeFilterSheet);
+document.getElementById('filter-close').addEventListener('click', closeFilterSheet);
+
+/** 筛选变更后刷新已展开的座位 */
+function refreshExpandedSeats() {
+  state.expandedSeats.forEach(sk => renderTimeSlots(sk));
+}
+
+function updateSeatButtonText(sk, newName) {
+  document.querySelectorAll('.seat-btn').forEach(btn => { const k = seatKey(parseInt(btn.dataset.floor), btn.dataset.area, parseInt(btn.dataset.seat)); if (k === sk) btn.textContent = newName; });
+}
+async function regenerateWatermarksForSeat(sk) {
+  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  const sName = getSeatNameSync(fid, aname, sidx);
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    const ck = cellKey(fid, aname, sidx, t), cd = await getCellData(ck);
+    if (!cd || !cd.images) continue;
+    let changed = false;
+    for (let i = 0; i < cd.images.length; i++) {
+      if (cd.images[i].original) {
+        const bTime = cd.images[i].beijingTime || getBeijingTime();
+        cd.images[i].data = await addWatermark(cd.images[i].original, sName, bTime);
+        cd.images[i].thumbnail = await generateThumbnail(cd.images[i].data);
+        cd.images[i].seatName = sName;
+        changed = true;
+      }
+    }
+    if (changed) await saveCellData(ck, cd.images);
+  }
+  await renderTimeSlots(sk);
+}
+
+// ============================================================
+// 十二-C、【修改3】功能面板
+// ============================================================
+const funcPanelOverlay = document.getElementById('func-panel-overlay');
+const funcPanel = document.getElementById('func-panel');
+const funcPanelBody = document.getElementById('func-panel-body');
+const funcPanelClose = document.getElementById('func-panel-close');
+
+function renderFuncPanelBody() {
+  funcPanelBody.innerHTML = `
+    <div class="func-item" data-func="open-filter">
+      <div class="func-item-label">时段筛选<div class="func-item-desc">选择显示的时段范围</div></div>
+      <span style="color:#bfbfbf;font-size:18px">›</span>
+    </div>
+    <div class="func-item" data-func="open-batch-dl">
+      <div class="func-item-label">批量下载<div class="func-item-desc">下载选中时段的图片</div></div>
+      <span style="color:#bfbfbf;font-size:18px">›</span>
+    </div>
+    <div class="func-item" data-func="open-cleanup">
+      <div class="func-item-label">批量清理<div class="func-item-desc">按日期清理图片数据</div></div>
+      <span style="color:#bfbfbf;font-size:18px">›</span>
+    </div>
+    <div class="func-item" data-func="toggle-auto-share">
+      <div class="func-item-label">拍照后分享<div class="func-item-desc">拍照完成后弹出分享面板</div></div>
+      <div class="func-toggle ${state.autoShare ? 'on' : ''}" id="func-toggle-share"></div>
+    </div>
+    <div class="func-item" data-func="toggle-allow-delete">
+      <div class="func-item-label">允许删除座位<div class="func-item-desc">开启后显示座位删除按钮</div></div>
+      <div class="func-toggle ${state.allowDeleteSeat ? 'on' : ''}" id="func-toggle-delete"></div>
+    </div>`;
+}
+
+function openFuncPanel() {
+  renderFuncPanelBody();
+  funcPanelOverlay.classList.add('show');
+  funcPanel.classList.add('show');
+}
+
+function closeFuncPanel() {
+  funcPanelOverlay.classList.remove('show');
+  funcPanel.classList.remove('show');
+}
+
+funcPanelOverlay.addEventListener('click', closeFuncPanel);
+funcPanelClose.addEventListener('click', closeFuncPanel);
+
+funcPanelBody.addEventListener('click', (e) => {
+  const item = e.target.closest('.func-item');
+  if (!item) return;
+  const func = item.dataset.func;
+  if (func === 'open-filter') { closeFuncPanel(); setTimeout(() => openFilterSheet(), 300); }
+  else if (func === 'open-batch-dl') { closeFuncPanel(); setTimeout(() => { initBatchModal(); batchModal.classList.add('show'); }, 300); }
+  else if (func === 'open-cleanup') { closeFuncPanel(); setTimeout(() => { initCleanupDate(); cleanupModal.classList.add('show'); }, 300); }
+  else if (func === 'toggle-auto-share') {
+    state.autoShare = !state.autoShare;
+    saveAutoShareState();
+    const toggle = document.getElementById('func-toggle-share');
+    if (toggle) toggle.classList.toggle('on', state.autoShare);
+  }
+  else if (func === 'toggle-allow-delete') {
+    state.allowDeleteSeat = !state.allowDeleteSeat;
+    saveAllowDeleteState();
+    const toggle = document.getElementById('func-toggle-delete');
+    if (toggle) toggle.classList.toggle('on', state.allowDeleteSeat);
+    // 立即更新所有删除座位按钮的可见性
+    document.querySelectorAll('.btn-delete-seat').forEach(btn => {
+      btn.classList.toggle('visible', state.allowDeleteSeat);
+    });
+  }
+});
+
+// ============================================================
+// 十三、初始化
+// ============================================================
+async function init() {
+  try {
+    await openDB();
+    state.seatNames = await getAllSeatNames();
+    state.extraSeats = await getAllExtraSeats();
+    state.deletedSeats = await getAllDeletedSeats();
+    await buildSeatHasImages();
+    loadUIState();
+    loadFilterState();
+    loadAutoShareState();
+    loadAllowDeleteState(); // 【修改1】加载允许删除座位开关状态
+    renderMain();
+  } catch (err) {
+    console.error('初始化失败:', err);
+    app.innerHTML = '<p style="padding:20px;color:red;">初始化失败，请检查浏览器是否支持 IndexedDB。</p>';
+  }
+  // 注册 Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+  // 动态生成 apple-touch-icon（iOS 主屏幕图标）
+  try {
+    const c = document.createElement('canvas'); c.width = 192; c.height = 192;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#1890ff'; ctx.fillRect(0, 0, 192, 192);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 96px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('座', 96, 96);
+    const link = document.createElement('link');
+    link.rel = 'apple-touch-icon'; link.href = c.toDataURL('image/png');
+    document.head.appendChild(link);
+  } catch (e) {}
+}
+init();
+</script>
+</body>
+</html>
