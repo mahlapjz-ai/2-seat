@@ -1006,7 +1006,7 @@ let pvSaveBtnTimer = null; // 【修改4】保存按钮淡出计时器
 function pvShowSaveBtn() {
   previewSaveBtn.classList.remove('faded');
   clearTimeout(pvSaveBtnTimer);
-  pvSaveBtnTimer = setTimeout(() => { previewSaveBtn.classList.add('faded'); }, 3000);
+  pvSaveBtnTimer = setTimeout(() => { previewSaveBtn.classList.add('faded'); }, 1000);
 }
 function pvHideSaveBtnNow() {
   previewSaveBtn.classList.add('faded');
