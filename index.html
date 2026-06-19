@@ -391,8 +391,8 @@ const FLOORS = [
 
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
-// v1.5.7 恢复 SW 更新提示功能：更新 CACHE_NAME 触发检测 + 提示条滑入动画 + 不遮挡标题栏
-const APP_VERSION = 'v1.5.7';
+// v1.5.9 修改预览保存提示：点击后显示"准备下载"，失败显示"保存失败"
+const APP_VERSION = 'v1.5.9';
 const DB_NAME = 'SeatImageDB';
 const DB_VERSION = 4;
 // 【v1.3.2 Bug1修复】将平台检测移到顶部，确保拼接函数可正确访问
@@ -3468,12 +3468,17 @@ previewSaveBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   pvShowSaveBtn(); // 【修改4】点击保存后重新显示按钮
   if (pvImages.length === 0) return;
+  // 【v1.5.9】点击保存立即提示"准备下载"，失败时提示"保存失败"
+  showToast('准备下载');
   const img = pvImages[pvIndex];
   // 【修复拼接预览模糊】拼接预览优先使用 _blob 直接下载，避免 Blob URL 无法转 dataURL
   if (img._concatTitle) {
-    const saveBlob = img._blob || dataURLtoBlob(img.data || '');
-    downloadBlob(saveBlob, `${img._concatTitle}_${Date.now()}.jpg`);
-    showToast('已保存');
+    try {
+      const saveBlob = img._blob || dataURLtoBlob(img.data || '');
+      downloadBlob(saveBlob, `${img._concatTitle}_${Date.now()}.jpg`);
+    } catch (ex) {
+      showToast('保存失败');
+    }
     return;
   }
   const ck = img._cellKey;
@@ -3509,7 +3514,6 @@ previewSaveBtn.addEventListener('click', (e) => {
   }
   if (saveBlob) {
     downloadBlob(saveBlob, filename);
-    showToast('已保存');
   } else {
     showToast('保存失败');
   }
