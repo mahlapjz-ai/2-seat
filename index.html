@@ -243,6 +243,9 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .cleanup-btns button:active{opacity:.8}
 .cleanup-cancel{background:#f0f0f0;color:#333}
 .cleanup-exec{background:#ff4d4f;color:#fff}
+/* 【v1.5.11 新增】清理进度 spinner */
+.cleanup-spinner{width:36px;height:36px;margin:0 auto;border:3px solid #e8e8e8;border-top-color:#1890ff;border-radius:50%;animation:cleanup-spin .8s linear infinite}
+@keyframes cleanup-spin{to{transform:rotate(360deg)}}
 
 .toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);color:#fff;padding:14px 28px;border-radius:8px;font-size:15px;z-index:300;pointer-events:none;animation:toast-fade 2s forwards}
 @keyframes toast-fade{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
@@ -303,17 +306,19 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
     <div class="modal-btns"><button class="modal-cancel" id="batch-cancel">取消</button><button class="modal-confirm" id="batch-exec">打包下载(ZIP)</button></div>
   </div>
 </div>
+<!-- 【v1.5.10 修改】批量清理弹窗改为清除全部图片确认弹窗 -->
 <div class="modal-overlay" id="cleanup-modal">
   <div class="modal-box">
-    <h3>批量清理图片</h3>
-    <p style="font-size:13px;color:#666;margin-bottom:14px;text-align:center">删除所选日期<strong>之前</strong>添加的所有图片（默认今天）</p>
-    <div class="picker-row">
-      <div class="picker-highlight"></div>
-      <div class="picker-col" id="picker-year"><div class="picker-col-label">年</div><div class="picker-pad"></div></div>
-      <div class="picker-col" id="picker-month"><div class="picker-col-label">月</div><div class="picker-pad"></div></div>
-      <div class="picker-col" id="picker-day"><div class="picker-col-label">日</div><div class="picker-pad"></div></div>
-    </div>
-    <div class="cleanup-btns"><button class="cleanup-cancel" id="cleanup-cancel-btn">取消</button><button class="cleanup-exec" id="cleanup-exec-btn">执行清理</button></div>
+    <h3>清除全部图片</h3>
+    <p style="font-size:14px;color:#666;margin-bottom:14px;text-align:center">将清除全部图片数据，不可恢复</p>
+    <div class="cleanup-btns"><button class="cleanup-cancel" id="cleanup-cancel-btn">取消</button><button class="cleanup-exec" id="cleanup-exec-btn">确认清除</button></div>
+  </div>
+</div>
+<!-- 【v1.5.11 新增】清理进度 loading 弹窗 -->
+<div class="modal-overlay" id="cleanup-loading-modal" style="z-index:210">
+  <div class="modal-box" style="text-align:center">
+    <div class="cleanup-spinner"></div>
+    <p id="cleanup-loading-text" style="font-size:15px;color:#333;margin-top:16px">正在清理图片...</p>
   </div>
 </div>
 <!-- 【v1.1.1 改造】拼接选择改为底部滑出面板 -->
@@ -391,8 +396,8 @@ const FLOORS = [
 
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
-// v1.5.9 修改预览保存提示：点击后显示"准备下载"，失败显示"保存失败"
-const APP_VERSION = 'v1.5.9';
+// v1.5.11 修复清除全部图片大数据量崩溃：分批异步删除 + 进度提示
+const APP_VERSION = 'v1.5.11';
 const DB_NAME = 'SeatImageDB';
 const DB_VERSION = 4;
 // 【v1.3.2 Bug1修复】将平台检测移到顶部，确保拼接函数可正确访问
@@ -3520,63 +3525,115 @@ previewSaveBtn.addEventListener('click', (e) => {
 });
 
 // ============================================================
-// 十、批量清理
+// 十、清除全部图片（v1.5.11 修改：分批异步删除 + 进度提示 + 异常保护）
 // ============================================================
 const cleanupModal = document.getElementById('cleanup-modal');
-const pickerYear = document.getElementById('picker-year');
-const pickerMonth = document.getElementById('picker-month');
-const pickerDay = document.getElementById('picker-day');
-let cleanupYear = 2026, cleanupMonth = 6, cleanupDay = 10;
+const cleanupLoadingModal = document.getElementById('cleanup-loading-modal');
+const cleanupLoadingText = document.getElementById('cleanup-loading-text');
 
-function fillPickerCol(colEl, items, selectedVal) {
-  const label = colEl.querySelector('.picker-col-label'), pad = colEl.querySelector('.picker-pad');
-  colEl.innerHTML = ''; colEl.appendChild(label); colEl.appendChild(pad);
-  items.forEach(val => { const div = document.createElement('div'); div.className = 'picker-item' + (val === selectedVal ? ' active' : ''); div.textContent = val; div.dataset.val = val; colEl.appendChild(div); });
-  const padB = document.createElement('div'); padB.className = 'picker-pad'; colEl.appendChild(padB);
-  requestAnimationFrame(() => { const a = colEl.querySelector('.picker-item.active'); if (a) a.scrollIntoView({ block: 'center', behavior: 'auto' }); });
-}
-function readPickerCol(colEl) { const items = colEl.querySelectorAll('.picker-item'), st = colEl.scrollTop, ch = colEl.clientHeight, center = st + ch / 2; let closest = null, minDist = Infinity; items.forEach(item => { const mid = item.offsetTop + item.offsetHeight / 2, dist = Math.abs(mid - center); if (dist < minDist) { minDist = dist; closest = item; } }); return closest ? parseInt(closest.dataset.val) : null; }
-function highlightPickerCol(colEl) { const val = readPickerCol(colEl); colEl.querySelectorAll('.picker-item').forEach(item => item.classList.toggle('active', parseInt(item.dataset.val) === val)); return val; }
-function getDaysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
-function updateDayPicker() { const y = readPickerCol(pickerYear) || cleanupYear, m = readPickerCol(pickerMonth) || cleanupMonth; const maxDay = getDaysInMonth(y, m), days = []; for (let dd = 1; dd <= maxDay; dd++) days.push(dd); fillPickerCol(pickerDay, days, Math.min(readPickerCol(pickerDay) || cleanupDay, maxDay)); }
-function initCleanupDate() { const d = new Date(); cleanupYear = d.getFullYear(); cleanupMonth = d.getMonth() + 1; cleanupDay = d.getDate(); const years = []; for (let y = d.getFullYear() + 1; y >= d.getFullYear() - 5; y--) years.push(y); fillPickerCol(pickerYear, years, cleanupYear); const months = []; for (let m = 1; m <= 12; m++) months.push(m); fillPickerCol(pickerMonth, months, cleanupMonth); const maxDay = getDaysInMonth(cleanupYear, cleanupMonth), days = []; for (let dd = 1; dd <= maxDay; dd++) days.push(dd); fillPickerCol(pickerDay, days, cleanupDay); }
-let pickerScrollTimer = null;
-[pickerYear, pickerMonth, pickerDay].forEach(col => {
-  col.addEventListener('scroll', () => { highlightPickerCol(col); if (col === pickerYear || col === pickerMonth) { clearTimeout(pickerScrollTimer); pickerScrollTimer = setTimeout(updateDayPicker, 200); } }, { passive: true });
-  col.addEventListener('click', (e) => { const item = e.target.closest('.picker-item'); if (item) { item.scrollIntoView({ block: 'center', behavior: 'smooth' }); if (col === pickerYear || col === pickerMonth) setTimeout(updateDayPicker, 300); } });
-});
+// 取消按钮：关闭弹窗
 document.getElementById('cleanup-cancel-btn').addEventListener('click', () => cleanupModal.classList.remove('show'));
+
+// 确认清除按钮：分批异步清空所有图片数据
 document.getElementById('cleanup-exec-btn').addEventListener('click', async () => {
-  cleanupYear = readPickerCol(pickerYear) || cleanupYear; cleanupMonth = readPickerCol(pickerMonth) || cleanupMonth; cleanupDay = readPickerCol(pickerDay) || cleanupDay;
-  const dateVal = `${cleanupYear}-${String(cleanupMonth).padStart(2, '0')}-${String(cleanupDay).padStart(2, '0')}`;
-  const threshold = new Date(dateVal + 'T00:00:00+08:00').getTime();
-  if (isNaN(threshold)) { showToast('日期无效'); return; }
-  cleanupModal.classList.remove('show'); showToast('正在清理...');
+  cleanupModal.classList.remove('show');
+  // 显示不可关闭的 loading 弹窗
+  cleanupLoadingText.textContent = '正在清理图片...';
+  cleanupLoadingModal.classList.add('show');
+
+  let totalDeleted = 0;
+  let hasError = false;
+
   try {
-    const all = await dbGetAll('cells');
-    let total = 0;
-    for (const rec of all) {
-      if (!rec.images) continue;
-      // 过滤掉指定日期之前的图片
-      const filtered = rec.images.filter(img => (img.createdAt || 0) >= threshold);
-      if (filtered.length < rec.images.length) {
-        total += rec.images.length - filtered.length;
-        if (filtered.length > 0) await saveCellData(rec.key, filtered);
-        else await dbDelete('cells', rec.key);
-        // 【修复BUG】清理后更新内存缓存
-        imageCountCache.set(rec.key, filtered.length);
-        clearCellBlobCache(rec.key);
-        const sk = rec.key.split('-').slice(0, 3).join('-');
-        invalidateTimeslotCache(sk);
+    if (dbIsFallback) {
+      // 内存回退模式：直接清空
+      const all = dbFallback['cells'] ? Object.values(dbFallback['cells']) : [];
+      for (const rec of all) { if (rec.images) totalDeleted += rec.images.length; }
+      dbFallback['cells'] = {};
+    } else {
+      // IndexedDB 模式：使用游标分批删除，避免主线程阻塞
+      const BATCH_SIZE = 50; // 每批处理条数
+      // 先用游标统计总数
+      const db = await openDB();
+      let totalCount = 0;
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction('cells', 'readonly');
+        const store = tx.objectStore('cells');
+        const countReq = store.count();
+        countReq.onsuccess = () => { totalCount = countReq.result; resolve(); };
+        countReq.onerror = () => { totalCount = 0; resolve(); }; // 统计失败不阻塞
+      });
+
+      let processed = 0;
+      let done = false;
+
+      while (!done) {
+        // 每批用独立事务，避免长事务超时
+        const batchKeys = [];
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction('cells', 'readonly');
+          const store = tx.objectStore('cells');
+          const req = store.openCursor();
+          req.onsuccess = (e) => {
+            const cursor = e.target.result;
+            if (cursor && batchKeys.length < BATCH_SIZE) {
+              batchKeys.push(cursor.primaryKey);
+              cursor.continue();
+            } else {
+              resolve();
+            }
+          };
+          req.onerror = () => resolve(); // 游标出错不阻塞
+        });
+
+        if (batchKeys.length === 0) { done = true; break; }
+
+        // 删除本批记录
+        for (const key of batchKeys) {
+          try {
+            // 先读取记录以统计图片数
+            const rec = await dbGet('cells', key);
+            if (rec && rec.images) totalDeleted += rec.images.length;
+            await dbDelete('cells', key);
+            // 清除内存缓存
+            imageCountCache.set(key, 0);
+            clearCellBlobCache(key);
+            const sk = key.split('-').slice(0, 3).join('-');
+            invalidateTimeslotCache(sk);
+          } catch (batchErr) {
+            console.error('清理单条记录出错:', key, batchErr);
+            hasError = true;
+          }
+        }
+
+        processed += batchKeys.length;
+        // 更新进度提示
+        if (totalCount > 0) {
+          const pct = Math.min(Math.round(processed / totalCount * 100), 99);
+          cleanupLoadingText.textContent = `正在清理图片... ${pct}%`;
+        }
+
+        // 让出主线程，避免阻塞 UI
+        await new Promise(r => setTimeout(r, 0));
       }
     }
+
+    // 清理完毕：刷新界面
     await buildSeatHasImages();
-    invalidateAllTimeslotCache(); // 【修复BUG】清理后清除所有 DOM 缓存
+    invalidateAllTimeslotCache();
     await renderMain();
-    showToast(`已清理 ${total} 张图片`);
   } catch (err) {
-    console.error('清理出错:', err);
-    showToast('清理出错');
+    console.error('清除出错:', err);
+    hasError = true;
+  } finally {
+    // 关闭 loading 弹窗
+    cleanupLoadingModal.classList.remove('show');
+    // 显示结果提示
+    if (hasError) {
+      showToast(`已清除 ${totalDeleted} 张图片（部分失败）`);
+    } else {
+      showToast(`已清除 ${totalDeleted} 张图片`);
+    }
   }
 });
 
@@ -3716,7 +3773,7 @@ document.addEventListener('click', async (e) => {
   const nameEl = target.closest('[data-action="edit-seat-name"]');
   if (nameEl) { const sk = nameEl.dataset.seatKey, curName = nameEl.textContent; const input = document.createElement('input'); input.type = 'text'; input.value = curName; input.className = 'seat-name-edit-input'; const doSave = async () => { const newName = input.value.trim() || curName; if (newName === curName) { const sp = document.createElement('span'); sp.className = 'seat-name-text'; sp.dataset.action = 'edit-seat-name'; sp.dataset.seatKey = sk; sp.textContent = newName; if (input.parentNode) input.replaceWith(sp); return; } state.seatNames[sk] = newName; await saveSeatName(sk, newName); const sp = document.createElement('span'); sp.className = 'seat-name-text'; sp.dataset.action = 'edit-seat-name'; sp.dataset.seatKey = sk; sp.textContent = newName; if (input.parentNode) input.replaceWith(sp); updateSeatButtonText(sk, newName); await regenerateWatermarksForSeat(sk); }; input.addEventListener('blur', doSave); input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') input.blur(); }); nameEl.replaceWith(input); input.focus(); input.select(); return; }
   const cleanupBtn = target.closest('[data-action="open-cleanup"]');
-  if (cleanupBtn) { initCleanupDate(); cleanupModal.classList.add('show'); return; }
+  if (cleanupBtn) { cleanupModal.classList.add('show'); return; }
   const batchDlBtn = target.closest('[data-action="open-batch-dl"]');
   if (batchDlBtn) { initBatchModal(); batchModal.classList.add('show'); return; }
   const filterBtn = target.closest('[data-action="open-filter"]');
@@ -3932,8 +3989,9 @@ function renderFuncPanelBody() {
       <div class="func-item-label">批量下载<div class="func-item-desc">下载选中时段的图片</div></div>
       <span style="color:#bfbfbf;font-size:18px">›</span>
     </div>
+    <!-- 【v1.5.10 修改】批量清理改为清除全部图片 -->
     <div class="func-item" data-func="open-cleanup">
-      <div class="func-item-label">批量清理<div class="func-item-desc">按日期清理图片数据</div></div>
+      <div class="func-item-label">清除全部图片<div class="func-item-desc">清除所有图片数据，不可恢复</div></div>
       <span style="color:#bfbfbf;font-size:18px">›</span>
     </div>
     <div class="func-item" data-func="toggle-auto-share">
@@ -4000,7 +4058,7 @@ funcPanelBody.addEventListener('click', (e) => {
   const func = item.dataset.func;
   if (func === 'open-filter') { closeFuncPanel(); setTimeout(() => openFilterSheet(), 300); }
   else if (func === 'open-batch-dl') { closeFuncPanel(); setTimeout(() => { initBatchModal(); batchModal.classList.add('show'); }, 300); }
-  else if (func === 'open-cleanup') { closeFuncPanel(); setTimeout(() => { initCleanupDate(); cleanupModal.classList.add('show'); }, 300); }
+  else if (func === 'open-cleanup') { closeFuncPanel(); setTimeout(() => { cleanupModal.classList.add('show'); }, 300); }
   else if (func === 'toggle-auto-share') {
     state.autoShare = !state.autoShare;
     saveAutoShareState();
