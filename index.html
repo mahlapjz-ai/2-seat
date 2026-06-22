@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+<!-- 【v1.9.20】阻塞渲染：同步读取主题，防止非默认主题闪烁 -->
+<script>try{var t=localStorage.getItem('app_theme');if(t&&t!=='default'){var m={'normal':'theme-normal','yiban':'theme-yiban','pixel':'theme-pixel','pink':'theme-pink'};if(m[t])document.documentElement.className=m[t]}}catch(e){}</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="seat-icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="seat-icon.png">
@@ -753,7 +755,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.9.19';
+const APP_VERSION = 'v1.9.20';
 const DB_NAME = 'SeatImageDB';
 const DB_VERSION = 4;
 // 【v1.3.2 Bug1修复】将平台检测移到顶部，确保拼接函数可正确访问
@@ -1076,7 +1078,8 @@ function loadThemeState() {
   } catch (e) {}
 }
 function applyTheme(theme) {
-  // 【v1.9.0】支持"像素"主题
+  // 【v1.9.0】支持"像素"主题；【v1.9.20】同步清理 <html> 上的阻塞渲染类名
+  document.documentElement.className = '';
   document.body.className = '';
   if (theme === 'normal') document.body.classList.add('theme-normal');
   if (theme === 'yiban') document.body.classList.add('theme-yiban');
