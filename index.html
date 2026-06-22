@@ -24,7 +24,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 
 /* 【修复文字消失】page-header 从 app 中移出，作为独立固定元素 */
 .page-header{display:flex;align-items:center;justify-content:center;padding:14px 10px 10px;gap:8px;flex-wrap:wrap;max-width:480px;margin:0 auto;background:#f0f2f5;position:relative;z-index:10}
-.page-title{font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:1px}
+.page-title{font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:1px;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;pointer-events:auto!important;position:relative;z-index:10}
 .header-btn{padding:6px 12px;font-size:12px;font-weight:600;border:none;border-radius:6px;color:#fff;cursor:pointer;white-space:nowrap}
 .header-btn:active{opacity:.7}
 .btn-cleanup{background:#ff4d4f}
@@ -91,7 +91,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .area-btn .area-count{font-size:11px;font-weight:400;color:#999;margin-top:2px}
 .area-btn.expanded .arrow{transform:rotate(90deg)}
 /* 【v1.3.15】选中高亮改为红色描边+无背景色，避免与蓝色提示混淆 */
-.area-btn.expanded{background:transparent;border-color:#ff4d4f;box-shadow:none}
+.area-btn.expanded{background:#fff;border-color:#ff4d4f;box-shadow:none}
 .area-btn.has-images{border:2px solid #52c41a;background:linear-gradient(135deg,#f6ffed,#d9f7be);color:#389e0d}
 .area-btn.has-images.expanded{border-color:#ff4d4f;background:linear-gradient(135deg,#f6ffed,#d9f7be);color:#389e0d}
 
@@ -278,12 +278,368 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .filter-slot-cb.checked::after{content:'✓';color:#fff;font-size:14px;font-weight:700}
 .filter-slot-label{font-size:15px;color:#333;font-weight:500}
 .filter-slot-label.passed{color:#999}
+
+/* ============================================================
+   【v1.6.0 新增】主题系统 - 主题选择列表样式
+   ============================================================ */
+.theme-list{padding:0 0 4px;margin:0;list-style:none}
+.theme-list-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;margin:2px 0;border-radius:8px;cursor:pointer;font-size:14px;color:#333;transition:background .15s}
+.theme-list-item:active{background:#f5f5f5}
+.theme-list-item.active{background:rgba(24,144,255,.08);font-weight:600}
+.theme-list-item .theme-check{width:20px;height:20px;border-radius:50%;border:2px solid #bbb;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.theme-list-item.active .theme-check{background:#1890ff;border-color:#1890ff}
+.theme-list-item.active .theme-check::after{content:'✓';color:#fff;font-size:12px;font-weight:700}
+
+/* ============================================================
+   【v1.7.0 新增】"普通"主题 - 吉卜力动画风格
+   色彩提取：天空蓝 / 草地暖绿 / 木质暖棕 / 云朵米白 / 花朵淡粉
+   纹理：CSS 模拟水彩纸纹 + 柔和云影
+   ============================================================ */
+/* 全局底色：天空蓝到草地暖绿渐变，模拟吉卜力经典天空 */
+.theme-normal{background:linear-gradient(175deg,#e8f0f8 0%,#eaf2e4 40%,#f2f0e4 75%,#f8f4ec 100%);color:#4A3728}
+/* 水彩纸纹 + 淡云纹理（#app::before，不遮挡固定元素） */
+.theme-normal #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(45deg,transparent,transparent 2px,rgba(200,185,165,.03) 2px,rgba(200,185,165,.03) 4px),radial-gradient(ellipse 65% 30% at 20% 10%,rgba(255,255,255,.45) 0%,transparent 70%),radial-gradient(ellipse 50% 25% at 80% 18%,rgba(255,255,255,.35) 0%,transparent 60%),radial-gradient(ellipse 80% 28% at 50% 82%,rgba(232,242,228,.3) 0%,transparent 55%)}
+/* 交互元素提升层级（modal-box 已有 fixed 定位，不覆盖其 position） */
+.theme-normal #app,.theme-normal #bottom-bar,.theme-normal .toast{position:relative;z-index:1}
+/* 页面标题：衬线体 + 暗红墨水感 */
+.theme-normal .page-header{background:linear-gradient(175deg,#e8f0f8 0%,#eaf2e4 100%);position:relative;z-index:10}
+.theme-normal .page-title{font-family:Georgia,'KaiTi','STKaiti',serif;color:#5B3A1A;letter-spacing:1.5px;text-shadow:0 1px 2px rgba(91,58,26,.08)}
+.theme-normal .page-title small{color:#9a8060!important}
+/* 菜单按钮：暖棕木牌 */
+.theme-normal .header-btn{background:#8B7355;border:1px solid rgba(139,115,85,.25);border-radius:8px;box-shadow:0 1px 3px rgba(139,115,85,.15)}
+.theme-normal .header-btn:active{opacity:.85;transform:scale(.97)}
+/* 楼层卡片：纸窗/木牌质感，手绘暖棕边框 */
+.theme-normal .floor-btn{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728;border:1.5px solid #a89070;border-radius:10px;box-shadow:0 2px 8px rgba(120,100,70,.1);transition:transform .15s,border-color .2s,box-shadow .2s,background .2s}
+.theme-normal .floor-1{background:linear-gradient(135deg,rgba(255,252,245,.94),rgba(250,242,228,.94))}
+.theme-normal .floor-2{background:linear-gradient(135deg,rgba(245,252,245,.94),rgba(230,245,225,.94))}
+.theme-normal .floor-3{background:linear-gradient(135deg,rgba(242,248,255,.94),rgba(225,238,252,.94))}
+.theme-normal .floor-4{background:linear-gradient(135deg,rgba(248,252,245,.94),rgba(232,248,225,.94))}
+.theme-normal .floor-5{background:linear-gradient(135deg,rgba(255,250,242,.94),rgba(252,242,222,.94))}
+.theme-normal .floor-btn:hover{border-color:#7a9a5a;box-shadow:0 3px 12px rgba(122,154,90,.15);transform:scale(1.01)}
+.theme-normal .floor-btn:active{transform:scale(.98)}
+/* 区域按钮：浅奶绿/淡天蓝 */
+.theme-normal .area-btn{font-family:Georgia,'KaiTi','STKaiti',serif;background:rgba(245,252,245,.92);border:1.5px solid #a8c898;color:#4A3728;box-shadow:0 1px 4px rgba(120,160,90,.08);transition:background .15s,border-color .15s}
+.theme-normal .area-btn:hover{background:rgba(255,248,230,.92);border-color:#8B7355}
+.theme-normal .area-btn:active{transform:scale(.95)}
+.theme-normal .area-btn .area-count{color:#7a9a5a}
+.theme-normal .area-btn.expanded{border-color:#7a9a5a;background:rgba(248,255,240,.92)}
+.theme-normal .area-btn.has-images{border-color:#6a9a4a;background:linear-gradient(135deg,rgba(235,250,228,.92),rgba(210,240,195,.92));color:#3a6a1a}
+.theme-normal .area-btn.has-images.expanded{border-color:#7a9a5a;background:linear-gradient(135deg,rgba(235,250,228,.92),rgba(210,240,195,.92));color:#3a6a1a}
+/* 座位编号按钮：米白底，暖棕边框 */
+.theme-normal .seat-btn{font-family:Georgia,'KaiTi','STKaiti',serif;background:rgba(255,253,248,.96);border:1px solid #c8bca8;color:#4A3728;font-size:12px;transition:background .12s,border-color .12s}
+.theme-normal .seat-btn:hover{background:rgba(255,248,232,.96)}
+.theme-normal .seat-btn:active{background:rgba(255,240,215,.96)}
+.theme-normal .seat-btn.expanded{border:2px solid #7a9a5a;background:rgba(255,253,248,.96)}
+/* 座位提示色保留，加暖色柔和光晕 */
+.theme-normal .seat-btn.has-images-1{border-color:#5a9ec8;background:linear-gradient(135deg,rgba(218,240,252,.92),rgba(195,228,248,.92));color:#1a6a9a;font-weight:700;box-shadow:0 0 6px rgba(90,158,200,.15)}
+.theme-normal .seat-btn.has-images-2{border-color:#d49838;background:linear-gradient(135deg,rgba(255,244,220,.92),rgba(255,232,190,.92));color:#a06010;font-weight:700;box-shadow:0 0 6px rgba(212,152,56,.15)}
+.theme-normal .seat-btn.has-images-1.expanded{border:2px solid #7a9a5a;background:linear-gradient(135deg,rgba(218,240,252,.92),rgba(195,228,248,.92));color:#1a6a9a}
+.theme-normal .seat-btn.has-images-2.expanded{border:2px solid #7a9a5a;background:linear-gradient(135deg,rgba(255,244,220,.92),rgba(255,232,190,.92));color:#a06010}
+/* 座位名称 */
+.theme-normal .seat-name-text{color:#7a9a5a;border-bottom-color:#a8c898}
+.theme-normal .seat-name-edit-input{color:#4A3728;border-bottom-color:#a8c898}
+.theme-normal .seat-header-label{color:#7a9a5a}
+.theme-normal .hidden-ts-hint{color:#b08840}
+/* 时段卡片：米白纸片 */
+.theme-normal .timeslot-card{background:rgba(255,253,248,.94);border:1px solid rgba(168,200,152,.15);box-shadow:0 1px 4px rgba(120,160,90,.06)}
+.theme-normal .ts-time{color:#4A3728;font-family:Georgia,'KaiTi','STKaiti',serif}
+/* 拍照/上传按钮 */
+.theme-normal .ts-btn-capture{background:#6a9a4a}
+.theme-normal .ts-btn-upload{background:#b08840}
+/* 菜单面板：奶油色半透明 + 暖色虚线 */
+.theme-normal .func-panel{background:rgba(255,252,245,.97);border-radius:16px 16px 0 0;box-shadow:0 -4px 18px rgba(120,100,70,.1)}
+.theme-normal .func-panel-header{border-bottom:1px dashed #d4c8b0}
+.theme-normal .func-panel-title{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal .func-panel-close{background:#f0e8d8;color:#8B7355}
+.theme-normal .func-item{border-bottom:1px dashed #d4c8b0}
+.theme-normal .func-item:active{background:rgba(245,252,245,.5);border-radius:8px}
+.theme-normal .func-item-label{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal .func-item-label .func-item-desc{color:#9a8060}
+/* 开关按钮 */
+.theme-normal .func-toggle{background:#c8bca8}
+.theme-normal .func-toggle.on{background:#6a9a4a}
+/* 筛选面板 */
+.theme-normal .filter-sheet{background:rgba(255,252,245,.97);box-shadow:0 -4px 18px rgba(120,100,70,.1)}
+.theme-normal .filter-sheet-header{border-bottom:1px dashed #d4c8b0}
+.theme-normal .filter-sheet-title{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal .filter-sheet-close{background:#f0e8d8;color:#8B7355}
+.theme-normal .filter-sheet-actions{border-bottom:1px dashed #d4c8b0}
+.theme-normal .filter-action-btn{border-color:#c8bca8;color:#4A3728;font-family:Georgia,'KaiTi','STKaiti',serif}
+.theme-normal .filter-action-btn.primary{border-color:#7a9a5a;color:#5a7a3a;background:rgba(245,252,245,.5)}
+.theme-normal .filter-slot-item{border-bottom:1px dashed #d4c8b0}
+.theme-normal .filter-slot-label{color:#4A3728;font-family:Georgia,'KaiTi','STKaiti',serif}
+/* 底部栏 */
+.theme-normal #bottom-bar{background:rgba(255,252,245,.97);box-shadow:0 -2px 8px rgba(120,100,70,.08)}
+.theme-normal #selected-count{color:#7a9a5a}
+.theme-normal #btn-clear-select{border-color:#c8bca8;color:#8B7355;background:rgba(255,252,245,.8)}
+.theme-normal #btn-download-separate{background:#6a9a4a}
+.theme-normal #btn-download-concat{background:#b08840}
+/* 弹窗 */
+.theme-normal .modal-box{background:rgba(255,252,245,.97);box-shadow:0 4px 18px rgba(120,100,70,.12)}
+.theme-normal .modal-box h3{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal .modal-cancel{background:#f0e8d8;color:#4A3728}
+.theme-normal .modal-confirm{background:#6a9a4a}
+/* 批量下载弹窗 */
+.theme-normal .batch-chip{border-color:#c8bca8;color:#4A3728;font-family:Georgia,'KaiTi','STKaiti',serif}
+.theme-normal .batch-chip.checked{background:#6a9a4a;color:#fff;border-color:#6a9a4a}
+.theme-normal .batch-select-all{border-color:#7a9a5a;color:#5a7a3a}
+/* 拼接面板 */
+.theme-normal #concat-sheet{background:rgba(255,252,245,.97)}
+.theme-normal .concat-h{background:#6a9a4a}
+.theme-normal .concat-v{background:#8B7355}
+/* 缩略图 */
+.theme-normal .thumb-wrap{border-color:#d4c8b0}
+/* 新增/删除座位 */
+.theme-normal .add-seat-btn{border-color:#c8bca8;color:#a89070;background:rgba(255,252,245,.6)}
+.theme-normal .add-seat-btn:active{background:rgba(245,252,245,.8);border-color:#7a9a5a;color:#5a7a3a}
+.theme-normal .btn-delete-seat{border-color:#c87830;color:#c87830}
+/* Toast */
+.theme-normal .toast{background:rgba(74,55,40,.82)}
+/* 更新提示条 */
+.theme-normal .update-bar{background:linear-gradient(135deg,#6a9a4a,#8B7355)}
+
+/* ============================================================
+   【v1.8.0 新增】"一般"主题 - 2046废土赛博朋克未来科技风格
+   关键词：锈铁 / 霓虹 / 沙尘 / 暗沉 / 磨损 / 残破科技 / 末日光线
+   色彩：铁灰 + 沙黄 + 霓虹青 #00ffff + 暗红 #cc3333 + 暗橙 #e8820c
+   ============================================================ */
+/* 全局底色：铁灰到沙黄渐变 + 裂痕纹理 */
+.theme-yiban{background:linear-gradient(170deg,#3c3c46 0%,#4a4540 30%,#5a5040 60%,#6a6050 100%);color:#c8c8c8}
+/* 锈蚀金属纹理 + 扫描线（#app::before） */
+.theme-yiban #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,255,.015) 3px,rgba(0,255,255,.015) 4px),repeating-linear-gradient(90deg,transparent,transparent 80px,rgba(100,90,70,.06) 80px,rgba(100,90,70,.06) 81px),radial-gradient(ellipse 60% 40% at 30% 20%,rgba(0,255,255,.04) 0%,transparent 60%),radial-gradient(ellipse 50% 35% at 75% 70%,rgba(204,51,51,.03) 0%,transparent 55%)}
+/* 交互元素提升层级 */
+.theme-yiban #app,.theme-yiban #bottom-bar,.theme-yiban .toast{position:relative;z-index:1}
+/* 页面标题：霓虹青发光 */
+.theme-yiban .page-header{background:linear-gradient(170deg,#3c3c46 0%,#4a4540 100%);position:relative;z-index:10}
+.theme-yiban .page-title{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 15px rgba(0,255,255,.5),0 0 5px rgba(0,255,255,.4);letter-spacing:2px;font-weight:700}
+.theme-yiban .page-title small{color:#e8820c!important;text-shadow:none}
+/* 菜单按钮：废土金属感 */
+.theme-yiban .header-btn{background:linear-gradient(135deg,#4a4540,#3c3c46);border:1px solid rgba(0,255,255,.4);border-radius:4px;box-shadow:0 0 6px rgba(0,255,255,.2);color:#00ffff}
+.theme-yiban .header-btn:active{box-shadow:0 0 12px rgba(0,255,255,.5);transform:scale(.97)}
+/* 楼层卡片：锈蚀金属板 + 霓虹边框 */
+.theme-yiban .floor-btn{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;border:2px solid rgba(0,255,255,.5);border-radius:4px;box-shadow:0 0 8px rgba(0,255,255,.2),inset 0 0 20px rgba(0,0,0,.3);text-shadow:0 0 6px rgba(0,255,255,.3);transition:transform .12s,border-color .2s,box-shadow .2s}
+.theme-yiban .floor-1{background:linear-gradient(135deg,rgba(60,60,70,.88),rgba(70,65,55,.88))}
+.theme-yiban .floor-2{background:linear-gradient(135deg,rgba(55,60,68,.88),rgba(65,60,50,.88))}
+.theme-yiban .floor-3{background:linear-gradient(135deg,rgba(58,55,65,.88),rgba(68,62,52,.88))}
+.theme-yiban .floor-4{background:linear-gradient(135deg,rgba(62,58,60,.88),rgba(72,65,55,.88))}
+.theme-yiban .floor-5{background:linear-gradient(135deg,rgba(56,58,68,.88),rgba(66,62,52,.88))}
+.theme-yiban .floor-btn:hover{border-color:#00ffff;box-shadow:0 0 16px rgba(0,255,255,.4),inset 0 0 20px rgba(0,0,0,.3);transform:scale(1.01)}
+.theme-yiban .floor-btn:active{transform:scale(.98)}
+/* 区域按钮：铁灰 + 沙尘 + 霓虹橙边框 */
+.theme-yiban .area-btn{font-family:'Segoe UI','Helvetica Neue',sans-serif;background:rgba(55,55,62,.88);border:1px solid rgba(232,130,12,.5);color:#e0d0b8;box-shadow:0 0 4px rgba(232,130,12,.15),inset 0 1px 3px rgba(0,0,0,.3);transition:background .12s,border-color .12s,box-shadow .12s}
+.theme-yiban .area-btn:hover{border-color:#00ffff;box-shadow:0 0 8px rgba(0,255,255,.25),inset 0 1px 3px rgba(0,0,0,.3)}
+.theme-yiban .area-btn:active{transform:scale(.95)}
+.theme-yiban .area-btn .area-count{color:#e8820c}
+.theme-yiban .area-btn.expanded{border-color:#00ffff;background:rgba(60,60,68,.92);box-shadow:0 0 10px rgba(0,255,255,.25)}
+.theme-yiban .area-btn.has-images{border-color:#00cccc;background:linear-gradient(135deg,rgba(0,80,80,.35),rgba(55,55,62,.88));color:#00ffff}
+.theme-yiban .area-btn.has-images.expanded{border-color:#00ffff;background:linear-gradient(135deg,rgba(0,80,80,.35),rgba(55,55,62,.88));color:#00ffff}
+/* 座位编号按钮：暗灰 + 全息网格 + 暗青边框 */
+.theme-yiban .seat-btn{font-family:'Segoe UI','Helvetica Neue',sans-serif;background:rgba(45,45,52,.92);border:1px solid rgba(0,255,255,.2);color:#a0a8b0;font-size:12px;transition:background .1s,border-color .1s,box-shadow .1s}
+.theme-yiban .seat-btn:hover{background:rgba(55,55,62,.92);border-color:rgba(0,255,255,.4)}
+.theme-yiban .seat-btn:active{background:rgba(65,65,72,.92)}
+.theme-yiban .seat-btn.expanded{border:2px solid #00ffff;background:rgba(45,45,52,.92);box-shadow:0 0 6px rgba(0,255,255,.25)}
+/* 座位提示色保留，叠加霓虹光晕 */
+.theme-yiban .seat-btn.has-images-1{border-color:#00aacc;background:linear-gradient(135deg,rgba(0,100,120,.4),rgba(45,45,52,.92));color:#00ffff;font-weight:700;box-shadow:0 0 8px rgba(0,170,204,.25)}
+.theme-yiban .seat-btn.has-images-2{border-color:#cc6633;background:linear-gradient(135deg,rgba(120,60,20,.35),rgba(45,45,52,.92));color:#e8820c;font-weight:700;box-shadow:0 0 8px rgba(204,102,51,.2)}
+.theme-yiban .seat-btn.has-images-1.expanded{border:2px solid #00ffff;background:linear-gradient(135deg,rgba(0,100,120,.4),rgba(45,45,52,.92));color:#00ffff}
+.theme-yiban .seat-btn.has-images-2.expanded{border:2px solid #00ffff;background:linear-gradient(135deg,rgba(120,60,20,.35),rgba(45,45,52,.92));color:#e8820c}
+/* 座位名称 */
+.theme-yiban .seat-name-text{color:#00cccc;border-bottom-color:rgba(0,255,255,.3)}
+.theme-yiban .seat-name-edit-input{color:#e0d0b8;border-bottom-color:rgba(0,255,255,.3)}
+.theme-yiban .seat-header-label{color:#00cccc}
+.theme-yiban .hidden-ts-hint{color:#cc3333}
+/* 时段卡片：暗铁灰 + 扫描线 */
+.theme-yiban .timeslot-card{background:rgba(50,50,58,.92);border:1px solid rgba(0,255,255,.1);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.theme-yiban .ts-time{color:#00cccc;font-family:'Segoe UI','Helvetica Neue',sans-serif}
+/* 拍照/上传按钮 */
+.theme-yiban .ts-btn-capture{background:#00888a}
+.theme-yiban .ts-btn-upload{background:#8a5500}
+/* 菜单面板：暗铁灰磨砂 + 霓虹分隔线 */
+.theme-yiban .func-panel{background:rgba(45,45,52,.97);border-radius:10px 10px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.4),0 0 12px rgba(0,255,255,.1)}
+.theme-yiban .func-panel-header{border-bottom:1px solid rgba(0,255,255,.2)}
+.theme-yiban .func-panel-title{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 8px rgba(0,255,255,.3)}
+.theme-yiban .func-panel-close{background:rgba(204,51,51,.3);color:#cc3333}
+.theme-yiban .func-item{border-bottom:1px dashed rgba(0,255,255,.15)}
+.theme-yiban .func-item:active{background:rgba(0,255,255,.08);border-radius:4px}
+.theme-yiban .func-item-label{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#c8c8c8}
+.theme-yiban .func-item-label .func-item-desc{color:#888}
+/* 开关按钮 */
+.theme-yiban .func-toggle{background:#555}
+.theme-yiban .func-toggle.on{background:#00888a;box-shadow:0 0 6px rgba(0,255,255,.3)}
+/* 筛选面板 */
+.theme-yiban .filter-sheet{background:rgba(45,45,52,.97);box-shadow:0 -4px 20px rgba(0,0,0,.4),0 0 12px rgba(0,255,255,.1)}
+.theme-yiban .filter-sheet-header{border-bottom:1px solid rgba(0,255,255,.2)}
+.theme-yiban .filter-sheet-title{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 8px rgba(0,255,255,.3)}
+.theme-yiban .filter-sheet-close{background:rgba(204,51,51,.3);color:#cc3333}
+.theme-yiban .filter-sheet-actions{border-bottom:1px dashed rgba(0,255,255,.15)}
+.theme-yiban .filter-action-btn{border-color:rgba(0,255,255,.3);color:#c8c8c8;font-family:'Segoe UI','Helvetica Neue',sans-serif}
+.theme-yiban .filter-action-btn.primary{border-color:#00ffff;color:#00ffff;background:rgba(0,255,255,.08)}
+.theme-yiban .filter-slot-item{border-bottom:1px dashed rgba(0,255,255,.1)}
+.theme-yiban .filter-slot-label{color:#c8c8c8;font-family:'Segoe UI','Helvetica Neue',sans-serif}
+/* 底部栏 */
+.theme-yiban #bottom-bar{background:rgba(45,45,52,.97);box-shadow:0 -2px 10px rgba(0,0,0,.3),0 0 8px rgba(0,255,255,.08)}
+.theme-yiban #selected-count{color:#00cccc}
+.theme-yiban #btn-clear-select{border-color:rgba(0,255,255,.3);color:#cc3333;background:rgba(45,45,52,.8)}
+.theme-yiban #btn-download-separate{background:#00888a;box-shadow:0 0 6px rgba(0,255,255,.2)}
+.theme-yiban #btn-download-concat{background:#8a5500;box-shadow:0 0 6px rgba(232,130,12,.2)}
+/* 弹窗 */
+.theme-yiban .modal-box{background:rgba(45,45,52,.97);border:1px solid rgba(0,255,255,.2);box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 12px rgba(0,255,255,.1)}
+.theme-yiban .modal-box h3{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 8px rgba(0,255,255,.3)}
+.theme-yiban .modal-cancel{background:rgba(80,80,88,.8);color:#c8c8c8}
+.theme-yiban .modal-confirm{background:#00888a;box-shadow:0 0 6px rgba(0,255,255,.2)}
+/* 【v1.9.10 修复】蓝色主题下重置/清理进度弹窗文字不可见 */
+.theme-yiban #cleanup-loading-text{color:#00ffff!important}
+/* 批量下载弹窗 */
+.theme-yiban .batch-chip{border-color:rgba(0,255,255,.2);color:#c8c8c8;font-family:'Segoe UI','Helvetica Neue',sans-serif}
+.theme-yiban .batch-chip.checked{background:#00888a;color:#fff;border-color:#00cccc;box-shadow:0 0 6px rgba(0,255,255,.2)}
+.theme-yiban .batch-select-all{border-color:#00cccc;color:#00cccc}
+/* 拼接面板 */
+.theme-yiban #concat-sheet{background:rgba(45,45,52,.97)}
+.theme-yiban .concat-h{background:#00888a;box-shadow:0 0 6px rgba(0,255,255,.2)}
+.theme-yiban .concat-v{background:#8a5500}
+/* 缩略图 */
+.theme-yiban .thumb-wrap{border-color:rgba(0,255,255,.15)}
+/* 新增/删除座位 */
+.theme-yiban .add-seat-btn{border-color:rgba(0,255,255,.2);color:#888;background:rgba(45,45,52,.6)}
+.theme-yiban .add-seat-btn:active{background:rgba(0,255,255,.08);border-color:#00cccc;color:#00cccc}
+.theme-yiban .btn-delete-seat{border-color:#cc3333;color:#cc3333}
+/* Toast */
+.theme-yiban .toast{background:rgba(30,30,38,.9);border:1px solid rgba(0,255,255,.2)}
+/* 更新提示条 */
+.theme-yiban .update-bar{background:linear-gradient(135deg,#00888a,#cc3333)}
+/* 清理弹窗按钮 */
+.theme-yiban .cleanup-cancel{background:rgba(80,80,88,.8);color:#c8c8c8}
+.theme-yiban .cleanup-exec{background:#cc3333;box-shadow:0 0 6px rgba(204,51,51,.3)}
+/* 【v1.8.1 修复】主题选择列表文字在暗色背景下不可见 */
+.theme-yiban .theme-list-item{color:#e0e0e0}
+.theme-yiban .theme-list-item:active{background:rgba(0,255,255,.08)}
+.theme-yiban .theme-list-item.active{background:rgba(0,255,255,.1)}
+.theme-yiban .theme-list-item .theme-check{border-color:#666}
+.theme-yiban .theme-list-item.active .theme-check{background:#00cccc;border-color:#00cccc}
+
+/* ============================================================
+   【v1.9.0 新增】"像素"主题 - 16位像素风格（参考《我的世界》）
+   关键词：方块 / 像素 / 泥土棕 / 草地绿 / 石材灰 / 木板米黄 / 矿石蓝金
+   描边：4px 实线直角 + 黑色像素描边（box-shadow 硬阴影）
+   悬停：像素位移按压效果 translate(2px,2px) + shadow 缩短
+   ============================================================ */
+/* 全局底色：MC 天空淡蓝到草地绿渐变 + 像素点阵纹理 */
+.theme-pixel{background:linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 60%,#7ec850 100%);color:#4a3728}
+/* 像素点阵纹理（#app::before） */
+.theme-pixel #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.02) 3px,rgba(0,0,0,.02) 4px),repeating-linear-gradient(90deg,transparent,transparent 3px,rgba(0,0,0,.02) 3px,rgba(0,0,0,.02) 4px)}
+/* 交互元素提升层级 */
+.theme-pixel #app,.theme-pixel #bottom-bar,.theme-pixel .toast{position:relative;z-index:1}
+/* 页面标题：像素风 + 硬阴影 */
+.theme-pixel .page-header{background:linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 100%);position:relative;z-index:10}
+.theme-pixel .page-title{font-family:'Courier New',monospace;color:#3e2b1f;letter-spacing:1px;font-weight:900;text-shadow:2px 2px 0 #e0d7c5}
+.theme-pixel .page-title small{color:#ffaa00!important}
+/* 菜单按钮：木板材质 + 像素描边 */
+.theme-pixel .header-btn{background:#c8a96e;border:4px solid #5a3d2b;border-radius:0;box-shadow:4px 4px 0 #2d2d2d;color:#4a3728;font-family:'Courier New',monospace;font-weight:700;transition:transform .08s,box-shadow .08s}
+.theme-pixel .header-btn:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #2d2d2d}
+/* 楼层卡片：木板/工作台材质 + 像素描边 + 按压效果 */
+.theme-pixel .floor-btn{font-family:'Courier New',monospace;color:#4a3728;border:4px solid #5a3d2b;border-radius:0;box-shadow:4px 4px 0 #2d2d2d;font-weight:700;transition:transform .08s,box-shadow .08s}
+.theme-pixel .floor-1{background:linear-gradient(135deg,#c8a96e,#b89858);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#c8a96e,#b89858)}
+.theme-pixel .floor-2{background:linear-gradient(135deg,#b8a058,#a89048);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#b8a058,#a89048)}
+.theme-pixel .floor-3{background:linear-gradient(135deg,#c0a060,#b09050);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#c0a060,#b09050)}
+.theme-pixel .floor-4{background:linear-gradient(135deg,#d0b070,#c0a060);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#d0b070,#c0a060)}
+.theme-pixel .floor-5{background:linear-gradient(135deg,#baa060,#aa9048);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#baa060,#aa9048)}
+.theme-pixel .floor-btn:hover{background-color:#d8b978;box-shadow:4px 4px 0 #2d2d2d}
+.theme-pixel .floor-btn:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #2d2d2d}
+/* 区域按钮：石材材质 + 像素描边 */
+.theme-pixel .area-btn{font-family:'Courier New',monospace;background:#aaa;border:3px solid #555;border-radius:0;box-shadow:3px 3px 0 #2d2d2d;color:#3a3a3a;font-weight:700;transition:transform .08s,box-shadow .08s}
+.theme-pixel .area-btn:hover{background:#bbb}
+.theme-pixel .area-btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
+.theme-pixel .area-btn .area-count{color:#555}
+.theme-pixel .area-btn.expanded{border-color:#5a3d2b;background:#b8b8b8}
+.theme-pixel .area-btn.has-images{border-color:#7ec850;background:linear-gradient(135deg,#8dd850,#7ec850);color:#3a5a1a}
+.theme-pixel .area-btn.has-images.expanded{border-color:#5a3d2b;background:linear-gradient(135deg,#8dd850,#7ec850);color:#3a5a1a}
+/* 座位编号按钮：铁块/石英材质 + 像素描边 */
+.theme-pixel .seat-btn{font-family:'Courier New',monospace;background:#d8d8d8;border:2px solid #888;border-radius:0;box-shadow:2px 2px 0 #2d2d2d;color:#3a3a3a;font-size:12px;font-weight:700;transition:transform .08s,box-shadow .08s}
+.theme-pixel .seat-btn:hover{background:#e0e0e0}
+.theme-pixel .seat-btn:active{transform:translate(1px,1px);box-shadow:1px 1px 0 #2d2d2d}
+.theme-pixel .seat-btn.expanded{border:3px solid #5a3d2b;background:#d8d8d8;box-shadow:3px 3px 0 #2d2d2d}
+/* 座位提示色：MC 钻石蓝 / 金橙 / 草绿 + 像素描边 */
+.theme-pixel .seat-btn.has-images-1{border-color:#5bc0de;background:#5bc0de;color:#1a4a5a;font-weight:700;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .seat-btn.has-images-2{border-color:#f0ad4e;background:#f0ad4e;color:#5a3a0a;font-weight:700;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .seat-btn.has-images-1.expanded{border:3px solid #5a3d2b;background:#5bc0de;color:#1a4a5a;box-shadow:3px 3px 0 #2d2d2d}
+.theme-pixel .seat-btn.has-images-2.expanded{border:3px solid #5a3d2b;background:#f0ad4e;color:#5a3a0a;box-shadow:3px 3px 0 #2d2d2d}
+/* 座位名称 */
+.theme-pixel .seat-name-text{color:#5a3d2b;border-bottom-color:#5a3d2b}
+.theme-pixel .seat-name-edit-input{color:#4a3728;border-bottom-color:#5a3d2b}
+.theme-pixel .seat-header-label{color:#5a3d2b}
+.theme-pixel .hidden-ts-hint{color:#cc3333}
+/* 时段卡片：浅米黄 + 像素边框 */
+.theme-pixel .timeslot-card{background:#e8dcc0;border:2px solid #8b7355;border-radius:0;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .ts-time{color:#4a3728;font-family:'Courier New',monospace;font-weight:700}
+/* 拍照/上传按钮 */
+.theme-pixel .ts-btn-capture{background:#7ec850;border:2px solid #5a8a30;border-radius:0;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .ts-btn-upload{background:#c8a96e;border:2px solid #8b7355;border-radius:0;box-shadow:2px 2px 0 #2d2d2d}
+/* 菜单面板：箱子/背包界面 - 米黄底 + 厚边框 + 像素描边 */
+.theme-pixel .func-panel{background:#c8a96e;border-radius:0;box-shadow:0 -4px 0 #5a3d2d,0 -6px 0 #2d2d2d}
+.theme-pixel .func-panel-header{border-bottom:4px solid #5a3d2b}
+.theme-pixel .func-panel-title{font-family:'Courier New',monospace;color:#4a3728;font-weight:900}
+.theme-pixel .func-panel-close{background:#8b7355;color:#fff;border:2px solid #5a3d2b;border-radius:0;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .func-item{border-bottom:2px dashed #8b7355}
+.theme-pixel .func-item:active{background:rgba(90,61,43,.15)}
+.theme-pixel .func-item-label{font-family:'Courier New',monospace;color:#4a3728;font-weight:700}
+.theme-pixel .func-item-label .func-item-desc{color:#8b7355}
+/* 开关按钮 */
+.theme-pixel .func-toggle{background:#888;border-radius:0}
+.theme-pixel .func-toggle.on{background:#7ec850;box-shadow:inset 0 0 0 2px #5a8a30}
+/* 筛选面板 */
+.theme-pixel .filter-sheet{background:#c8a96e;border-radius:0;box-shadow:0 -4px 0 #5a3d2d,0 -6px 0 #2d2d2d}
+.theme-pixel .filter-sheet-header{border-bottom:4px solid #5a3d2b}
+.theme-pixel .filter-sheet-title{font-family:'Courier New',monospace;color:#4a3728;font-weight:900}
+.theme-pixel .filter-sheet-close{background:#8b7355;color:#fff;border:2px solid #5a3d2b;border-radius:0;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .filter-sheet-actions{border-bottom:2px dashed #8b7355}
+.theme-pixel .filter-action-btn{border:2px solid #8b7355;border-radius:0;color:#4a3728;font-family:'Courier New',monospace;font-weight:700}
+.theme-pixel .filter-action-btn.primary{border-color:#5a3d2b;color:#5a3d2b;background:rgba(90,61,43,.1)}
+.theme-pixel .filter-slot-item{border-bottom:2px dashed #8b7355}
+.theme-pixel .filter-slot-label{color:#4a3728;font-family:'Courier New',monospace}
+/* 底部栏 */
+.theme-pixel #bottom-bar{background:#c8a96e;border-top:4px solid #5a3d2b;box-shadow:0 -4px 0 #2d2d2d}
+.theme-pixel #selected-count{color:#5a3d2b;font-weight:700}
+.theme-pixel #btn-clear-select{border:2px solid #8b7355;border-radius:0;color:#5a3d2b;background:#e8dcc0}
+.theme-pixel #btn-download-separate{background:#7ec850;border:2px solid #5a8a30;border-radius:0;box-shadow:2px 2px 0 #2d2d2d;color:#3a5a1a}
+.theme-pixel #btn-download-concat{background:#c8a96e;border:2px solid #8b7355;border-radius:0;box-shadow:2px 2px 0 #2d2d2d;color:#4a3728}
+/* 弹窗 */
+.theme-pixel .modal-box{background:#c8a96e;border:4px solid #5a3d2b;border-radius:0;box-shadow:6px 6px 0 #2d2d2d}
+.theme-pixel .modal-box h3{font-family:'Courier New',monospace;color:#4a3728;font-weight:900}
+.theme-pixel .modal-cancel{background:#aaa;border:2px solid #555;border-radius:0;color:#3a3a3a}
+.theme-pixel .modal-confirm{background:#7ec850;border:2px solid #5a8a30;border-radius:0;color:#3a5a1a}
+/* 批量下载弹窗 */
+.theme-pixel .batch-chip{border:2px solid #8b7355;border-radius:0;color:#4a3728;font-family:'Courier New',monospace}
+.theme-pixel .batch-chip.checked{background:#7ec850;color:#3a5a1a;border-color:#5a8a30}
+.theme-pixel .batch-select-all{border:2px solid #5a3d2b;color:#5a3d2b;border-radius:0}
+/* 拼接面板 */
+.theme-pixel #concat-sheet{background:#c8a96e}
+.theme-pixel .concat-h{background:#7ec850;border:2px solid #5a8a30;border-radius:0}
+.theme-pixel .concat-v{background:#8b7355;border:2px solid #5a3d2b;border-radius:0}
+/* 缩略图 */
+.theme-pixel .thumb-wrap{border-color:#8b7355}
+/* 新增/删除座位 */
+.theme-pixel .add-seat-btn{border:2px solid #8b7355;border-radius:0;color:#8b7355;background:rgba(200,169,110,.5)}
+.theme-pixel .add-seat-btn:active{background:rgba(200,169,110,.8);border-color:#5a3d2b;color:#5a3d2b}
+.theme-pixel .btn-delete-seat{border:2px solid #cc3333;border-radius:0;color:#cc3333}
+/* Toast */
+.theme-pixel .toast{background:#4a3728;border:3px solid #2d2d2d;border-radius:0;color:#e8dcc0;font-family:'Courier New',monospace}
+/* 更新提示条 */
+.theme-pixel .update-bar{background:#7ec850;border-bottom:3px solid #5a8a30;color:#3a5a1a;font-family:'Courier New',monospace;font-weight:700}
+/* 清理弹窗按钮 */
+.theme-pixel .cleanup-cancel{background:#aaa;border:2px solid #555;border-radius:0;color:#3a3a3a}
+.theme-pixel .cleanup-exec{background:#cc3333;border:2px solid #991a1a;border-radius:0;color:#fff}
+/* 主题选择列表：像素风 */
+.theme-pixel .theme-list-item{color:#4a3728;font-family:'Courier New',monospace;font-weight:700;border-radius:0}
+.theme-pixel .theme-list-item:active{background:rgba(90,61,43,.15)}
+.theme-pixel .theme-list-item.active{background:#7ec850;border:2px solid #5a8a30}
+.theme-pixel .theme-list-item .theme-check{border-radius:0;border:2px solid #5a3d2b}
+.theme-pixel .theme-list-item.active .theme-check{background:#7ec850;border-color:#5a8a30}
 </style>
 </head>
 <body>
 <div class="update-bar" id="update-bar">有新版本可用，点击刷新</div>
 <!-- 【修复文字消失】page-header 移出 app，作为静态 DOM，不会被 renderMain 重建 -->
-<div class="page-header" id="page-header"><span class="page-title">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">菜单</button></div>
+<div class="page-header" id="page-header"><span class="page-title" data-action="check-update" onclick="handleTitleClick()">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">菜单</button></div>
 <div id="app"></div>
 <div id="bottom-bar">
   <span id="selected-count">已选 0 个时段</span>
@@ -396,8 +752,8 @@ const FLOORS = [
 
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
-// v1.5.11 修复清除全部图片大数据量崩溃：分批异步删除 + 进度提示
-const APP_VERSION = 'v1.5.11';
+// v1.9.4 像素主题标题去除文字阴影
+const APP_VERSION = 'v1.9.19';
 const DB_NAME = 'SeatImageDB';
 const DB_VERSION = 4;
 // 【v1.3.2 Bug1修复】将平台检测移到顶部，确保拼接函数可正确访问
@@ -523,6 +879,7 @@ const state = {
   allowDeleteSeat: false, // 【修改1】允许删除座位开关，默认关闭
   showLogo: false, // 【v1.3.2 新功能3】深业运营 LOGO 水印开关，默认关闭
   uploadWatermark: false, // 【v1.3.9 新功能1】上传图片加水印开关，默认关闭
+  currentTheme: 'default', // 【v1.6.0】当前主题，默认为 'default'
 };
 
 /** 生成区域 key */
@@ -704,6 +1061,27 @@ function loadShowLogoState() { try { state.showLogo = localStorage.getItem('seat
 // 【v1.3.9 新功能1】上传图片加水印开关状态持久化
 function saveUploadWatermarkState() { try { localStorage.setItem('seat_upload_watermark', state.uploadWatermark ? '1' : '0'); } catch (e) {} }
 function loadUploadWatermarkState() { try { state.uploadWatermark = localStorage.getItem('seat_upload_watermark') === '1'; } catch (e) {} }
+// 【v1.6.0】主题状态持久化
+function saveThemeState() { try { localStorage.setItem('app_theme', state.currentTheme); } catch (e) {} }
+function loadThemeState() {
+  try {
+    let t = localStorage.getItem('app_theme');
+    // 【v1.6.2】如果存储的是已删除的主题，重置为默认
+    if (t && t !== 'default' && t !== 'normal' && t !== 'yiban' && t !== 'pixel') {
+      t = 'default';
+      state.currentTheme = 'default';
+      localStorage.setItem('app_theme', 'default');
+    }
+    if (t) { state.currentTheme = t; applyTheme(t); }
+  } catch (e) {}
+}
+function applyTheme(theme) {
+  // 【v1.9.0】支持"像素"主题
+  document.body.className = '';
+  if (theme === 'normal') document.body.classList.add('theme-normal');
+  if (theme === 'yiban') document.body.classList.add('theme-yiban');
+  if (theme === 'pixel') document.body.classList.add('theme-pixel');
+}
 
 // 【v1.3.18 修复】筛选状态 localStorage 键名（隔离旧键名，避免被旧数据污染）
 const FILTER_KEY_MAIN = 'seat_filter_timeslots_v2_main';
@@ -919,6 +1297,21 @@ window.addEventListener('beforeunload', () => {
 // 【v1.3.18 深度修复】pagehide 作为 beforeunload 的补充（移动端更可靠）
 window.addEventListener('pagehide', () => {
   try { saveFilterState(); } catch(e) {}
+});
+// 【v1.6.0 修复】页面从后台恢复时，从 localStorage 重新读取筛选状态，防止偶发重置
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    try {
+      const raw = localStorage.getItem(FILTER_KEY_MAIN) || localStorage.getItem(FILTER_KEY_BACKUP);
+      if (raw) {
+        const o = JSON.parse(raw);
+        if (o && Array.isArray(o.slots)) {
+          state.visibleTimeSlots = new Set(o.slots);
+          state._filterNone = !!o.none;
+        }
+      }
+    } catch (e) { console.warn('[筛选恢复] visibilitychange 恢复失败', e); }
+  }
 });
 
 function renderSeatFlow(fid, aname) {
@@ -1435,25 +1828,41 @@ function addWatermarkBlob(imageSource, seatName, beijingTime, orientation) {
         const lineGap = Math.round(fs_time * 0.12);
         const pad = Math.round(fs_time * 0.3);   // 左右内边距
         const vpad = Math.round(fs_time * 0.2);  // 上下内边距
-        const r = 8; // 固定圆角
-        const fontFam = '-apple-system, sans-serif';
+        // 【v1.9.0】"像素"主题水印：像素字体 + 泥土色背景 + 深棕文字 + 直角
+        const isNormalTheme = document.body.classList.contains('theme-normal');
+        const isYibanTheme = document.body.classList.contains('theme-yiban');
+        const isPixelTheme = document.body.classList.contains('theme-pixel');
+        const fontFam = isPixelTheme ? "'Courier New',monospace" : (isYibanTheme ? "'Segoe UI','Helvetica Neue',sans-serif" : (isNormalTheme ? "Georgia,'KaiTi','STKaiti',serif" : '-apple-system, sans-serif'));
+        const wmBgColor = isPixelTheme ? 'rgba(200,169,110,0.6)' : (isYibanTheme ? 'rgba(50,50,60,0.7)' : (isNormalTheme ? 'rgba(255,248,240,0.4)' : 'rgba(0,0,0,0.55)'));
+        const wmTextColor = isPixelTheme ? '#2e1f0e' : (isYibanTheme ? '#00ffff' : (isNormalTheme ? '#4A3728' : '#ffffff'));
+        const wmShadowColor = isPixelTheme ? 'rgba(255,255,255,0.9)' : null; // 【v1.9.12】像素主题水印白色阴影
+        const r = isPixelTheme ? 0 : 8; // 像素主题直角，其他圆角
+        // 【v1.9.18】像素主题：第一行字号加大、阴影偏移拉远
+        const fs_date_draw = isPixelTheme ? Math.round(24 * scaleFactor) : fs_date;
+        const wmShadowOff = isPixelTheme ? 4 : 0;
         // 拆分北京时间
         const datePart = beijingTime.split(' ')[0];
         const timePart = beijingTime.split(' ')[1] || beijingTime;
+        // 【v1.5.12 新增】计算星期几
+        const weekDays = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+        const weekDay = weekDays[new Date(datePart).getDay()] || '';
         // 逐行测量宽度
         ctx.font = `300 ${fs_date}px ${fontFam}`;
         const tw1 = ctx.measureText(datePart).width;
+        const twWeek = weekDay ? ctx.measureText(weekDay).width : 0;
         ctx.font = `700 ${fs_time}px ${fontFam}`;
         const tw2 = ctx.measureText(timePart).width;
         ctx.font = `400 ${fs_seat}px ${fontFam}`;
         const tw3 = ctx.measureText(seatName).width;
-        const maxTW = Math.max(tw1, tw2, tw3);
+        // 【v1.5.12】背景宽度：取三行最大值，但第一行（日期+星期几）宽度不超过第二行
+        const tw1Full = tw1 + (twWeek > 0 ? Math.round(fs_date * 0.6) + twWeek : 0); // 日期+间距+星期几
+        const maxTW = Math.max(tw1Full, tw2, tw3);
         const totalH = fs_date + fs_time + fs_seat + lineGap * 2;
         const bgX = 24, bgW = maxTW + pad * 2, bgH = totalH + vpad * 2;
         // 【v1.3.4 Bug2修复】文字水印位置固定：距下边缘 24px，不受 LOGO 影响
         const bgY = canvas.height - totalH - vpad * 2 - 24;
         // 半透明圆角背景
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillStyle = wmBgColor;
         ctx.beginPath();
         ctx.moveTo(bgX + r, bgY); ctx.lineTo(bgX + bgW - r, bgY);
         ctx.quadraticCurveTo(bgX + bgW, bgY, bgX + bgW, bgY + r);
@@ -1464,18 +1873,34 @@ function addWatermarkBlob(imageSource, seatName, beijingTime, orientation) {
         ctx.lineTo(bgX, bgY + r);
         ctx.quadraticCurveTo(bgX, bgY, bgX + r, bgY);
         ctx.closePath(); ctx.fill();
-        // 绘制三行白色文本：年月日（细体）、时分秒（粗体）、座位编号（常规）
-        ctx.textBaseline = 'top'; ctx.fillStyle = '#ffffff';
+        // 绘制三行文本：年月日+星期几（细体）、时分秒（粗体）、座位编号（常规）
+        ctx.textBaseline = 'top'; ctx.fillStyle = wmTextColor;
         const textX = bgX + pad;
         let curY = bgY + vpad;
-        ctx.font = `300 ${fs_date}px ${fontFam}`;
-        ctx.fillText(datePart, textX, curY);
-        curY += fs_date + lineGap;
+        ctx.font = `300 ${fs_date_draw}px ${fontFam}`;
+        if (wmShadowColor) { ctx.fillStyle = wmShadowColor; ctx.fillText(datePart, textX + wmShadowOff, curY + wmShadowOff); }
+        ctx.fillStyle = wmTextColor; ctx.fillText(datePart, textX, curY);
+        // 【v1.5.12 新增】第一行右侧绘制星期几，右对齐且不超第二行右边缘
+        if (weekDay) {
+          // 【v1.9.19】像素主题用 fs_date_draw 重新测量星期几宽度，确保右对齐精确
+          const _fsDateForWeek = isPixelTheme ? fs_date_draw : fs_date;
+          ctx.font = `300 ${_fsDateForWeek}px ${fontFam}`;
+          const _twWeek = ctx.measureText(weekDay).width;
+          const line2Right = textX + tw2; // 第二行文字右边缘
+          const weekX = line2Right - _twWeek;
+          if (weekX > textX + tw1 + Math.round(fs_date * 0.3)) {
+            if (wmShadowColor) { ctx.fillStyle = wmShadowColor; ctx.fillText(weekDay, weekX + wmShadowOff, curY + wmShadowOff); }
+            ctx.fillStyle = wmTextColor; ctx.fillText(weekDay, weekX, curY);
+          }
+        }
+        curY += fs_date_draw + lineGap;
         ctx.font = `700 ${fs_time}px ${fontFam}`;
-        ctx.fillText(timePart, textX, curY);
+        if (wmShadowColor) { ctx.fillStyle = wmShadowColor; ctx.fillText(timePart, textX + wmShadowOff, curY + wmShadowOff); }
+        ctx.fillStyle = wmTextColor; ctx.fillText(timePart, textX, curY);
         curY += fs_time + lineGap;
         ctx.font = `400 ${fs_seat}px ${fontFam}`;
-        ctx.fillText(seatName, textX, curY);
+        if (wmShadowColor) { ctx.fillStyle = wmShadowColor; ctx.fillText(seatName, textX + wmShadowOff, curY + wmShadowOff); }
+        ctx.fillStyle = wmTextColor; ctx.fillText(seatName, textX, curY);
         // 【v1.3.4 Bug2修复】LOGO 绘制在文字水印正上方，文字位置不受影响
         if (state.showLogo) {
           const logoAspect = 913 / 2662; // LOGO 原始宽高比
@@ -3784,6 +4209,41 @@ document.addEventListener('click', async (e) => {
 });
 
 // ============================================================
+// 十二-A、标题点击检查更新（内联事件兜底 + 事件委托双保险）
+// 【v1.9.16】彻底修复：非默认主题下标题点击失效
+//   - 内联 onclick="handleTitleClick()" 最高优先级，不受 CSS/DOM/冒泡影响
+//   - document.body 事件委托作为备份
+//   - 防抖存储在 window.__updateCheckDebounce，全局唯一
+// ============================================================
+window.__updateCheckDebounce = false;
+function handleTitleClick() {
+  if (window.__updateCheckDebounce) return;
+  window.__updateCheckDebounce = true;
+  setTimeout(() => { window.__updateCheckDebounce = false; }, 3000);
+  try {
+    if (swRegistration && swRegistration.waiting) {
+      try { saveFilterState(); } catch(ex) {}
+      swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        try { saveFilterState(); } catch(ex) {}
+        window.location.reload();
+      });
+      setTimeout(() => {
+        try { saveFilterState(); } catch(ex) {}
+        window.location.reload();
+      }, 1000);
+    } else {
+      showToast('已是最新版本');
+    }
+  } catch(ex) { console.warn('检查更新失败:', ex); }
+}
+// 事件委托备份：通过 data-action="check-update" 匹配，调用同一个 handleTitleClick
+document.body.addEventListener('click', function(e) {
+  if (!e.target.closest('[data-action="check-update"]')) return;
+  handleTitleClick();
+}, true);
+
+// ============================================================
 // 十二-B、时段筛选面板
 // ============================================================
 const filterOverlay = document.getElementById('filter-overlay');
@@ -3994,6 +4454,17 @@ function renderFuncPanelBody() {
       <div class="func-item-label">清除全部图片<div class="func-item-desc">清除所有图片数据，不可恢复</div></div>
       <span style="color:#bfbfbf;font-size:18px">›</span>
     </div>
+    <!-- 【v1.6.0 新增】主题选择 -->
+    <div class="func-item" data-func="toggle-theme">
+      <div class="func-item-label">主题<div class="func-item-desc">切换界面风格</div></div>
+      <span style="color:#bfbfbf;font-size:18px" id="theme-arrow">›</span>
+    </div>
+    <div class="theme-list" id="theme-list" style="display:none">
+      <div class="theme-list-item${(!state.currentTheme || state.currentTheme === 'default') ? ' active' : ''}" data-theme="default"><span>默认</span><span class="theme-check"></span></div>
+      <div class="theme-list-item${state.currentTheme === 'normal' ? ' active' : ''}" data-theme="normal"><span>护眼</span><span class="theme-check"></span></div>
+      <div class="theme-list-item${state.currentTheme === 'yiban' ? ' active' : ''}" data-theme="yiban"><span>蓝色</span><span class="theme-check"></span></div>
+      <div class="theme-list-item${state.currentTheme === 'pixel' ? ' active' : ''}" data-theme="pixel"><span>怀旧</span><span class="theme-check"></span></div>
+    </div>
     <div class="func-item" data-func="toggle-auto-share">
       <div class="func-item-label">拍照后下载<div class="func-item-desc">拍照完成后提示下载图片</div></div>
       <div class="func-toggle ${state.autoShare ? 'on' : ''}" id="func-toggle-share"></div>
@@ -4053,12 +4524,35 @@ funcPanel.addEventListener('touchstart', (e) => {
 }, { passive: true });
 
 funcPanelBody.addEventListener('click', (e) => {
+  // 【v1.6.0】主题列表项点击（独立处理，不在 func-item 分支内）
+  const themeItem = e.target.closest('.theme-list-item');
+  if (themeItem) {
+    const theme = themeItem.dataset.theme;
+    state.currentTheme = theme;
+    applyTheme(theme);
+    saveThemeState();
+    // 更新列表高亮
+    funcPanelBody.querySelectorAll('.theme-list-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.theme === theme);
+    });
+    return; // 不关闭菜单，方便继续操作
+  }
   const item = e.target.closest('.func-item');
   if (!item) return;
   const func = item.dataset.func;
   if (func === 'open-filter') { closeFuncPanel(); setTimeout(() => openFilterSheet(), 300); }
   else if (func === 'open-batch-dl') { closeFuncPanel(); setTimeout(() => { initBatchModal(); batchModal.classList.add('show'); }, 300); }
   else if (func === 'open-cleanup') { closeFuncPanel(); setTimeout(() => { cleanupModal.classList.add('show'); }, 300); }
+  // 【v1.6.0】主题选择：展开/收起主题列表，不关闭菜单
+  else if (func === 'toggle-theme') {
+    const list = document.getElementById('theme-list');
+    const arrow = document.getElementById('theme-arrow');
+    if (list) {
+      const isShown = list.style.display !== 'none';
+      list.style.display = isShown ? 'none' : 'block';
+      if (arrow) arrow.textContent = isShown ? '›' : '⌄';
+    }
+  }
   else if (func === 'toggle-auto-share') {
     state.autoShare = !state.autoShare;
     saveAutoShareState();
@@ -4094,32 +4588,79 @@ funcPanelBody.addEventListener('click', (e) => {
     const toggle = document.getElementById('func-toggle-upload-wm');
     if (toggle) toggle.classList.toggle('on', state.uploadWatermark);
   }
-  // 【v1.3.0 菜单改名+重置功能】重置应用
+  // 【v1.3.0 菜单改名+重置功能】重置应用（v1.7.2 改为分批异步删除）
   else if (func === 'reset-app') {
     if (!confirm('此操作将清除所有图片和设置，不可恢复。确认重置？')) return;
     closeFuncPanel();
+    // 显示不可关闭的 loading 弹窗
+    cleanupLoadingText.textContent = '正在重置...';
+    cleanupLoadingModal.classList.add('show');
     (async () => {
+      let hasError = false;
       try {
-        // 清空 IndexedDB 中所有图片数据
+        // 第一步：分批异步清空 IndexedDB 所有 store
         if (dbIsFallback) {
           dbFallback = {};
         } else if (dbInstance) {
+          const db = await openDB();
           const storeNames = ['cells', 'seatNames', 'extraSeats', 'deletedSeats'];
+          const BATCH_SIZE = 50;
           for (const storeName of storeNames) {
             try {
-              const tx = dbInstance.transaction(storeName, 'readwrite');
-              const store = tx.objectStore(storeName);
-              store.clear();
-              await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = reject; });
-            } catch (e) { console.warn('清空 store 出错:', storeName, e); }
+              // 统计该 store 总数
+              let totalCount = 0;
+              await new Promise((resolve) => {
+                const tx = db.transaction(storeName, 'readonly');
+                const countReq = tx.objectStore(storeName).count();
+                countReq.onsuccess = () => { totalCount = countReq.result; resolve(); };
+                countReq.onerror = () => resolve();
+              });
+              // 分批游标删除
+              let processed = 0;
+              let done = false;
+              while (!done) {
+                const batchKeys = [];
+                await new Promise((resolve) => {
+                  const tx = db.transaction(storeName, 'readonly');
+                  const req = tx.objectStore(storeName).openCursor();
+                  req.onsuccess = (e) => {
+                    const cursor = e.target.result;
+                    if (cursor && batchKeys.length < BATCH_SIZE) {
+                      batchKeys.push(cursor.primaryKey);
+                      cursor.continue();
+                    } else { resolve(); }
+                  };
+                  req.onerror = () => resolve();
+                });
+                if (batchKeys.length === 0) { done = true; break; }
+                // 删除本批
+                for (const key of batchKeys) {
+                  try { await dbDelete(storeName, key); } catch (e) { hasError = true; }
+                }
+                // 清除内存缓存（仅 cells store）
+                if (storeName === 'cells') {
+                  for (const key of batchKeys) {
+                    imageCountCache.set(key, 0);
+                    clearCellBlobCache(key);
+                  }
+                }
+                processed += batchKeys.length;
+                if (totalCount > 0) {
+                  const pct = Math.min(Math.round(processed / totalCount * 100), 99);
+                  cleanupLoadingText.textContent = `正在重置... ${pct}%`;
+                }
+                await new Promise(r => setTimeout(r, 0)); // 让出主线程
+              }
+            } catch (e) { console.warn('清空 store 出错:', storeName, e); hasError = true; }
           }
         }
-        // 清空 localStorage 中所有设置
+        // 第二步：清空 localStorage 中所有设置
         try { localStorage.clear(); } catch (e) {}
-        // 刷新页面，回到初始状态
+        // 第三步：刷新页面，回到初始状态
         location.reload();
       } catch (err) {
         console.error('重置出错:', err);
+        cleanupLoadingModal.classList.remove('show');
         showToast('重置出错，请手动清除浏览器数据');
       }
     })();
@@ -4138,6 +4679,9 @@ window.addEventListener('error', (e) => {
   console.warn('全局异常:', e.message);
 });
 
+// 【v1.9.15】全局变量：SW registration，供标题点击检查更新使用
+let swRegistration = null;
+
 async function init() {
   try {
     await openDB();
@@ -4155,6 +4699,7 @@ async function init() {
     loadAllowDeleteState();
     loadShowLogoState(); // 【v1.3.2 新功能3】加载 LOGO 水印开关状态
     loadUploadWatermarkState(); // 【v1.3.9 新功能1】加载上传加水印开关状态
+    loadThemeState(); // 【v1.6.0】加载主题状态
     ensureFuncBtnText();
     startFuncBtnObserver();
     await renderMain();
@@ -4166,9 +4711,11 @@ async function init() {
   }
   // 【v1.2.2 微信兼容】SW 注册包裹在 try-catch 中，微信浏览器中失败不影响主功能
   // 微信内置浏览器中跳过 SW 注册（兼容性差且无 PWA 需求）
+  // 【v1.9.13】swRegistration 移至全局，供全局事件委托中的 check-update 使用
   if (!isWeChat && 'serviceWorker' in navigator) {
     try {
       navigator.serviceWorker.register('./sw.js').then(reg => {
+        swRegistration = reg;
         if (reg.waiting) { try { showUpdateBar(reg.waiting); } catch(e) {} }
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
@@ -4207,6 +4754,7 @@ async function init() {
       };
     } catch(e) {}
   }
+  // 【v1.9.13】标题点击检查更新已移至全局事件委托（data-action="check-update"），此处不再绑定
 }
 // 【v1.2.2 微信兼容】最外层 try-catch 防止任何未捕获异常导致页面崩溃
 try {
