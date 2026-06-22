@@ -815,7 +815,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.9.33';
+const APP_VERSION = 'v1.9.40';
 const DB_NAME = 'SeatImageDB';
 const DB_VERSION = 4;
 // 【v1.3.2 Bug1修复】将平台检测移到顶部，确保拼接函数可正确访问
@@ -2240,6 +2240,8 @@ captureInput.addEventListener('change', async (e) => {
       createdAt: Date.now(),
       seatName: sName,
       beijingTime: bTime,
+      isHighResReady: true,  // 【v1.9.37】拍照同步生成高清 Blob，立即可用
+      processingState: 'processing', // 【v1.9.39】后台存储进行中
       // 【关键】Blob 缓存，预览和拼接直接使用，不依赖 IndexedDB
       _fullBlob: fullBlob,
       _thumbBlob: thumbBlob,
@@ -2275,6 +2277,7 @@ captureInput.addEventListener('change', async (e) => {
           const lastIdx = cd.images.length - 1;
           cd.images[lastIdx].data = watermarked;
           cd.images[lastIdx].thumbnail = thumbnail;
+          cd.images[lastIdx].processingState = 'done'; // 【v1.9.39】后台存储完成
           await saveCellData(ck, cd.images);
           // 数据已持久化，刷新 DOM 缓存
           invalidateTimeslotCache(sk);
@@ -2294,6 +2297,16 @@ captureInput.addEventListener('change', async (e) => {
         }
       } catch (err) {
         console.error('后台存储出错:', err);
+        // 【v1.9.39】标记失败并自动重试
+        try {
+          const cd = await getCellData(ck);
+          if (cd && cd.images && cd.images.length > 0) {
+            const lastIdx = cd.images.length - 1;
+            cd.images[lastIdx].processingState = 'failed';
+            await saveCellData(ck, cd.images);
+            retryFailedProcessing(ck, lastIdx);
+          }
+        } catch (e2) { console.error('标记失败状态出错:', e2); }
       }
     };
     if ('requestIdleCallback' in window) {
@@ -2313,6 +2326,13 @@ uploadInput.addEventListener('change', async (e) => {
   if (!file || !currentUploadCellKey) { uploadInput.value = ''; return; }
   const ck = currentUploadCellKey; currentUploadCellKey = null;
   try {
+    // 【v1.9.40】上传入口拦截：检查当前单元格是否有图片正在后台处理
+    const existingData = await getCellData(ck);
+    if (existingData && existingData.images && existingData.images.some(img => img.processingState === 'processing')) {
+      showToast('图片正在处理中，请稍后再试');
+      uploadInput.value = '';
+      return;
+    }
     const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
     const sName = getSeatNameSync(fid, aname, sidx);
     const bTime = getBeijingTime();
@@ -2334,6 +2354,8 @@ uploadInput.addEventListener('change', async (e) => {
       createdAt: Date.now(),
       seatName: sName,
       beijingTime: bTime,
+      isHighResReady: false, // 【v1.9.37】上传占位图，高清源尚未就绪
+      processingState: 'processing', // 【v1.9.39】后台处理进行中
       _placeholder: true
     };
     images.push(placeholderImg);
@@ -2395,7 +2417,7 @@ uploadInput.addEventListener('change', async (e) => {
           const cd = await getCellData(ck);
           if (cd && cd.images && cd.images.length > 0) {
             const lastIdx = cd.images.length - 1;
-            cd.images[lastIdx] = { data: watermarked, thumbnail, type: 'upload', createdAt: Date.now(), seatName: sName, beijingTime: bTime };
+            cd.images[lastIdx] = { data: watermarked, thumbnail, type: 'upload', createdAt: Date.now(), seatName: sName, beijingTime: bTime, isHighResReady: true, processingState: 'done' };
             await saveCellData(ck, cd.images);
             invalidateTimeslotCache(sk);
             await renderTimeSlots(sk);
@@ -2409,7 +2431,7 @@ uploadInput.addEventListener('change', async (e) => {
           const cd = await getCellData(ck);
           if (cd && cd.images && cd.images.length > 0) {
             const lastIdx = cd.images.length - 1;
-            cd.images[lastIdx] = { data: original, thumbnail, type: 'upload', createdAt: Date.now(), seatName: sName, beijingTime: bTime };
+            cd.images[lastIdx] = { data: original, thumbnail, type: 'upload', createdAt: Date.now(), seatName: sName, beijingTime: bTime, isHighResReady: true, processingState: 'done' };
             await saveCellData(ck, cd.images);
             invalidateTimeslotCache(sk);
             await renderTimeSlots(sk);
@@ -2419,6 +2441,16 @@ uploadInput.addEventListener('change', async (e) => {
         }
       } catch (err) {
         console.error('上传后台处理出错:', err);
+        // 【v1.9.39】标记失败并自动重试
+        try {
+          const cd = await getCellData(ck);
+          if (cd && cd.images && cd.images.length > 0) {
+            const lastIdx = cd.images.length - 1;
+            cd.images[lastIdx].processingState = 'failed';
+            await saveCellData(ck, cd.images);
+            retryFailedProcessing(ck, lastIdx);
+          }
+        } catch (e2) { console.error('标记上传失败状态出错:', e2); }
       }
     };
     if ('requestIdleCallback' in window) {
@@ -2432,6 +2464,70 @@ uploadInput.addEventListener('change', async (e) => {
   }
   uploadInput.value = '';
 });
+
+// 【v1.9.40】失败自动恢复：清理损坏数据 + 重新生成高清水印图
+async function retryFailedProcessing(cellKey, imgIdx) {
+  // 延迟 2 秒后重试，避免立即重试导致连续失败
+  await new Promise(r => setTimeout(r, 2000));
+  try {
+    const cd = await getCellData(cellKey);
+    if (!cd || !cd.images || !cd.images[imgIdx]) return;
+    const img = cd.images[imgIdx];
+    if (img.processingState !== 'failed') return; // 已被其他流程处理
+    img.processingState = 'processing';
+    await saveCellData(cellKey, cd.images);
+
+    // 第一步：清理损坏的缩略图/数据
+    const sk = cellToSeatKey(cellKey);
+
+    // 第二步：尝试从内存 Blob 缓存重新生成
+    const memBlob = getMemoryBlobURL(cellKey, imgIdx);
+    if (memBlob && memBlob.fullBlobURL) {
+      try {
+        // 从内存 Blob 重新转 Base64 存入 IndexedDB
+        const resp = await fetch(memBlob.fullBlobURL);
+        const blob = await resp.blob();
+        const watermarked = await blobToDataURL(blob);
+        img.data = watermarked;
+        img.processingState = 'done';
+        await saveCellData(cellKey, cd.images);
+        invalidateTimeslotCache(sk);
+        await renderTimeSlots(sk);
+        notifyPreviewDataReady(cellKey);
+        return;
+      } catch (e) { console.warn('从内存Blob重试失败:', e); }
+    }
+
+    // 第三步：内存缓存不可用，尝试从现有 data 字段重新生成缩略图
+    if (img.data && img.data.length > 100) {
+      // data 字段有有效数据，只需重新生成缩略图
+      try {
+        const thumbnail = await generateThumbnail(img.data);
+        img.thumbnail = thumbnail;
+        img.processingState = 'done';
+        await saveCellData(cellKey, cd.images);
+        invalidateTimeslotCache(sk);
+        await renderTimeSlots(sk);
+        notifyPreviewDataReady(cellKey);
+        return;
+      } catch (e) { console.warn('重新生成缩略图失败:', e); }
+    }
+
+    // 第四步：数据不完整，无法恢复，标记为 done 避免无限重试
+    img.processingState = 'done';
+    await saveCellData(cellKey, cd.images);
+  } catch (err) {
+    console.error('重试失败:', err);
+    // 重试也失败，标记为 done 避免无限重试
+    try {
+      const cd2 = await getCellData(cellKey);
+      if (cd2 && cd2.images && cd2.images[imgIdx]) {
+        cd2.images[imgIdx].processingState = 'done';
+        await saveCellData(cellKey, cd2.images);
+      }
+    } catch (e3) { /* 放弃 */ }
+  }
+}
 
 // ============================================================
 // 七、下载
@@ -2554,6 +2650,8 @@ let concatImageData = [];   // 当前可选的全部图片对象
 let concatSelected = [];    // 当前选中的索引（按勾选顺序）
 let concatMaxSelect = 3;    // 最多可选张数
 let concatMode = 'simple';  // 'simple'=2~3张直接选横/竖拼, 'select'=4~6张需选图片
+// 【v1.9.26】拼接选择记忆：记住同一批次的勾选状态，切换时段后重置
+let concatSelectedKey = '';  // 当前批次的标识（selectedCells 排序拼接）
 
 // 【v1.1.1】打开拼接面板
 function openConcatSheet() {
@@ -2780,12 +2878,28 @@ async function doStitch(imgObjs, direction) {
 const EXPAND_SVG = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 3h6v2H5v4H3V3zm12 0h6v6h-2V5h-4V3zM3 15h2v4h4v2H3v-6zm16 4h-4v2h6v-6h-2v4z"/></svg>';
 
 // 【v1.1.1 改造】渲染拼接选择面板（4~6张图片时显示缩略图网格）
+// 【v1.9.26】同一批次（selectedCells 不变）记住勾选状态，切换时段后重置为默认
 function showConcatSelectModal(allImgs) {
   concatImageData = allImgs;
-  concatSelected = [];
-  concatMaxSelect = 3;
-  const defaultCount = Math.min(3, allImgs.length);
-  for (let i = 0; i < defaultCount; i++) concatSelected.push(i);
+  // 计算当前批次标识
+  const currentKey = [...state.selectedCells].sort().join(',');
+  const sameBatch = (currentKey === concatSelectedKey && concatSelected.length > 0);
+  concatSelectedKey = currentKey;
+
+  if (sameBatch) {
+    // 同一批次：恢复上次勾选（过滤越界索引）
+    concatSelected = concatSelected.filter(i => i < allImgs.length);
+    if (concatSelected.length === 0) {
+      const defaultCount = Math.min(3, allImgs.length);
+      concatSelected = [];
+      for (let i = 0; i < defaultCount; i++) concatSelected.push(i);
+    }
+  } else {
+    // 新批次：重置为默认前三张
+    concatSelected = [];
+    const defaultCount = Math.min(3, allImgs.length);
+    for (let i = 0; i < defaultCount; i++) concatSelected.push(i);
+  }
 
   concatSheetTitle.textContent = '选择拼接图片（最多3张）';
   concatBtnsSimple.style.display = 'none';
@@ -2903,6 +3017,9 @@ async function downloadConcatenated() {
   try {
   const allImageData = await getSelectedImagesData();
   if (allImageData.length === 0) { showToast('无图片可拼接'); return; }
+  // 【v1.9.39】仅拦截拼接预览：有图片正在后台处理时阻止
+  const hasProcessing = allImageData.some(img => img.processingState === 'processing');
+  if (hasProcessing) { showToast('图片正在处理中，请稍后再试'); return; }
 
   if (allImageData.length === 1) {
     showToast('需选择2张及以上图片才能拼接');
@@ -3079,6 +3196,9 @@ let pvImages = [], pvIndex = 0;
 const pvCache = new Map();
 const PV_CACHE_MAX = 20; // 【性能优化】预览缓存最大条目数，防止内存无限增长
 const pvStates = []; // 每张图片独立的变换状态 { scale, tx, ty }
+// 【v1.9.38】解码代际：touchstart 时递增，使正在进行的解码失效
+let pvDecodeGen = 0;
+let pvDecodeResumeTimer = null;
 
 // 【v1.5.5】高清源就绪通知：后台存储完成后，若预览弹窗正在显示且对应图片处于 loading 状态，触发重新加载
 function notifyPreviewDataReady(cellKey) {
@@ -3238,6 +3358,7 @@ function pvApplySlideOffset() {
 // 【终极方案】优先使用 _fullBlobURL（拍照后同步生成），避免重新 Canvas 水印绘制
 async function pvLoadFullImage(idx) {
   if (idx < 0 || idx >= pvImages.length) return;
+  const gen = pvDecodeGen; // 【v1.9.38】捕获当前代际，异步回调中检查是否过期
   const slide = previewScroller.children[idx];
   if (!slide || slide.dataset.loaded === '1') return;
   const imgEl = slide ? slide.querySelector('img') : null;
@@ -3245,6 +3366,8 @@ async function pvLoadFullImage(idx) {
   try {
     // 【v1.5.5】加载完成后移除 loading spinner 并淡入图片
     const finishLoad = (src) => {
+      // 【v1.9.38】代际已变，丢弃过期结果
+      if (pvDecodeGen !== gen) return;
       // 移除 loading spinner
       const spinner = slide.querySelector('.pv-loading');
       if (spinner) spinner.remove();
@@ -3311,10 +3434,11 @@ async function pvLoadFullImage(idx) {
 }
 
 /** 【性能优化】释放远离当前视口的图片 src，减少内存占用
- *  【性能优化-深度】不释放内存 Blob URL（持久缓存），只释放 data URL */
+ *  【性能优化-深度】不释放内存 Blob URL（持久缓存），只释放 data URL
+ *  【v1.9.36】范围从 >2 收紧到 >1，只保留当前+左右各1张 */
 function pvReleaseDistantImages() {
   for (let i = 0; i < pvImages.length; i++) {
-    if (Math.abs(i - pvIndex) > 2) {
+    if (Math.abs(i - pvIndex) > 1) {
       const slide = previewScroller.children[i];
       if (!slide) continue;
       const imgEl = slide.querySelector('img');
@@ -3327,6 +3451,18 @@ function pvReleaseDistantImages() {
       }
     }
   }
+}
+
+// 【v1.9.38】恢复解码：触摸结束后延迟解码当前+左右各1张
+function pvResumeDecoding() {
+  clearTimeout(pvDecodeResumeTimer);
+  pvDecodeResumeTimer = setTimeout(() => {
+    // 只解码当前+左右各1张
+    for (let i = Math.max(0, pvIndex - 1); i <= Math.min(pvImages.length - 1, pvIndex + 1); i++) {
+      pvLoadFullImage(i);
+    }
+    pvReleaseDistantImages();
+  }, 50); // 50ms 延迟，让手势动画先完成
 }
 
 // ---- 动画 ----
@@ -3351,10 +3487,9 @@ function pvAnimateTransition(targetSlideOffset, targetIndex, duration, onDone) {
         pvIndex = targetIndex;
         pvResetImg(pvIndex);
         pvUpdateIndicator();
-        // 异步加载相邻图片
+        // 【v1.9.38】动画完成后解码相邻图片
         pvLoadFullImage(pvIndex - 1);
         pvLoadFullImage(pvIndex + 1);
-        // 【性能优化】释放远离视口的图片内存
         pvReleaseDistantImages();
       }
       pvApplySlideOffset();
@@ -3622,6 +3757,9 @@ previewModal.addEventListener('contextmenu', (e) => e.preventDefault());
 
 previewModal.addEventListener('touchstart', (e) => {
   if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  // 【v1.9.38】递增解码代际，使所有正在进行的解码失效
+  pvDecodeGen++;
+  clearTimeout(pvDecodeResumeTimer);
   pvShowSaveBtn(); // 【修改4】触摸时立即显示保存按钮
   if (e.touches.length === 2) {
     e.preventDefault();
@@ -3798,6 +3936,7 @@ previewModal.addEventListener('touchend', (e) => {
     if (pvDownOffset > 80) closePreview();
     else pvAnimateDownBounce();
     pvGesture = 'idle';
+    pvResumeDecoding();
     return;
   }
 
@@ -3815,6 +3954,7 @@ previewModal.addEventListener('touchend', (e) => {
     pvAnimateTransition(targetOffset, targetIndex, 250);
     pvGesture = 'idle';
     pvEdgeOverflow = 0;
+    pvResumeDecoding();
     return;
   }
 
@@ -3828,6 +3968,7 @@ previewModal.addEventListener('touchend', (e) => {
     }
     pvGesture = 'idle';
     pvEdgeOverflow = 0;
+    pvResumeDecoding();
     return;
   }
 
@@ -3859,6 +4000,7 @@ previewModal.addEventListener('touchend', (e) => {
     }
   }
   pvGesture = 'idle';
+  pvResumeDecoding();
 }, { passive: false });
 
 // ---- 鼠标滚轮缩放（PC 端） ----
@@ -4161,7 +4303,7 @@ function updateDownloadBtnText() {
 // 【v1.3.0】事件绑定：下载按钮替换原分享按钮
 document.getElementById('btn-download-separate').addEventListener('click', downloadSelectedImages);
 document.getElementById('btn-download-concat').addEventListener('click', downloadConcatenated);
-document.getElementById('btn-clear-select').addEventListener('click', () => { state.selectedCells = []; document.querySelectorAll('.ts-checkbox.checked').forEach(cb => cb.classList.remove('checked')); updateBottomBar(); });
+document.getElementById('btn-clear-select').addEventListener('click', () => { state.selectedCells = []; concatSelectedKey = ''; document.querySelectorAll('.ts-checkbox.checked').forEach(cb => cb.classList.remove('checked')); updateBottomBar(); });
 
 // ============================================================
 // 十二、事件委托
