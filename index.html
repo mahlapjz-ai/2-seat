@@ -298,7 +298,9 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
    纹理：CSS 模拟水彩纸纹 + 柔和云影
    ============================================================ */
 /* 全局底色：天空蓝到草地暖绿渐变，模拟吉卜力经典天空 */
-.theme-normal{background:linear-gradient(175deg,#e8f0f8 0%,#eaf2e4 40%,#f2f0e4 75%,#f8f4ec 100%);color:#4A3728}
+/* 【v1.9.23】使用 repeating-linear-gradient 实现垂直镜像交替平铺，消除拼接痕迹 */
+html.theme-normal{background:repeating-linear-gradient(175deg,#e8f0f8 0%,#eaf2e4 20%,#f2f0e4 37.5%,#f8f4ec 50%,#f2f0e4 62.5%,#eaf2e4 80%,#e8f0f8 100%);min-height:100%;background-size:100% 100vh}
+.theme-normal{background:transparent;color:#4A3728}
 /* 水彩纸纹 + 淡云纹理（#app::before，不遮挡固定元素） */
 .theme-normal #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(45deg,transparent,transparent 2px,rgba(200,185,165,.03) 2px,rgba(200,185,165,.03) 4px),radial-gradient(ellipse 65% 30% at 20% 10%,rgba(255,255,255,.45) 0%,transparent 70%),radial-gradient(ellipse 50% 25% at 80% 18%,rgba(255,255,255,.35) 0%,transparent 60%),radial-gradient(ellipse 80% 28% at 50% 82%,rgba(232,242,228,.3) 0%,transparent 55%)}
 /* 交互元素提升层级（modal-box 已有 fixed 定位，不覆盖其 position） */
@@ -406,7 +408,10 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
    色彩：铁灰 + 沙黄 + 霓虹青 #00ffff + 暗红 #cc3333 + 暗橙 #e8820c
    ============================================================ */
 /* 全局底色：铁灰到沙黄渐变 + 裂痕纹理 */
-.theme-yiban{background:linear-gradient(170deg,#3c3c46 0%,#4a4540 30%,#5a5040 60%,#6a6050 100%);color:#c8c8c8}
+/* 【v1.9.23】使用 repeating-linear-gradient 实现垂直镜像交替平铺，消除拼接痕迹 */
+/* 【v1.9.24】背景改为纯垂直渐变 + repeating-linear-gradient 镜像交替平铺，消除斜向渐变拼接痕迹 */
+html.theme-yiban{background:repeating-linear-gradient(180deg,#3c3c46 0%,#4a4540 15%,#5a5040 30%,#6a6050 50%,#5a5040 70%,#4a4540 85%,#3c3c46 100%);min-height:100%;background-size:100% 100vh}
+.theme-yiban{background:transparent;color:#c8c8c8}
 /* 锈蚀金属纹理 + 扫描线（#app::before） */
 .theme-yiban #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,255,.015) 3px,rgba(0,255,255,.015) 4px),repeating-linear-gradient(90deg,transparent,transparent 80px,rgba(100,90,70,.06) 80px,rgba(100,90,70,.06) 81px),radial-gradient(ellipse 60% 40% at 30% 20%,rgba(0,255,255,.04) 0%,transparent 60%),radial-gradient(ellipse 50% 35% at 75% 70%,rgba(204,51,51,.03) 0%,transparent 55%)}
 /* 交互元素提升层级 */
@@ -526,7 +531,9 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
    悬停：像素位移按压效果 translate(2px,2px) + shadow 缩短
    ============================================================ */
 /* 全局底色：MC 天空淡蓝到草地绿渐变 + 像素点阵纹理 */
-.theme-pixel{background:linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 60%,#7ec850 100%);color:#4a3728}
+/* 【v1.9.23】使用 repeating-linear-gradient 实现垂直镜像交替平铺，消除拼接痕迹 */
+html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 30%,#7ec850 50%,#a8d8a8 70%,#7ec8e8 100%);min-height:100%;background-size:100% 100vh}
+.theme-pixel{background:transparent;color:#4a3728}
 /* 像素点阵纹理（#app::before） */
 .theme-pixel #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.02) 3px,rgba(0,0,0,.02) 4px),repeating-linear-gradient(90deg,transparent,transparent 3px,rgba(0,0,0,.02) 3px,rgba(0,0,0,.02) 4px)}
 /* 交互元素提升层级 */
@@ -641,7 +648,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 <body>
 <div class="update-bar" id="update-bar">有新版本可用，点击刷新</div>
 <!-- 【修复文字消失】page-header 移出 app，作为静态 DOM，不会被 renderMain 重建 -->
-<div class="page-header" id="page-header"><span class="page-title" data-action="check-update" onclick="handleTitleClick()">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">菜单</button></div>
+<div class="page-header" id="page-header"><span class="page-title" data-action="check-update" onclick="handleTitleClick()" style="pointer-events:auto!important;position:relative;z-index:99;cursor:pointer">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">菜单</button></div>
 <div id="app"></div>
 <div id="bottom-bar">
   <span id="selected-count">已选 0 个时段</span>
@@ -755,7 +762,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.9.20';
+const APP_VERSION = 'v1.9.24';
 const DB_NAME = 'SeatImageDB';
 const DB_VERSION = 4;
 // 【v1.3.2 Bug1修复】将平台检测移到顶部，确保拼接函数可正确访问
@@ -1078,12 +1085,12 @@ function loadThemeState() {
   } catch (e) {}
 }
 function applyTheme(theme) {
-  // 【v1.9.0】支持"像素"主题；【v1.9.20】同步清理 <html> 上的阻塞渲染类名
+  // 【v1.9.22】同时在 <html> 和 <body> 上添加主题类名，确保背景覆盖整个文档画布
   document.documentElement.className = '';
   document.body.className = '';
-  if (theme === 'normal') document.body.classList.add('theme-normal');
-  if (theme === 'yiban') document.body.classList.add('theme-yiban');
-  if (theme === 'pixel') document.body.classList.add('theme-pixel');
+  if (theme === 'normal') { document.documentElement.classList.add('theme-normal'); document.body.classList.add('theme-normal'); }
+  if (theme === 'yiban') { document.documentElement.classList.add('theme-yiban'); document.body.classList.add('theme-yiban'); }
+  if (theme === 'pixel') { document.documentElement.classList.add('theme-pixel'); document.body.classList.add('theme-pixel'); }
 }
 
 // 【v1.3.18 修复】筛选状态 localStorage 键名（隔离旧键名，避免被旧数据污染）
@@ -4106,7 +4113,8 @@ document.addEventListener('click', async (e) => {
   const floorBtn = target.closest('[data-action="toggle-floor"]');
   if (floorBtn) { const fid = parseInt(floorBtn.dataset.floor); state.expandedFloors.has(fid) ? state.expandedFloors.delete(fid) : state.expandedFloors.add(fid); saveUIState(); renderMain(); return; }
   const areaBtn = target.closest('[data-action="toggle-area"]');
-  if (areaBtn) { const fid = parseInt(areaBtn.dataset.floor), aname = areaBtn.dataset.area, ak = areaKey(fid, aname); state.expandedAreas.has(ak) ? state.expandedAreas.delete(ak) : state.expandedAreas.add(ak); saveUIState(); renderMain(); return; }
+  // 【v1.9.21】手风琴模式：同楼层只能展开一个区域，展开新区域时自动收起同楼层其他区域
+  if (areaBtn) { const fid = parseInt(areaBtn.dataset.floor), aname = areaBtn.dataset.area, ak = areaKey(fid, aname); if (state.expandedAreas.has(ak)) { state.expandedAreas.delete(ak); } else { state.expandedAreas.add(ak); for (const k of [...state.expandedAreas]) { if (k !== ak && k.startsWith(fid + '-')) state.expandedAreas.delete(k); } } saveUIState(); renderMain(); return; }
   const seatBtn = target.closest('[data-action="toggle-seat"]');
   if (seatBtn) { const fid = parseInt(seatBtn.dataset.floor), aname = seatBtn.dataset.area, sidx = parseInt(seatBtn.dataset.seat), sk = seatKey(fid, aname, sidx); const prev = [...state.expandedSeats]; state.expandedSeats.clear(); if (!prev.includes(sk)) state.expandedSeats.add(sk); saveUIState(); renderMain(); return; }
   const addBtn = target.closest('[data-action="add-seat"]');
@@ -4212,26 +4220,26 @@ document.addEventListener('click', async (e) => {
 });
 
 // ============================================================
-// 十二-A、标题点击检查更新（内联事件兜底 + 事件委托双保险）
-// 【v1.9.16】彻底修复：非默认主题下标题点击失效
-//   - 内联 onclick="handleTitleClick()" 最高优先级，不受 CSS/DOM/冒泡影响
-//   - document.body 事件委托作为备份
-//   - 防抖存储在 window.__updateCheckDebounce，全局唯一
+// 十二-A、标题点击检查更新（纯内联 onclick，最原始最稳固）
+// 【v1.9.22】修复非默认主题下标题点击失效
+//   - 仅使用内联 onclick="handleTitleClick()"
+//   - 行内样式 pointer-events:auto!important; z-index:99 防遮挡
+//   - 防抖存储在 window.__updateCheckTimer，3秒内不允许重复触发
 // ============================================================
-window.__updateCheckDebounce = false;
+window.__updateCheckTimer = false;
 function handleTitleClick() {
-  if (window.__updateCheckDebounce) return;
-  window.__updateCheckDebounce = true;
-  setTimeout(() => { window.__updateCheckDebounce = false; }, 3000);
+  if (window.__updateCheckTimer) return;
+  window.__updateCheckTimer = true;
+  setTimeout(function() { window.__updateCheckTimer = false; }, 3000);
   try {
     if (swRegistration && swRegistration.waiting) {
       try { saveFilterState(); } catch(ex) {}
       swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
+      navigator.serviceWorker.addEventListener('controllerchange', function() {
         try { saveFilterState(); } catch(ex) {}
         window.location.reload();
       });
-      setTimeout(() => {
+      setTimeout(function() {
         try { saveFilterState(); } catch(ex) {}
         window.location.reload();
       }, 1000);
@@ -4240,11 +4248,6 @@ function handleTitleClick() {
     }
   } catch(ex) { console.warn('检查更新失败:', ex); }
 }
-// 事件委托备份：通过 data-action="check-update" 匹配，调用同一个 handleTitleClick
-document.body.addEventListener('click', function(e) {
-  if (!e.target.closest('[data-action="check-update"]')) return;
-  handleTitleClick();
-}, true);
 
 // ============================================================
 // 十二-B、时段筛选面板
