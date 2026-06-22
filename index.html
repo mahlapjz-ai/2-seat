@@ -196,8 +196,8 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 #concat-sheet .concat-thumb img{width:100%;height:100%;object-fit:cover;display:block}
 /* 【v1.1.1】全屏图标替换"展开"文字 */
 /* 【v1.3.1 Bug3修复】纯图标按钮：44×44px 点击热区，无多余背景，图标放大至 20px */
-/* 【v1.3.6 修复1】图标移至左下角边缘，距左/下各5px；视觉缩小至18px，触摸热区保持44×44px */
-#concat-sheet .concat-thumb .thumb-expand{position:absolute;left:5px;bottom:5px;width:44px;height:44px;background:transparent;border-radius:4px;cursor:pointer;z-index:2;display:flex;align-items:center;justify-content:center;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+/* 【v1.9.33】全屏图标紧贴左下角，热区 44×44px 从边缘开始，图标在热区内靠左下对齐 */
+#concat-sheet .concat-thumb .thumb-expand{position:absolute;left:0;bottom:0;width:44px;height:44px;background:transparent;border-radius:4px;cursor:pointer;z-index:2;display:flex;align-items:flex-end;justify-content:flex-start;padding:3px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 #concat-sheet .concat-thumb .thumb-expand svg{width:18px;height:18px;fill:rgba(255,255,255,.85);filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
 #concat-sheet .concat-thumb .thumb-check{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px}
 #concat-sheet .concat-thumb.selected .thumb-check{background:#1890ff}
@@ -257,7 +257,8 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .cleanup-spinner{width:36px;height:36px;margin:0 auto;border:3px solid #e8e8e8;border-top-color:#1890ff;border-radius:50%;animation:cleanup-spin .8s linear infinite}
 @keyframes cleanup-spin{to{transform:rotate(360deg)}}
 
-.toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);color:#fff;padding:14px 28px;border-radius:8px;font-size:15px;z-index:300;pointer-events:none;animation:toast-fade 2s forwards}
+/* 【v1.9.30】使用 top/left/right/bottom:0 + margin:auto 居中，避免移动端滚动时 fixed+top:50%+transform 偏移 */
+.toast{position:fixed;top:0;left:0;right:0;bottom:0;margin:auto;width:max-content;height:max-content;max-width:80vw;background:rgba(0,0,0,.75);color:#fff;padding:14px 28px;border-radius:8px;font-size:15px;z-index:300;pointer-events:none;animation:toast-fade 2s forwards}
 @keyframes toast-fade{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
 
 /* 时段筛选按钮 */
@@ -312,7 +313,9 @@ html.theme-normal{background:repeating-linear-gradient(175deg,#e8f0f8 0%,#eaf2e4
 /* 水彩纸纹 + 淡云纹理（#app::before，不遮挡固定元素） */
 .theme-normal #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(45deg,transparent,transparent 2px,rgba(200,185,165,.03) 2px,rgba(200,185,165,.03) 4px),radial-gradient(ellipse 65% 30% at 20% 10%,rgba(255,255,255,.45) 0%,transparent 70%),radial-gradient(ellipse 50% 25% at 80% 18%,rgba(255,255,255,.35) 0%,transparent 60%),radial-gradient(ellipse 80% 28% at 50% 82%,rgba(232,242,228,.3) 0%,transparent 55%)}
 /* 交互元素提升层级（modal-box 已有 fixed 定位，不覆盖其 position） */
-.theme-normal #app,.theme-normal #bottom-bar,.theme-normal .toast{position:relative;z-index:1}
+.theme-normal #app{position:relative;z-index:1}
+/* 【v1.9.26】#bottom-bar 保持 fixed 定位，仅提升 z-index */
+.theme-normal #bottom-bar{z-index:100}
 /* 页面标题：衬线体 + 暗红墨水感 */
 .theme-normal .page-header{background:linear-gradient(175deg,#e8f0f8 0%,#eaf2e4 100%);position:relative;z-index:10}
 .theme-normal .page-title{font-family:Georgia,'KaiTi','STKaiti',serif;color:#5B3A1A;letter-spacing:1.5px;text-shadow:0 1px 2px rgba(91,58,26,.08)}
@@ -397,8 +400,21 @@ html.theme-normal{background:repeating-linear-gradient(175deg,#e8f0f8 0%,#eaf2e4
 .theme-normal .batch-select-all{border-color:#7a9a5a;color:#5a7a3a}
 /* 拼接面板 */
 .theme-normal #concat-sheet{background:rgba(255,252,245,.97)}
-.theme-normal .concat-h{background:#6a9a4a}
-.theme-normal .concat-v{background:#8B7355}
+.theme-normal #concat-sheet .sheet-title{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal #concat-sheet .sheet-handle{background:#d4c8b0}
+/* 【v1.9.32】拼接按钮：使用 #concat-sheet 提升优先级，覆盖默认蓝紫配色 */
+.theme-normal #concat-sheet .concat-h{background:#6a9a4a;color:#fff;font-family:Georgia,'KaiTi','STKaiti',serif;border:1.5px solid #5a8a3a;border-radius:10px;box-shadow:0 2px 8px rgba(106,154,74,.2)}
+.theme-normal #concat-sheet .concat-v{background:#8B7355;color:#fff;font-family:Georgia,'KaiTi','STKaiti',serif;border:1.5px solid #7a6345;border-radius:10px;box-shadow:0 2px 8px rgba(139,115,85,.2)}
+.theme-normal #concat-sheet .concat-h:active,.theme-normal #concat-sheet .concat-h._pressing{transform:scale(.98);box-shadow:0 1px 4px rgba(106,154,74,.2)}
+.theme-normal #concat-sheet .concat-v:active,.theme-normal #concat-sheet .concat-v._pressing{transform:scale(.98);box-shadow:0 1px 4px rgba(139,115,85,.2)}
+.theme-normal #concat-sheet .concat-h:disabled,.theme-normal #concat-sheet .concat-v:disabled{background:#c8bca8;color:#9a8a70;border-color:#b8a898;box-shadow:none;cursor:not-allowed}
+.theme-normal #concat-sheet button:disabled{background:#c8bca8;color:#9a8a70;border-color:#b8a898;box-shadow:none;cursor:not-allowed}
+.theme-normal #concat-sheet .concat-thumb{border-radius:8px;border-color:#d4c8b0;background:#f5f0e5}
+.theme-normal #concat-sheet .concat-thumb.selected{border-color:#6a9a4a}
+.theme-normal #concat-sheet .concat-thumb.selected .thumb-check{background:#6a9a4a}
+/* 【v1.9.32】保存图片按钮：吉卜力暖色系 */
+.theme-normal #preview-save-btn{background:rgba(106,154,74,.92);font-family:Georgia,'KaiTi','STKaiti',serif;border:1.5px solid #5a8a3a;border-radius:10px;box-shadow:0 2px 8px rgba(106,154,74,.3)}
+.theme-normal #preview-save-btn:active{opacity:.85}
 /* 缩略图 */
 .theme-normal .thumb-wrap{border-color:#d4c8b0}
 /* 新增/删除座位 */
@@ -422,8 +438,10 @@ html.theme-yiban{background:repeating-linear-gradient(180deg,#3c3c46 0%,#4a4540 
 .theme-yiban{background:transparent;color:#c8c8c8}
 /* 锈蚀金属纹理 + 扫描线（#app::before） */
 .theme-yiban #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,255,.015) 3px,rgba(0,255,255,.015) 4px),repeating-linear-gradient(90deg,transparent,transparent 80px,rgba(100,90,70,.06) 80px,rgba(100,90,70,.06) 81px),radial-gradient(ellipse 60% 40% at 30% 20%,rgba(0,255,255,.04) 0%,transparent 60%),radial-gradient(ellipse 50% 35% at 75% 70%,rgba(204,51,51,.03) 0%,transparent 55%)}
-/* 交互元素提升层级 */
-.theme-yiban #app,.theme-yiban #bottom-bar,.theme-yiban .toast{position:relative;z-index:1}
+/* 【v1.9.29】.toast 保持 fixed 定位，仅 #app 提升 z-index */
+.theme-yiban #app{position:relative;z-index:1}
+/* 【v1.9.26】#bottom-bar 保持 fixed 定位，仅提升 z-index */
+.theme-yiban #bottom-bar{z-index:100}
 /* 页面标题：霓虹青发光 */
 .theme-yiban .page-header{background:linear-gradient(170deg,#3c3c46 0%,#4a4540 100%);position:relative;z-index:10}
 .theme-yiban .page-title{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 15px rgba(0,255,255,.5),0 0 5px rgba(0,255,255,.4);letter-spacing:2px;font-weight:700}
@@ -510,8 +528,21 @@ html.theme-yiban{background:repeating-linear-gradient(180deg,#3c3c46 0%,#4a4540 
 .theme-yiban .batch-select-all{border-color:#00cccc;color:#00cccc}
 /* 拼接面板 */
 .theme-yiban #concat-sheet{background:rgba(45,45,52,.97)}
-.theme-yiban .concat-h{background:#00888a;box-shadow:0 0 6px rgba(0,255,255,.2)}
-.theme-yiban .concat-v{background:#8a5500}
+.theme-yiban #concat-sheet .sheet-title{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 6px rgba(0,255,255,.3)}
+.theme-yiban #concat-sheet .sheet-handle{background:rgba(0,255,255,.25)}
+/* 【v1.9.32】拼接按钮：使用 #concat-sheet 提升优先级，覆盖默认蓝紫配色 */
+.theme-yiban #concat-sheet .concat-h{background:#00888a;color:#fff;font-family:'Segoe UI','Helvetica Neue',sans-serif;border:2px solid rgba(0,255,255,.5);border-radius:4px;box-shadow:0 0 8px rgba(0,255,255,.2),inset 0 0 20px rgba(0,0,0,.3);text-shadow:0 0 6px rgba(0,255,255,.3)}
+.theme-yiban #concat-sheet .concat-v{background:#8a5500;color:#fff;font-family:'Segoe UI','Helvetica Neue',sans-serif;border:2px solid rgba(255,170,0,.5);border-radius:4px;box-shadow:0 0 8px rgba(255,170,0,.2),inset 0 0 20px rgba(0,0,0,.3);text-shadow:0 0 6px rgba(255,170,0,.3)}
+.theme-yiban #concat-sheet .concat-h:active,.theme-yiban #concat-sheet .concat-h._pressing{transform:scale(.98);box-shadow:0 0 4px rgba(0,255,255,.3),inset 0 0 20px rgba(0,0,0,.3)}
+.theme-yiban #concat-sheet .concat-v:active,.theme-yiban #concat-sheet .concat-v._pressing{transform:scale(.98);box-shadow:0 0 4px rgba(255,170,0,.3),inset 0 0 20px rgba(0,0,0,.3)}
+.theme-yiban #concat-sheet .concat-h:disabled,.theme-yiban #concat-sheet .concat-v:disabled{background:rgba(45,45,52,.8);color:#555;border-color:rgba(0,255,255,.1);box-shadow:none;text-shadow:none;cursor:not-allowed}
+.theme-yiban #concat-sheet button:disabled{background:rgba(45,45,52,.8);color:#555;border-color:rgba(0,255,255,.1);box-shadow:none;text-shadow:none;cursor:not-allowed}
+.theme-yiban #concat-sheet .concat-thumb{border-radius:2px;border-color:rgba(0,255,255,.15);background:rgba(30,30,38,.9)}
+.theme-yiban #concat-sheet .concat-thumb.selected{border-color:#00ffff;box-shadow:0 0 6px rgba(0,255,255,.3)}
+.theme-yiban #concat-sheet .concat-thumb.selected .thumb-check{background:#00888a}
+/* 【v1.9.32】保存图片按钮：霓虹青发光 */
+.theme-yiban #preview-save-btn{background:rgba(0,136,138,.9);font-family:'Segoe UI','Helvetica Neue',sans-serif;border:2px solid rgba(0,255,255,.5);border-radius:4px;box-shadow:0 0 12px rgba(0,255,255,.3),inset 0 0 20px rgba(0,0,0,.3);text-shadow:0 0 6px rgba(0,255,255,.3)}
+.theme-yiban #preview-save-btn:active{opacity:.85}
 /* 缩略图 */
 .theme-yiban .thumb-wrap{border-color:rgba(0,255,255,.15)}
 /* 新增/删除座位 */
@@ -544,8 +575,9 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 .theme-pixel{background:transparent;color:#4a3728}
 /* 像素点阵纹理（#app::before） */
 .theme-pixel #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.02) 3px,rgba(0,0,0,.02) 4px),repeating-linear-gradient(90deg,transparent,transparent 3px,rgba(0,0,0,.02) 3px,rgba(0,0,0,.02) 4px)}
-/* 交互元素提升层级 */
-.theme-pixel #app,.theme-pixel #bottom-bar,.theme-pixel .toast{position:relative;z-index:1}
+/* 【v1.9.29】.toast 保持 fixed 定位，仅 #app 提升 z-index */
+.theme-pixel #app{position:relative;z-index:1}
+.theme-pixel #bottom-bar{z-index:100}
 /* 页面标题：像素风 + 硬阴影 */
 .theme-pixel .page-header{background:linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 100%);position:relative;z-index:10}
 .theme-pixel .page-title{font-family:'Courier New',monospace;color:#3e2b1f;letter-spacing:1px;font-weight:900;text-shadow:2px 2px 0 #e0d7c5}
@@ -630,8 +662,21 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 .theme-pixel .batch-select-all{border:2px solid #5a3d2b;color:#5a3d2b;border-radius:0}
 /* 拼接面板 */
 .theme-pixel #concat-sheet{background:#c8a96e}
-.theme-pixel .concat-h{background:#7ec850;border:2px solid #5a8a30;border-radius:0}
-.theme-pixel .concat-v{background:#8b7355;border:2px solid #5a3d2b;border-radius:0}
+.theme-pixel #concat-sheet .sheet-title{font-family:'Courier New',monospace;color:#4a3728;font-weight:900}
+.theme-pixel #concat-sheet .sheet-handle{background:#8b7355}
+/* 【v1.9.32】拼接按钮：使用 #concat-sheet 提升优先级，覆盖默认蓝紫配色 */
+.theme-pixel #concat-sheet .concat-h{background:#7ec850;color:#3a5a1a;font-family:'Courier New',monospace;font-weight:700;border:3px solid #5a8a30;border-radius:0;box-shadow:3px 3px 0 #2d2d2d}
+.theme-pixel #concat-sheet .concat-v{background:#8b7355;color:#f0e8d0;font-family:'Courier New',monospace;font-weight:700;border:3px solid #5a3d2b;border-radius:0;box-shadow:3px 3px 0 #2d2d2d}
+.theme-pixel #concat-sheet .concat-h:active,.theme-pixel #concat-sheet .concat-h._pressing{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
+.theme-pixel #concat-sheet .concat-v:active,.theme-pixel #concat-sheet .concat-v._pressing{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
+.theme-pixel #concat-sheet .concat-h:disabled,.theme-pixel #concat-sheet .concat-v:disabled{background:#999;color:#666;border-color:#777;box-shadow:none;cursor:not-allowed}
+.theme-pixel #concat-sheet button:disabled{background:#999;color:#666;border-color:#777;box-shadow:none;cursor:not-allowed}
+.theme-pixel #concat-sheet .concat-thumb{border-radius:0;border:2px solid #8b7355;background:#b89858}
+.theme-pixel #concat-sheet .concat-thumb.selected{border-color:#7ec850;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel #concat-sheet .concat-thumb.selected .thumb-check{background:#7ec850}
+/* 【v1.9.32】保存图片按钮：像素风硬阴影 */
+.theme-pixel #preview-save-btn{background:#7ec850;color:#3a5a1a;font-family:'Courier New',monospace;font-weight:700;border:3px solid #5a8a30;border-radius:0;box-shadow:3px 3px 0 #2d2d2d}
+.theme-pixel #preview-save-btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
 /* 缩略图 */
 .theme-pixel .thumb-wrap{border-color:#8b7355}
 /* 新增/删除座位 */
@@ -770,7 +815,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.9.25';
+const APP_VERSION = 'v1.9.33';
 const DB_NAME = 'SeatImageDB';
 const DB_VERSION = 4;
 // 【v1.3.2 Bug1修复】将平台检测移到顶部，确保拼接函数可正确访问
@@ -1398,6 +1443,12 @@ async function renderTimeSlots(sk) {
     container.querySelectorAll('img[data-thumb-src]').forEach(img => thumbObserver.observe(img));
     // 【修复Bug1】复用缓存时也要应用筛选显隐
     applyTimeslotFilter(container);
+    // 【v1.9.27】复用缓存时同步勾选状态：缓存 HTML 是快照，不含最新的选中状态
+    container.querySelectorAll('.ts-checkbox').forEach(cb => {
+      const ck = cb.dataset.cellKey;
+      if (state.selectedCells.includes(ck)) cb.classList.add('checked');
+      else cb.classList.remove('checked');
+    });
     return;
   }
 
