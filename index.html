@@ -22,25 +22,33 @@
 html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;font-size:15px;color:#333;background:#f0f2f5;-webkit-tap-highlight-color:transparent}
 /* 【v1.2.0 iOS兼容】所有可点击元素统一 cursor:pointer，iOS 不做悬停效果 */
 button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-slot-item,.floor-btn,.area-btn{cursor:pointer;-webkit-user-select:none;user-select:none}
+/* 【v1.9.25】按压视觉反馈：:active + ._pressing 双重匹配，移动端 touchstart 立即触发 */
+.floor-btn:active,.floor-btn._pressing{transition:transform .1s ease}
+.area-btn:active,.area-btn._pressing{transition:transform .1s ease}
+.seat-btn:active,.seat-btn._pressing{transition:background .1s ease,transform .1s ease}
+.func-item:active,.func-item._pressing{transition:background .1s ease}
+.header-btn:active,.header-btn._pressing{transition:opacity .1s ease,transform .1s ease}
+.btn-delete-seat:active,.btn-delete-seat._pressing{transition:background .1s ease}
+.update-bar:active,.update-bar._pressing{transition:opacity .1s ease}
 #app{max-width:480px;margin:0 auto;padding:0 10px 140px;min-height:calc(100vh - 50px)}
 
 /* 【修复文字消失】page-header 从 app 中移出，作为独立固定元素 */
 .page-header{display:flex;align-items:center;justify-content:center;padding:14px 10px 10px;gap:8px;flex-wrap:wrap;max-width:480px;margin:0 auto;background:#f0f2f5;position:relative;z-index:10}
 .page-title{font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:1px;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;pointer-events:auto!important;position:relative;z-index:10}
 .header-btn{padding:6px 12px;font-size:12px;font-weight:600;border:none;border-radius:6px;color:#fff;cursor:pointer;white-space:nowrap}
-.header-btn:active{opacity:.7}
+.header-btn:active,.header-btn._pressing{opacity:.7}
 .btn-cleanup{background:#ff4d4f}
 .btn-batch-dl{background:#722ed1}
 
 /* 【修改1】删除座位按钮受开关控制 */
 .btn-delete-seat{padding:4px 12px;font-size:12px;font-weight:600;border:1px solid #ff4d4f;border-radius:4px;background:#fff;color:#ff4d4f;cursor:pointer;margin-left:auto;display:none}
 .btn-delete-seat.visible{display:inline-block}
-.btn-delete-seat:active{background:#fff1f0}
+.btn-delete-seat:active,.btn-delete-seat._pressing{background:#fff1f0}
 
 /* 【v1.5.7】新版本更新提示条：滑入动画 + 不遮挡标题栏 */
 .update-bar{position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#1890ff,#096dd9);color:#fff;text-align:center;padding:12px 16px;font-size:14px;font-weight:500;cursor:pointer;box-shadow:0 2px 8px rgba(24,144,255,.4);transform:translateY(-100%);transition:transform .3s ease}
 .update-bar.show{transform:translateY(0)}
-.update-bar:active{opacity:.85}
+.update-bar:active,.update-bar._pressing{opacity:.85}
 /* 提示条显示时下推标题栏，避免遮挡 */
 .page-header{transition:margin-top .3s ease}
 .update-bar.show+.page-header{margin-top:44px}
@@ -60,7 +68,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 /* 【v1.3.2 菜单优化4】菜单项高度缩小，更紧凑，保持 44px 最低触摸区域 */
 .func-item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;min-height:44px;border-bottom:1px solid #f5f5f5;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .func-item:last-child{border-bottom:none}
-.func-item:active{background:#fafafa;border-radius:8px}
+.func-item:active,.func-item._pressing{background:#fafafa;border-radius:8px}
 .func-item-label{font-size:15px;color:#333;font-weight:500}
 .func-item-label .func-item-desc{font-size:12px;color:#999;font-weight:400;margin-top:2px}
 /* 开关样式 */
@@ -75,7 +83,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 #preview-save-btn.faded{opacity:.1}
 
 .floor-btn{display:block;width:100%;padding:16px 20px;margin:8px 0;font-size:18px;font-weight:600;border:none;border-radius:10px;color:#fff;cursor:pointer;text-align:left;transition:transform .1s}
-.floor-btn:active{transform:scale(.97)}
+.floor-btn:active,.floor-btn._pressing{transform:scale(.97)}
 .floor-btn .arrow{float:right;font-size:14px;transition:transform .25s;display:inline-block}
 .floor-btn.expanded .arrow{transform:rotate(90deg)}
 .floor-btn .floor-count{float:right;font-size:13px;font-weight:400;margin-right:8px;opacity:.85}
@@ -88,7 +96,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .area-container{display:none;padding:4px 0 8px 16px}
 .area-container.show{display:block}
 .area-btn{display:inline-flex;flex-direction:column;align-items:center;padding:12px 20px;margin:5px 4px;font-size:16px;font-weight:600;border:2px solid transparent;border-radius:8px;background:#fff;color:#333;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12);transition:transform .1s,border-color .15s}
-.area-btn:active{transform:scale(.95)}
+.area-btn:active,.area-btn._pressing{transform:scale(.95)}
 .area-btn .arrow{margin-left:6px;font-size:12px;transition:transform .25s;display:inline-block}
 .area-btn .area-count{font-size:11px;font-weight:400;color:#999;margin-top:2px}
 .area-btn.expanded .arrow{transform:rotate(90deg)}
@@ -101,7 +109,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .seat-container.show{display:block}
 .seat-flow{display:flex;flex-wrap:wrap;gap:6px;padding:0 2px}
 .seat-btn{width:calc(20% - 5px);padding:10px 2px;font-size:13px;font-weight:500;border:2px solid #d9d9d9;border-radius:6px;background:#fff;cursor:pointer;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .15s,border-color .15s;position:relative}
-.seat-btn:active{background:#e6f7ff}
+.seat-btn:active,.seat-btn._pressing{background:#e6f7ff}
 /* 【v1.3.15】选中高亮改为红色描边+无背景色 */
 .seat-btn.expanded{background:#fff;border:2px solid #ff4d4f}
 /* 【v1.3.10 重构】座位视觉提示：颜色基于全时段总数，图标分层显示 */
@@ -320,11 +328,11 @@ html.theme-normal{background:repeating-linear-gradient(175deg,#e8f0f8 0%,#eaf2e4
 .theme-normal .floor-4{background:linear-gradient(135deg,rgba(248,252,245,.94),rgba(232,248,225,.94))}
 .theme-normal .floor-5{background:linear-gradient(135deg,rgba(255,250,242,.94),rgba(252,242,222,.94))}
 .theme-normal .floor-btn:hover{border-color:#7a9a5a;box-shadow:0 3px 12px rgba(122,154,90,.15);transform:scale(1.01)}
-.theme-normal .floor-btn:active{transform:scale(.98)}
+.theme-normal .floor-btn:active,.theme-normal .floor-btn._pressing{transform:scale(.98)}
 /* 区域按钮：浅奶绿/淡天蓝 */
 .theme-normal .area-btn{font-family:Georgia,'KaiTi','STKaiti',serif;background:rgba(245,252,245,.92);border:1.5px solid #a8c898;color:#4A3728;box-shadow:0 1px 4px rgba(120,160,90,.08);transition:background .15s,border-color .15s}
 .theme-normal .area-btn:hover{background:rgba(255,248,230,.92);border-color:#8B7355}
-.theme-normal .area-btn:active{transform:scale(.95)}
+.theme-normal .area-btn:active,.theme-normal .area-btn._pressing{transform:scale(.95)}
 .theme-normal .area-btn .area-count{color:#7a9a5a}
 .theme-normal .area-btn.expanded{border-color:#7a9a5a;background:rgba(248,255,240,.92)}
 .theme-normal .area-btn.has-images{border-color:#6a9a4a;background:linear-gradient(135deg,rgba(235,250,228,.92),rgba(210,240,195,.92));color:#3a6a1a}
@@ -332,7 +340,7 @@ html.theme-normal{background:repeating-linear-gradient(175deg,#e8f0f8 0%,#eaf2e4
 /* 座位编号按钮：米白底，暖棕边框 */
 .theme-normal .seat-btn{font-family:Georgia,'KaiTi','STKaiti',serif;background:rgba(255,253,248,.96);border:1px solid #c8bca8;color:#4A3728;font-size:12px;transition:background .12s,border-color .12s}
 .theme-normal .seat-btn:hover{background:rgba(255,248,232,.96)}
-.theme-normal .seat-btn:active{background:rgba(255,240,215,.96)}
+.theme-normal .seat-btn:active,.theme-normal .seat-btn._pressing{background:rgba(255,240,215,.96)}
 .theme-normal .seat-btn.expanded{border:2px solid #7a9a5a;background:rgba(255,253,248,.96)}
 /* 座位提示色保留，加暖色柔和光晕 */
 .theme-normal .seat-btn.has-images-1{border-color:#5a9ec8;background:linear-gradient(135deg,rgba(218,240,252,.92),rgba(195,228,248,.92));color:#1a6a9a;font-weight:700;box-shadow:0 0 6px rgba(90,158,200,.15)}
@@ -356,7 +364,7 @@ html.theme-normal{background:repeating-linear-gradient(175deg,#e8f0f8 0%,#eaf2e4
 .theme-normal .func-panel-title{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
 .theme-normal .func-panel-close{background:#f0e8d8;color:#8B7355}
 .theme-normal .func-item{border-bottom:1px dashed #d4c8b0}
-.theme-normal .func-item:active{background:rgba(245,252,245,.5);border-radius:8px}
+.theme-normal .func-item:active,.theme-normal .func-item._pressing{background:rgba(245,252,245,.5);border-radius:8px}
 .theme-normal .func-item-label{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
 .theme-normal .func-item-label .func-item-desc{color:#9a8060}
 /* 开关按钮 */
@@ -431,11 +439,11 @@ html.theme-yiban{background:repeating-linear-gradient(180deg,#3c3c46 0%,#4a4540 
 .theme-yiban .floor-4{background:linear-gradient(135deg,rgba(62,58,60,.88),rgba(72,65,55,.88))}
 .theme-yiban .floor-5{background:linear-gradient(135deg,rgba(56,58,68,.88),rgba(66,62,52,.88))}
 .theme-yiban .floor-btn:hover{border-color:#00ffff;box-shadow:0 0 16px rgba(0,255,255,.4),inset 0 0 20px rgba(0,0,0,.3);transform:scale(1.01)}
-.theme-yiban .floor-btn:active{transform:scale(.98)}
+.theme-yiban .floor-btn:active,.theme-yiban .floor-btn._pressing{transform:scale(.98)}
 /* 区域按钮：铁灰 + 沙尘 + 霓虹橙边框 */
 .theme-yiban .area-btn{font-family:'Segoe UI','Helvetica Neue',sans-serif;background:rgba(55,55,62,.88);border:1px solid rgba(232,130,12,.5);color:#e0d0b8;box-shadow:0 0 4px rgba(232,130,12,.15),inset 0 1px 3px rgba(0,0,0,.3);transition:background .12s,border-color .12s,box-shadow .12s}
 .theme-yiban .area-btn:hover{border-color:#00ffff;box-shadow:0 0 8px rgba(0,255,255,.25),inset 0 1px 3px rgba(0,0,0,.3)}
-.theme-yiban .area-btn:active{transform:scale(.95)}
+.theme-yiban .area-btn:active,.theme-yiban .area-btn._pressing{transform:scale(.95)}
 .theme-yiban .area-btn .area-count{color:#e8820c}
 .theme-yiban .area-btn.expanded{border-color:#00ffff;background:rgba(60,60,68,.92);box-shadow:0 0 10px rgba(0,255,255,.25)}
 .theme-yiban .area-btn.has-images{border-color:#00cccc;background:linear-gradient(135deg,rgba(0,80,80,.35),rgba(55,55,62,.88));color:#00ffff}
@@ -443,7 +451,7 @@ html.theme-yiban{background:repeating-linear-gradient(180deg,#3c3c46 0%,#4a4540 
 /* 座位编号按钮：暗灰 + 全息网格 + 暗青边框 */
 .theme-yiban .seat-btn{font-family:'Segoe UI','Helvetica Neue',sans-serif;background:rgba(45,45,52,.92);border:1px solid rgba(0,255,255,.2);color:#a0a8b0;font-size:12px;transition:background .1s,border-color .1s,box-shadow .1s}
 .theme-yiban .seat-btn:hover{background:rgba(55,55,62,.92);border-color:rgba(0,255,255,.4)}
-.theme-yiban .seat-btn:active{background:rgba(65,65,72,.92)}
+.theme-yiban .seat-btn:active,.theme-yiban .seat-btn._pressing{background:rgba(65,65,72,.92)}
 .theme-yiban .seat-btn.expanded{border:2px solid #00ffff;background:rgba(45,45,52,.92);box-shadow:0 0 6px rgba(0,255,255,.25)}
 /* 座位提示色保留，叠加霓虹光晕 */
 .theme-yiban .seat-btn.has-images-1{border-color:#00aacc;background:linear-gradient(135deg,rgba(0,100,120,.4),rgba(45,45,52,.92));color:#00ffff;font-weight:700;box-shadow:0 0 8px rgba(0,170,204,.25)}
@@ -467,7 +475,7 @@ html.theme-yiban{background:repeating-linear-gradient(180deg,#3c3c46 0%,#4a4540 
 .theme-yiban .func-panel-title{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 8px rgba(0,255,255,.3)}
 .theme-yiban .func-panel-close{background:rgba(204,51,51,.3);color:#cc3333}
 .theme-yiban .func-item{border-bottom:1px dashed rgba(0,255,255,.15)}
-.theme-yiban .func-item:active{background:rgba(0,255,255,.08);border-radius:4px}
+.theme-yiban .func-item:active,.theme-yiban .func-item._pressing{background:rgba(0,255,255,.08);border-radius:4px}
 .theme-yiban .func-item-label{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#c8c8c8}
 .theme-yiban .func-item-label .func-item-desc{color:#888}
 /* 开关按钮 */
@@ -553,11 +561,11 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 .theme-pixel .floor-4{background:linear-gradient(135deg,#d0b070,#c0a060);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#d0b070,#c0a060)}
 .theme-pixel .floor-5{background:linear-gradient(135deg,#baa060,#aa9048);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#baa060,#aa9048)}
 .theme-pixel .floor-btn:hover{background-color:#d8b978;box-shadow:4px 4px 0 #2d2d2d}
-.theme-pixel .floor-btn:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .floor-btn:active,.theme-pixel .floor-btn._pressing{transform:translate(2px,2px);box-shadow:2px 2px 0 #2d2d2d}
 /* 区域按钮：石材材质 + 像素描边 */
 .theme-pixel .area-btn{font-family:'Courier New',monospace;background:#aaa;border:3px solid #555;border-radius:0;box-shadow:3px 3px 0 #2d2d2d;color:#3a3a3a;font-weight:700;transition:transform .08s,box-shadow .08s}
 .theme-pixel .area-btn:hover{background:#bbb}
-.theme-pixel .area-btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
+.theme-pixel .area-btn:active,.theme-pixel .area-btn._pressing{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
 .theme-pixel .area-btn .area-count{color:#555}
 .theme-pixel .area-btn.expanded{border-color:#5a3d2b;background:#b8b8b8}
 .theme-pixel .area-btn.has-images{border-color:#7ec850;background:linear-gradient(135deg,#8dd850,#7ec850);color:#3a5a1a}
@@ -565,7 +573,7 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 /* 座位编号按钮：铁块/石英材质 + 像素描边 */
 .theme-pixel .seat-btn{font-family:'Courier New',monospace;background:#d8d8d8;border:2px solid #888;border-radius:0;box-shadow:2px 2px 0 #2d2d2d;color:#3a3a3a;font-size:12px;font-weight:700;transition:transform .08s,box-shadow .08s}
 .theme-pixel .seat-btn:hover{background:#e0e0e0}
-.theme-pixel .seat-btn:active{transform:translate(1px,1px);box-shadow:1px 1px 0 #2d2d2d}
+.theme-pixel .seat-btn:active,.theme-pixel .seat-btn._pressing{transform:translate(1px,1px);box-shadow:1px 1px 0 #2d2d2d}
 .theme-pixel .seat-btn.expanded{border:3px solid #5a3d2b;background:#d8d8d8;box-shadow:3px 3px 0 #2d2d2d}
 /* 座位提示色：MC 钻石蓝 / 金橙 / 草绿 + 像素描边 */
 .theme-pixel .seat-btn.has-images-1{border-color:#5bc0de;background:#5bc0de;color:#1a4a5a;font-weight:700;box-shadow:2px 2px 0 #2d2d2d}
@@ -589,7 +597,7 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 .theme-pixel .func-panel-title{font-family:'Courier New',monospace;color:#4a3728;font-weight:900}
 .theme-pixel .func-panel-close{background:#8b7355;color:#fff;border:2px solid #5a3d2b;border-radius:0;box-shadow:2px 2px 0 #2d2d2d}
 .theme-pixel .func-item{border-bottom:2px dashed #8b7355}
-.theme-pixel .func-item:active{background:rgba(90,61,43,.15)}
+.theme-pixel .func-item:active,.theme-pixel .func-item._pressing{background:rgba(90,61,43,.15)}
 .theme-pixel .func-item-label{font-family:'Courier New',monospace;color:#4a3728;font-weight:700}
 .theme-pixel .func-item-label .func-item-desc{color:#8b7355}
 /* 开关按钮 */
@@ -762,7 +770,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.9.24';
+const APP_VERSION = 'v1.9.25';
 const DB_NAME = 'SeatImageDB';
 const DB_VERSION = 4;
 // 【v1.3.2 Bug1修复】将平台检测移到顶部，确保拼接函数可正确访问
@@ -4219,6 +4227,28 @@ document.addEventListener('click', async (e) => {
   if (funcPanelBtn) { openFuncPanel(); return; }
 });
 
+// ============================================================
+// 【v1.9.25】移动端按压反馈：touchstart 立即添加 _pressing 类
+// 不调用 preventDefault()，保留系统长按行为（复制、选择等）
+// ============================================================
+(function(){
+  var cls='_pressing',sel='.floor-btn,.area-btn,.seat-btn,.header-btn,.btn-delete-seat,.func-item,.update-bar';
+  document.addEventListener('touchstart',function(e){
+    var t=e.target.closest(sel);
+    if(t) t.classList.add(cls);
+  },{passive:true});
+  document.addEventListener('touchend',function(e){
+    var t=e.target.closest(sel);
+    if(t) t.classList.remove(cls);
+  },{passive:true});
+  document.addEventListener('touchcancel',function(e){
+    var t=e.target.closest(sel);
+    if(t) t.classList.remove(cls);
+  },{passive:true});
+  document.addEventListener('mouseleave',function(e){
+    if(e.target.matches&&e.target.matches(sel)) e.target.classList.remove(cls);
+  },true);
+})();
 // ============================================================
 // 十二-A、标题点击检查更新（纯内联 onclick，最原始最稳固）
 // 【v1.9.22】修复非默认主题下标题点击失效
