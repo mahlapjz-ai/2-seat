@@ -677,7 +677,7 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 .theme-pixel #concat-sheet .concat-thumb.selected .thumb-check{background:#7ec850}
 /* 【v1.9.32】保存图片按钮：像素风硬阴影 */
 .theme-pixel #preview-save-btn{background:#7ec850;color:#3a5a1a;font-family:'Courier New',monospace;font-weight:700;border:3px solid #5a8a30;border-radius:0;box-shadow:3px 3px 0 #2d2d2d}
-.theme-pixel #preview-save-btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
+.theme-pixel #preview-save-btn:active{transform:translateX(-50%) translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
 /* 缩略图 */
 .theme-pixel .thumb-wrap{border-color:#8b7355}
 /* 新增/删除座位 */
@@ -702,7 +702,7 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 <body>
 <div class="update-bar" id="update-bar">有新版本可用，点击刷新</div>
 <!-- 【修复文字消失】page-header 移出 app，作为静态 DOM，不会被 renderMain 重建 -->
-<div class="page-header" id="page-header"><span class="page-title" data-action="check-update" onclick="handleTitleClick()" style="pointer-events:auto!important;position:relative;z-index:99;cursor:pointer">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">菜单</button></div>
+<div class="page-header" id="page-header"><span class="page-title" data-action="check-update" onclick="handleTitleClick()" style="pointer-events:auto!important;position:relative;z-index:99;cursor:pointer">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">设置</button></div>
 <div id="app"></div>
 <div id="bottom-bar">
   <span id="selected-count">已选 0 个时段</span>
@@ -779,7 +779,7 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 <!-- 【修改3】功能面板 -->
 <div class="func-panel-overlay" id="func-panel-overlay"></div>
 <div class="func-panel" id="func-panel">
-  <div class="func-panel-header"><span class="func-panel-title">菜单</span><button class="func-panel-close" id="func-panel-close">&times;</button></div>
+  <div class="func-panel-header"><span class="func-panel-title">设置</span><button class="func-panel-close" id="func-panel-close">&times;</button></div>
   <div class="func-panel-body" id="func-panel-body"></div>
 </div>
 <script>
@@ -825,7 +825,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.10.8';
+const APP_VERSION = 'v1.10.11';
 const DB_NAME = 'SeatImageDB';
 const DB_VERSION = 4;
 // 【v1.3.2 Bug1修复】将平台检测移到顶部，确保拼接函数可正确访问
@@ -1330,7 +1330,7 @@ async function renderMain() {
 function ensureFuncBtnText() {
   const btn = document.getElementById('func-btn');
   if (btn && !btn.textContent.trim()) {
-    btn.textContent = '菜单';
+    btn.textContent = '设置';
   }
   // 【v1.3.4】标题旁显示版本号
   const verEl = document.getElementById('header-version');
@@ -1344,7 +1344,7 @@ function startFuncBtnObserver() {
   const btn = document.getElementById('func-btn');
   if (!btn) return;
   _funcBtnObserver = new MutationObserver(() => {
-    if (!btn.textContent.trim()) btn.textContent = '菜单';
+    if (!btn.textContent.trim()) btn.textContent = '设置';
   });
   _funcBtnObserver.observe(btn, { childList: true, characterData: true, subtree: true });
 }
@@ -1372,16 +1372,12 @@ window.addEventListener('pagehide', () => {
   try { saveFilterState(); } catch(e) {}
 });
 // 【v1.6.0 修复】页面从后台恢复时，从 localStorage 重新读取筛选状态，防止偶发重置
+// 【v1.10.10】改用 restoreFilterStateFromStorage，仅在内存与存储不一致时才恢复
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     try {
-      const raw = localStorage.getItem(FILTER_KEY_MAIN) || localStorage.getItem(FILTER_KEY_BACKUP);
-      if (raw) {
-        const o = JSON.parse(raw);
-        if (o && Array.isArray(o.slots)) {
-          state.visibleTimeSlots = new Set(o.slots);
-          state._filterNone = !!o.none;
-        }
+      if (restoreFilterStateFromStorage()) {
+        refreshExpandedSeats();
       }
     } catch (e) { console.warn('[筛选恢复] visibilitychange 恢复失败', e); }
   }
@@ -4920,6 +4916,12 @@ function closeFuncPanel() {
   funcPanel.classList.remove('show');
   // 【v1.3.9 修复2】菜单关闭时恢复背景页面滚动
   document.body.style.overflow = '';
+  // 【v1.10.10】菜单关闭时校验筛选状态，防止偶发重置
+  try {
+    if (restoreFilterStateFromStorage()) {
+      refreshExpandedSeats();
+    }
+  } catch(e) {}
 }
 
 funcPanelOverlay.addEventListener('click', closeFuncPanel);
