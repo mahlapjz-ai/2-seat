@@ -253,6 +253,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .cleanup-btns button:active{opacity:.8}
 .cleanup-cancel{background:#f0f0f0;color:#333}
 .cleanup-exec{background:#ff4d4f;color:#fff}
+.cleanup-exec[disabled]{opacity:.5;cursor:not-allowed}
 /* 【v1.5.11 新增】清理进度 spinner */
 .cleanup-spinner{width:36px;height:36px;margin:0 auto;border:3px solid #e8e8e8;border-top-color:#1890ff;border-radius:50%;animation:cleanup-spin .8s linear infinite}
 @keyframes cleanup-spin{to{transform:rotate(360deg)}}
@@ -724,12 +725,21 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
     <div class="modal-btns"><button class="modal-cancel" id="batch-cancel">取消</button><button class="modal-confirm" id="batch-exec">打包下载(ZIP)</button></div>
   </div>
 </div>
-<!-- 【v1.5.10 修改】批量清理弹窗改为清除全部图片确认弹窗 -->
+<!-- 【v1.10.4 改造】清除图片：复用批量下载的modal-overlay+batch-chip样式 -->
 <div class="modal-overlay" id="cleanup-modal">
   <div class="modal-box">
-    <h3>清除全部图片</h3>
-    <p style="font-size:14px;color:#666;margin-bottom:14px;text-align:center">将清除全部图片数据，不可恢复</p>
-    <div class="cleanup-btns"><button class="cleanup-cancel" id="cleanup-cancel-btn">取消</button><button class="cleanup-exec" id="cleanup-exec-btn">确认清除</button></div>
+    <h3>清除图片</h3>
+    <div class="batch-section"><h4>选择区域 <button class="batch-select-all" data-target="cleanup-area">全选/取消</button></h4><div class="batch-grid" id="cleanup-areas"></div></div>
+    <div class="batch-section"><h4>选择时段 <button class="batch-select-all" data-target="cleanup-time">全选/取消</button></h4><div class="batch-grid" id="cleanup-times"></div></div>
+    <div class="modal-btns"><button class="modal-cancel" id="cleanup-cancel">取消</button><button class="cleanup-exec" id="cleanup-exec" disabled>清除图片</button></div>
+  </div>
+</div>
+<!-- 清除确认弹窗 -->
+<div class="modal-overlay" id="cleanup-confirm-modal">
+  <div class="modal-box">
+    <h3>确认清除</h3>
+    <p style="font-size:14px;color:#666;margin-bottom:14px;text-align:center">将清除所选区域和时段的全部图片，不可恢复。确认清除？</p>
+    <div class="cleanup-btns"><button class="cleanup-cancel" id="cleanup-confirm-cancel">取消</button><button class="cleanup-exec" id="cleanup-confirm-exec">确认清除</button></div>
   </div>
 </div>
 <!-- 【v1.5.11 新增】清理进度 loading 弹窗 -->
@@ -815,7 +825,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.9.40';
+const APP_VERSION = 'v1.10.8';
 const DB_NAME = 'SeatImageDB';
 const DB_VERSION = 4;
 // 【v1.3.2 Bug1修复】将平台检测移到顶部，确保拼接函数可正确访问
@@ -2573,9 +2583,67 @@ async function getProcessedData(imgObj, fid, aname, sidx) {
 }
 
 // 【v1.3.0 统一下载逻辑】替换原 Web Share API 分享，统一为下载/打包下载
+// 【v1.10.8】下载事件驱动+固定间隔兜底：visibilitychange检测下载开始，2秒兜底
+const ZIP_BATCH_MAX_COUNT = 20;
+const ZIP_BATCH_MAX_SIZE = 60 * 1024 * 1024; // 60MB
+const ZIP_BATCH_FALLBACK_WAIT = 2000; // 兜底固定等待2秒
+let _dlTimer = null;   // 当前下载定时器
+let _dlBlobURLs = [];  // 当前下载的 Blob URL 列表
+let _dlVisHandler = null; // visibilitychange 事件处理器
+
+// 【v1.10.8】清除旧下载状态：定时器、事件监听、Blob URL、提示
+function _clearDlState() {
+  if (_dlTimer) { clearTimeout(_dlTimer); _dlTimer = null; }
+  if (_dlVisHandler) { document.removeEventListener('visibilitychange', _dlVisHandler); _dlVisHandler = null; }
+  if (_dlBlobURLs.length > 0) {
+    _dlBlobURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch(e) {} });
+    _dlBlobURLs = [];
+  }
+  removePersistentToast();
+}
+
+// 【v1.10.8】触发单个下载
+function _triggerDownload(blob, filename) {
+  try {
+    const url = URL.createObjectURL(blob);
+    _dlBlobURLs.push(url);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    return true;
+  } catch (err) {
+    console.error('下载触发失败:', err);
+    return false;
+  }
+}
+
+// 【v1.10.8】等待下载开始或超时：visibilitychange 检测 + 2秒兜底
+function _waitForDownloadStart() {
+  return new Promise(resolve => {
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      if (_dlTimer) { clearTimeout(_dlTimer); _dlTimer = null; }
+      if (_dlVisHandler) { document.removeEventListener('visibilitychange', _dlVisHandler); _dlVisHandler = null; }
+      resolve();
+    };
+    // 优先方案：监听 visibilitychange（浏览器处理下载时可能切换可见性）
+    _dlVisHandler = () => { if (document.hidden) done(); };
+    document.addEventListener('visibilitychange', _dlVisHandler);
+    // 兜底方案：2秒后无论如何都推进
+    _dlTimer = setTimeout(done, ZIP_BATCH_FALLBACK_WAIT);
+  });
+}
+
 async function downloadSelectedImages() {
   if (state.selectedCells.length === 0) return;
+
+  // 【v1.10.8】每次点击从头开始：清除所有旧状态
+  _clearDlState();
+
   const cellDataMap = await getCellDataBatch(state.selectedCells);
+
   const allImgs = [];
   for (const ck of state.selectedCells) {
     const cellData = cellDataMap[ck];
@@ -2600,37 +2668,99 @@ async function downloadSelectedImages() {
       }
       if (!blob || blob.size === 0) continue;
       const safeTimeSlot = timeSlot.replace(/:/g, '');
-      // 【v1.3.11】文件名仅用英文字母、数字、下划线，提升 ZIP 兼容性
       const safeName = sName.replace(/[^\w]/g, '_');
       const filename = `${safeName}_${safeTimeSlot}_${i + 1}.jpg`;
-      // 【v1.3.4 优化3】记录拍摄时间戳，用于 ZIP 文件修改时间
-      const timestamp = cellData.images[i].createdAt || cellData.images[i].timestamp || null;
-      items.push({ blob, filename, timestamp });
+      items.push({ blob, filename });
     }
   }
   if (items.length === 0) { showToast('无图片可下载'); return; }
 
-  // 【v1.3.0】单张直接下载，多张打包 ZIP
+  // 单张直接下载
   if (items.length === 1) {
-    downloadBlob(items[0].blob, items[0].filename);
-    // 【v1.3.5】提示语修正：下载已提交，等待浏览器确认
+    _triggerDownload(items[0].blob, items[0].filename);
     showToast('下载已提交');
-  } else {
-    showToast('正在打包...');
+    return;
+  }
+
+  // 分批打包：按数量和大小拆分
+  const batches = [];
+  let currentBatch = [];
+  let currentSize = 0;
+  for (const item of items) {
+    const itemSize = item.blob.size || 0;
+    if ((currentBatch.length >= ZIP_BATCH_MAX_COUNT || currentSize + itemSize > ZIP_BATCH_MAX_SIZE) && currentBatch.length > 0) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentSize = 0;
+    }
+    currentBatch.push(item);
+    currentSize += itemSize;
+  }
+  if (currentBatch.length > 0) batches.push(currentBatch);
+
+  const totalBatches = batches.length;
+  const ts = Date.now();
+  let successCount = 0;
+  let failCount = 0;
+
+  // 【v1.10.8】事件驱动串行：逐批打包→触发下载→等待下载开始或2秒兜底→下一批
+  for (let b = 0; b < totalBatches; b++) {
+    showPersistentToast(`正在处理第 ${b + 1}/${totalBatches} 批（共 ${totalBatches} 批），请在下载框中确认...`);
     try {
       const zip = new JSZip();
-      // 【v1.3.11】ZIP 文件时间戳统一为 2024-01-01 12:00:00（秒数取偶数），提升兼容性
       const fileDate = new Date('2024-01-01T12:00:00');
-      items.forEach(it => {
-        zip.file(it.filename, it.blob, { date: fileDate });
-      });
+      batches[b].forEach(it => { zip.file(it.filename, it.blob, { date: fileDate }); });
       const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-      downloadBlob(zipBlob, `图片导出_${Date.now()}.zip`);
-      // 【v1.3.5】提示语修正：打包完成已提交下载，等待浏览器确认
-      showToast(`已打包 ${items.length} 张图片，等待下载确认`);
-    } catch (err) { console.error('打包出错:', err); showToast('打包出错'); }
+      const batchName = totalBatches === 1 ? `图片导出_${ts}.zip` : `图片导出_第${b + 1}批_${ts}.zip`;
+      if (_triggerDownload(zipBlob, batchName)) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+    } catch (err) {
+      console.error(`第 ${b + 1} 批打包出错:`, err);
+      failCount++;
+    }
+    // 等待下载开始或2秒兜底，最后一批不等
+    if (b < totalBatches - 1) {
+      await _waitForDownloadStart();
+    }
+  }
+
+  // 清除提示
+  removePersistentToast();
+
+  // 60秒后统一回收 Blob URL
+  const urlsToRevoke = [..._dlBlobURLs];
+  _dlBlobURLs = [];
+  if (urlsToRevoke.length > 0) {
+    setTimeout(() => { urlsToRevoke.forEach(u => { try { URL.revokeObjectURL(u); } catch(e) {} }); }, 60000);
+  }
+
+  // 完成提示
+  if (failCount === 0) {
+    showToast(`下载完成，成功 ${successCount} 批`);
+  } else {
+    showToast(`下载完成，成功 ${successCount} 批，失败 ${failCount} 批`);
   }
 }
+
+// 【v1.10.0】持续显示的提示（不自动消失）
+let _persistentToastEl = null;
+function showPersistentToast(msg) {
+  if (!_persistentToastEl) {
+    _persistentToastEl = document.createElement('div');
+    _persistentToastEl.className = 'toast';
+    _persistentToastEl.style.animation = 'none';
+    _persistentToastEl.style.opacity = '1';
+    document.body.appendChild(_persistentToastEl);
+  }
+  _persistentToastEl.textContent = msg;
+}
+function removePersistentToast() {
+  if (_persistentToastEl) { _persistentToastEl.remove(); _persistentToastEl = null; }
+}
+
 
 // 【v1.1.1 改造】拼接选择改为底部滑出面板，点击外部关闭
 const concatOverlay = document.getElementById('concat-overlay');
@@ -3176,9 +3306,10 @@ document.getElementById('batch-exec').addEventListener('click', async () => {
     }
     if (count === 0) { showToast('所选范围内无图片'); return; }
     const blob = await zip.generateAsync({ type: 'blob' });
-    downloadBlob(blob, `批量下载_${count}张.zip`);
-    // 【v1.3.5】提示语修正：打包完成已提交下载，等待浏览器确认
-      showToast(`已打包 ${count} 张图片，等待下载确认`);
+    // 【v1.10.7】清除旧状态后触发下载
+    _clearDlState();
+    _triggerDownload(blob, `批量下载_${count}张.zip`);
+    showToast(`已打包 ${count} 张图片，等待下载确认`);
   } catch (err) { console.error('批量下载出错:', err); showToast('下载出错'); }
 });
 
@@ -4161,95 +4292,149 @@ previewSaveBtn.addEventListener('click', (e) => {
 });
 
 // ============================================================
-// 十、清除全部图片（v1.5.11 修改：分批异步删除 + 进度提示 + 异常保护）
+// 十、清除图片（v1.10.4 改造：复用批量下载的modal+batch-chip样式，区域+时段选择）
 // ============================================================
 const cleanupModal = document.getElementById('cleanup-modal');
+const cleanupAreasDiv = document.getElementById('cleanup-areas');
+const cleanupTimesDiv = document.getElementById('cleanup-times');
+const cleanupExecBtn = document.getElementById('cleanup-exec');
+const cleanupConfirmModal = document.getElementById('cleanup-confirm-modal');
 const cleanupLoadingModal = document.getElementById('cleanup-loading-modal');
 const cleanupLoadingText = document.getElementById('cleanup-loading-text');
+let cleanupSelectedAreas = new Set(), cleanupSelectedTimes = new Set();
 
-// 取消按钮：关闭弹窗
-document.getElementById('cleanup-cancel-btn').addEventListener('click', () => cleanupModal.classList.remove('show'));
+// 【v1.10.4】初始化清除图片弹窗（与批量下载initBatchModal结构一致）
+function initCleanupModal() {
+  cleanupSelectedAreas = new Set(); cleanupSelectedTimes = new Set();
+  cleanupExecBtn.disabled = true;
+  // 从计数缓存扫描有图片的区域和时段
+  const areasWithImages = new Set();
+  const timesWithImages = new Set();
+  imageCountCache.forEach((cnt, key) => {
+    if (cnt > 0) {
+      const p = key.split('-');
+      areasWithImages.add(`${p[0]}-${p[1]}`);
+      timesWithImages.add(parseInt(p[3]));
+    }
+  });
+  let ahtml = '';
+  FLOORS.forEach(floor => {
+    floor.areas.forEach(area => {
+      const ak = areaKey(floor.id, area.name);
+      if (!areasWithImages.has(ak)) return;
+      ahtml += `<div class="batch-chip" data-ak="${ak}">${floor.name}${area.name}</div>`;
+    });
+  });
+  cleanupAreasDiv.innerHTML = ahtml;
+  let thtml = '';
+  TIME_SLOTS.forEach((ts, idx) => {
+    if (!timesWithImages.has(idx)) return;
+    thtml += `<div class="batch-chip" data-tidx="${idx}">${ts}</div>`;
+  });
+  cleanupTimesDiv.innerHTML = thtml;
+}
 
-// 确认清除按钮：分批异步清空所有图片数据
-document.getElementById('cleanup-exec-btn').addEventListener('click', async () => {
+// 【v1.10.4】清除弹窗内chip点击+全选/取消（与批量下载逻辑一致）
+cleanupModal.addEventListener('click', (e) => {
+  const chip = e.target.closest('.batch-chip');
+  if (chip) {
+    chip.classList.toggle('checked');
+    if (chip.dataset.ak) { chip.classList.contains('checked') ? cleanupSelectedAreas.add(chip.dataset.ak) : cleanupSelectedAreas.delete(chip.dataset.ak); }
+    if (chip.dataset.tidx !== undefined) { const ti = chip.dataset.tidx; chip.classList.contains('checked') ? cleanupSelectedTimes.add(ti) : cleanupSelectedTimes.delete(ti); }
+    // 更新按钮状态
+    const hasSelection = cleanupSelectedAreas.size > 0 && cleanupSelectedTimes.size > 0;
+    cleanupExecBtn.disabled = !hasSelection;
+    return;
+  }
+  const selAll = e.target.closest('.batch-select-all');
+  if (selAll) {
+    const target = selAll.dataset.target;
+    const container = target === 'cleanup-area' ? cleanupAreasDiv : cleanupTimesDiv;
+    const chips = container.querySelectorAll('.batch-chip');
+    const allChecked = [...chips].every(c => c.classList.contains('checked'));
+    chips.forEach(c => {
+      if (allChecked) { c.classList.remove('checked'); if (c.dataset.ak) cleanupSelectedAreas.delete(c.dataset.ak); if (c.dataset.tidx !== undefined) cleanupSelectedTimes.delete(c.dataset.tidx); }
+      else { c.classList.add('checked'); if (c.dataset.ak) cleanupSelectedAreas.add(c.dataset.ak); if (c.dataset.tidx !== undefined) cleanupSelectedTimes.add(c.dataset.tidx); }
+    });
+    const hasSelection = cleanupSelectedAreas.size > 0 && cleanupSelectedTimes.size > 0;
+    cleanupExecBtn.disabled = !hasSelection;
+  }
+});
+
+// 取消按钮
+document.getElementById('cleanup-cancel').addEventListener('click', () => cleanupModal.classList.remove('show'));
+
+// 清除图片按钮 → 弹出二次确认
+cleanupExecBtn.addEventListener('click', () => {
+  if (cleanupSelectedAreas.size === 0 || cleanupSelectedTimes.size === 0) return;
+  cleanupConfirmModal.classList.add('show');
+});
+
+// 二次确认弹窗
+document.getElementById('cleanup-confirm-cancel').addEventListener('click', () => cleanupConfirmModal.classList.remove('show'));
+document.getElementById('cleanup-confirm-exec').addEventListener('click', async () => {
+  cleanupConfirmModal.classList.remove('show');
   cleanupModal.classList.remove('show');
+
   // 显示不可关闭的 loading 弹窗
   cleanupLoadingText.textContent = '正在清理图片...';
   cleanupLoadingModal.classList.add('show');
+
+  // 收集需要删除的 cellKey
+  const cellsToDelete = [];
+  for (const ak of cleanupSelectedAreas) {
+    const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+    const seatCount = getAreaSeatCount(fid, aname);
+    for (const tidx of cleanupSelectedTimes) {
+      const tIdx = parseInt(tidx);
+      for (let sidx = 0; sidx < seatCount; sidx++) {
+        const sk = seatKey(fid, aname, sidx);
+        if (state.deletedSeats.has(sk)) continue;
+        cellsToDelete.push(cellKey(fid, aname, sidx, tIdx));
+      }
+    }
+  }
 
   let totalDeleted = 0;
   let hasError = false;
 
   try {
     if (dbIsFallback) {
-      // 内存回退模式：直接清空
-      const all = dbFallback['cells'] ? Object.values(dbFallback['cells']) : [];
-      for (const rec of all) { if (rec.images) totalDeleted += rec.images.length; }
-      dbFallback['cells'] = {};
+      for (const ck of cellsToDelete) {
+        const rec = dbFallback['cells']?.[ck];
+        if (rec && rec.images) totalDeleted += rec.images.length;
+        delete dbFallback['cells'][ck];
+        imageCountCache.set(ck, 0);
+        clearCellBlobCache(ck);
+      }
     } else {
-      // IndexedDB 模式：使用游标分批删除，避免主线程阻塞
-      const BATCH_SIZE = 50; // 每批处理条数
-      // 先用游标统计总数
+      // 分批异步删除
+      const BATCH_SIZE = 50;
       const db = await openDB();
-      let totalCount = 0;
-      await new Promise((resolve, reject) => {
-        const tx = db.transaction('cells', 'readonly');
-        const store = tx.objectStore('cells');
-        const countReq = store.count();
-        countReq.onsuccess = () => { totalCount = countReq.result; resolve(); };
-        countReq.onerror = () => { totalCount = 0; resolve(); }; // 统计失败不阻塞
-      });
-
+      const totalCount = cellsToDelete.length;
       let processed = 0;
-      let done = false;
 
-      while (!done) {
-        // 每批用独立事务，避免长事务超时
-        const batchKeys = [];
-        await new Promise((resolve, reject) => {
-          const tx = db.transaction('cells', 'readonly');
-          const store = tx.objectStore('cells');
-          const req = store.openCursor();
-          req.onsuccess = (e) => {
-            const cursor = e.target.result;
-            if (cursor && batchKeys.length < BATCH_SIZE) {
-              batchKeys.push(cursor.primaryKey);
-              cursor.continue();
-            } else {
-              resolve();
-            }
-          };
-          req.onerror = () => resolve(); // 游标出错不阻塞
-        });
-
-        if (batchKeys.length === 0) { done = true; break; }
-
-        // 删除本批记录
-        for (const key of batchKeys) {
+      for (let i = 0; i < cellsToDelete.length; i += BATCH_SIZE) {
+        const batch = cellsToDelete.slice(i, i + BATCH_SIZE);
+        for (const ck of batch) {
           try {
-            // 先读取记录以统计图片数
-            const rec = await dbGet('cells', key);
+            const rec = await dbGet('cells', ck);
             if (rec && rec.images) totalDeleted += rec.images.length;
-            await dbDelete('cells', key);
-            // 清除内存缓存
-            imageCountCache.set(key, 0);
-            clearCellBlobCache(key);
-            const sk = key.split('-').slice(0, 3).join('-');
+            await dbDelete('cells', ck);
+            imageCountCache.set(ck, 0);
+            clearCellBlobCache(ck);
+            const sk = ck.split('-').slice(0, 3).join('-');
             invalidateTimeslotCache(sk);
           } catch (batchErr) {
-            console.error('清理单条记录出错:', key, batchErr);
+            console.error('清理单条记录出错:', ck, batchErr);
             hasError = true;
           }
         }
-
-        processed += batchKeys.length;
-        // 更新进度提示
+        processed += batch.length;
         if (totalCount > 0) {
           const pct = Math.min(Math.round(processed / totalCount * 100), 99);
           cleanupLoadingText.textContent = `正在清理图片... ${pct}%`;
         }
-
-        // 让出主线程，避免阻塞 UI
         await new Promise(r => setTimeout(r, 0));
       }
     }
@@ -4257,19 +4442,21 @@ document.getElementById('cleanup-exec-btn').addEventListener('click', async () =
     // 清理完毕：刷新界面
     await buildSeatHasImages();
     invalidateAllTimeslotCache();
+    state.selectedCells = state.selectedCells.filter(ck => !cellsToDelete.includes(ck));
     await renderMain();
+    updateBottomBar();
   } catch (err) {
     console.error('清除出错:', err);
     hasError = true;
   } finally {
-    // 关闭 loading 弹窗
     cleanupLoadingModal.classList.remove('show');
-    // 显示结果提示
     if (hasError) {
       showToast(`已清除 ${totalDeleted} 张图片（部分失败）`);
     } else {
       showToast(`已清除 ${totalDeleted} 张图片`);
     }
+    cleanupSelectedAreas.clear();
+    cleanupSelectedTimes.clear();
   }
 });
 
@@ -4348,7 +4535,8 @@ document.addEventListener('click', async (e) => {
     updateBottomBar(); saveUIState(); renderMain(); showToast('座位已删除'); return;
   }
   const checkbox = target.closest('[data-action="toggle-select"]');
-  if (checkbox) { if (checkbox.classList.contains('disabled')) return; const ck = checkbox.dataset.cellKey, idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); checkbox.classList.remove('checked'); } else { state.selectedCells.push(ck); checkbox.classList.add('checked'); } updateBottomBar(); return; }
+  // 【v1.10.0】限制手动勾选最多22个时段（仅影响打包下载ZIP）
+  if (checkbox) { if (checkbox.classList.contains('disabled')) return; const ck = checkbox.dataset.cellKey, idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); checkbox.classList.remove('checked'); } else { if (state.selectedCells.length >= 22) { showToast('最多可选 22 个时段，如超出请使用"批量下载"'); return; } state.selectedCells.push(ck); checkbox.classList.add('checked'); } updateBottomBar(); return; }
   const captureBtn = target.closest('[data-action="capture"]');
   // 【v1.2.2 iOS修复】先同步触发 click()，再在 change 回调中检查图片数量
   // iOS PWA 中 await 后调用 click() 会被系统阻止，必须在用户交互同步栈中触发
@@ -4406,11 +4594,11 @@ document.addEventListener('click', async (e) => {
   if (previewBtn) { showPreview(previewBtn.dataset.cellKey, parseInt(previewBtn.dataset.imgIdx)); return; }
   // 点击时段卡片空白区域切换勾选
   const card = target.closest('[data-action="toggle-card"]');
-  if (card) { if (card.dataset.hasImages !== '1') return; const ck = card.dataset.cellKey, cb = card.querySelector('.ts-checkbox'); if (!cb || cb.classList.contains('disabled')) return; const idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); cb.classList.remove('checked'); } else { state.selectedCells.push(ck); cb.classList.add('checked'); } updateBottomBar(); return; }
+  if (card) { if (card.dataset.hasImages !== '1') return; const ck = card.dataset.cellKey, cb = card.querySelector('.ts-checkbox'); if (!cb || cb.classList.contains('disabled')) return; const idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); cb.classList.remove('checked'); } else { if (state.selectedCells.length >= 22) { showToast('最多可选 22 个时段，如超出请使用"批量下载"'); return; } state.selectedCells.push(ck); cb.classList.add('checked'); } updateBottomBar(); return; }
   const nameEl = target.closest('[data-action="edit-seat-name"]');
   if (nameEl) { const sk = nameEl.dataset.seatKey, curName = nameEl.textContent; const input = document.createElement('input'); input.type = 'text'; input.value = curName; input.className = 'seat-name-edit-input'; const doSave = async () => { const newName = input.value.trim() || curName; if (newName === curName) { const sp = document.createElement('span'); sp.className = 'seat-name-text'; sp.dataset.action = 'edit-seat-name'; sp.dataset.seatKey = sk; sp.textContent = newName; if (input.parentNode) input.replaceWith(sp); return; } state.seatNames[sk] = newName; await saveSeatName(sk, newName); const sp = document.createElement('span'); sp.className = 'seat-name-text'; sp.dataset.action = 'edit-seat-name'; sp.dataset.seatKey = sk; sp.textContent = newName; if (input.parentNode) input.replaceWith(sp); updateSeatButtonText(sk, newName); await regenerateWatermarksForSeat(sk); }; input.addEventListener('blur', doSave); input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') input.blur(); }); nameEl.replaceWith(input); input.focus(); input.select(); return; }
   const cleanupBtn = target.closest('[data-action="open-cleanup"]');
-  if (cleanupBtn) { cleanupModal.classList.add('show'); return; }
+  if (cleanupBtn) { initCleanupModal(); cleanupModal.classList.add('show'); return; }
   const batchDlBtn = target.closest('[data-action="open-batch-dl"]');
   if (batchDlBtn) { initBatchModal(); batchModal.classList.add('show'); return; }
   const filterBtn = target.closest('[data-action="open-filter"]');
@@ -4678,9 +4866,9 @@ function renderFuncPanelBody() {
       <div class="func-item-label">批量下载<div class="func-item-desc">下载选中时段的图片</div></div>
       <span style="color:#bfbfbf;font-size:18px">›</span>
     </div>
-    <!-- 【v1.5.10 修改】批量清理改为清除全部图片 -->
+    <!-- 【v1.10.0 修改】清除全部图片 → 清除图片 -->
     <div class="func-item" data-func="open-cleanup">
-      <div class="func-item-label">清除全部图片<div class="func-item-desc">清除所有图片数据，不可恢复</div></div>
+      <div class="func-item-label">清除图片<div class="func-item-desc">选择区域和时段清除图片</div></div>
       <span style="color:#bfbfbf;font-size:18px">›</span>
     </div>
     <!-- 【v1.6.0 新增】主题选择 -->
@@ -4771,7 +4959,7 @@ funcPanelBody.addEventListener('click', (e) => {
   const func = item.dataset.func;
   if (func === 'open-filter') { closeFuncPanel(); setTimeout(() => openFilterSheet(), 300); }
   else if (func === 'open-batch-dl') { closeFuncPanel(); setTimeout(() => { initBatchModal(); batchModal.classList.add('show'); }, 300); }
-  else if (func === 'open-cleanup') { closeFuncPanel(); setTimeout(() => { cleanupModal.classList.add('show'); }, 300); }
+  else if (func === 'open-cleanup') { closeFuncPanel(); setTimeout(() => { initCleanupModal(); cleanupModal.classList.add('show'); }, 300); }
   // 【v1.6.0】主题选择：展开/收起主题列表，不关闭菜单
   else if (func === 'toggle-theme') {
     const list = document.getElementById('theme-list');
