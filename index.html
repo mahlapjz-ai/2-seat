@@ -165,7 +165,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 /* 【v1.3.1 Bug1修复】拼接预览按钮文字适配，防止安卓端溢出 */
 .bar-btn{padding:12px 8px;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .app-footer{text-align:center;padding:12px 0 16px;max-width:480px;margin:0 auto}
-.app-footer .footer-title{font-size:12px;color:#999;font-weight:700;text-align:left;margin-bottom:4px}
+.app-footer .footer-title{font-size:12px;color:#999;font-weight:700;text-align:left;margin-bottom:4px;padding-left:16px}
 .app-footer .update-log{font-size:10px;color:#999;line-height:1.5;text-align:left;padding:0 16px;margin-bottom:8px}
 .app-footer .update-log .log-item{margin-bottom:1px}
 .app-footer .update-log .log-ellipsis{color:#aaa;text-align:center;margin-top:2px;font-size:10px}
@@ -829,7 +829,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.10.18';
+const APP_VERSION = 'v1.10.20';
 // 【v1.10.18】更新日志：记录次版本号和主版本号变更，修订号变更不记录，最多保留3条
 const UPDATE_LOG = [
   { date: '6月23日', text: '修复批量下载分批弹窗问题；清除图片改为选择性界面；新增22时段勾选限制' },
@@ -2010,7 +2010,7 @@ function addWatermarkBlob(imageSource, seatName, beijingTime, orientation) {
           const logoImg = await getLogoImage();
           if (logoImg) {
             ctx.globalAlpha = 1;
-            ctx.drawImage(logoImg, bgX, bgY - logoH - logoGap, logoW, logoH);
+            ctx.drawImage(logoImg, bgX + (bgW - logoW) / 2, bgY - logoH - logoGap, logoW, logoH);
           }
         }
         // 一次 Canvas 绘制，同时导出原图 Blob 和缩略图 Blob
