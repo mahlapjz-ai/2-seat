@@ -829,7 +829,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.10.20';
+const APP_VERSION = 'v1.10.21';
 // 【v1.10.18】更新日志：记录次版本号和主版本号变更，修订号变更不记录，最多保留3条
 const UPDATE_LOG = [
   { date: '6月23日', text: '修复批量下载分批弹窗问题；清除图片改为选择性界面；新增22时段勾选限制' },
@@ -4782,13 +4782,15 @@ filterBody.addEventListener('click', (e) => {
   if (state.visibleTimeSlots.size === 0 && !state._filterNone) {
     state.visibleTimeSlots = new Set(TIME_SLOTS.map((_, i) => i));
   }
-  state._filterNone = false;
   if (state.visibleTimeSlots.has(tidx)) {
     state.visibleTimeSlots.delete(tidx);
     cb.classList.remove('checked');
+    // 【v1.10.21】手动取消最后一个时段时，标记为全不显示，避免被重置为全选
+    if (state.visibleTimeSlots.size === 0) state._filterNone = true;
   } else {
     state.visibleTimeSlots.add(tidx);
     cb.classList.add('checked');
+    state._filterNone = false;
   }
   // 如果全部勾选，等价于无筛选
   if (state.visibleTimeSlots.size === TIME_SLOTS.length) {
