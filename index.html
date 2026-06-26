@@ -85,10 +85,10 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 
 .floor-btn{display:flex;align-items:center;justify-content:space-between;width:100%;padding:16px 20px;margin:8px 0;font-size:18px;font-weight:600;border:none;border-radius:10px;color:#fff;cursor:pointer;text-align:left;transition:transform .1s}
 .floor-btn:active,.floor-btn._pressing{transform:scale(.97)}
-.floor-btn .floor-name{flex-shrink:0}
-.floor-btn .floor-right{flex-shrink:0;display:flex;align-items:center;gap:8px}
-.floor-btn .arrow{font-size:14px;transition:transform .25s;display:inline-block}
-.floor-btn.expanded .arrow{transform:rotate(90deg)}
+.floor-btn .floor-name{flex-shrink:0;white-space:nowrap}
+.floor-btn .floor-right{flex-shrink:0;display:flex;align-items:center;gap:8px;white-space:nowrap;min-width:52px;justify-content:flex-end}
+.floor-btn .arrow{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid currentColor;display:inline-block;vertical-align:middle;transition:transform .25s}
+.floor-btn.expanded .arrow{transform:rotate(180deg)}
 .floor-btn .floor-count{font-size:13px;font-weight:400;opacity:.85}
 .floor-1{background:linear-gradient(135deg,#667eea,#764ba2)}
 .floor-2{background:linear-gradient(135deg,#f093fb,#f5576c)}
@@ -100,9 +100,9 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .area-container.show{display:block}
 .area-btn{display:inline-flex;flex-direction:column;align-items:center;padding:12px 20px;margin:5px 4px;font-size:16px;font-weight:600;border:2px solid transparent;border-radius:8px;background:#fff;color:#333;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12);transition:transform .1s,border-color .15s}
 .area-btn:active,.area-btn._pressing{transform:scale(.95)}
-.area-btn .arrow{margin-left:6px;font-size:12px;transition:transform .25s;display:inline-block}
+.area-btn .arrow{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;display:inline-block;vertical-align:middle;margin-left:6px;transition:transform .25s}
 .area-btn .area-count{font-size:11px;font-weight:400;color:#999;margin-top:2px}
-.area-btn.expanded .arrow{transform:rotate(90deg)}
+.area-btn.expanded .arrow{transform:rotate(180deg)}
 /* 【v1.3.15】选中高亮改为红色描边+无背景色，避免与蓝色提示混淆 */
 .area-btn.expanded{background:#fff;border-color:#ff4d4f;box-shadow:none}
 .area-btn.has-images{border:2px solid #52c41a;background:linear-gradient(135deg,#f6ffed,#d9f7be);color:#389e0d}
@@ -111,14 +111,14 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .record-time-btn{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:6px 16px;margin:5px 4px;font-size:13px;font-weight:500;border:1.5px solid #d9d9d9;border-radius:20px;background:#f5f5f5;color:#666;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,transform .1s;-webkit-user-select:none;user-select:none}
 .record-time-btn:active,.record-time-btn._pressing{transform:scale(.95);background:#e8e8e8}
 /* 【v1.13.3】楼层卡片完成时间显示：居中填充中间空间 */
-.floor-completion{display:flex;flex-direction:column;flex:1;min-width:0;margin:0 12px;font-weight:400;color:rgba(255,255,255,.85);line-height:1.4;align-items:center}
-.floor-completion .fc-row{display:flex;justify-content:space-between;width:100%;white-space:nowrap}
-.floor-completion .fc-row.fc-single{justify-content:center}
-.floor-completion .fc-row>span{white-space:nowrap}
+.floor-completion{display:flex;flex-direction:column;flex:1;min-width:0;margin:0 8px;font-weight:400;color:rgba(255,255,255,.85);line-height:1.4;align-items:stretch;overflow:hidden}
+.floor-completion .fc-row{display:flex;justify-content:space-between;width:100%;gap:12px}
+.floor-completion .fc-row.fc-single-center{justify-content:center}
+.floor-completion .fc-row>span{white-space:nowrap;flex:1 1 0%;min-width:0}
 .floor-completion.s1{font-size:14px}
 .floor-completion.s2{font-size:12px}
-.floor-completion.s3{font-size:10px}
-.floor-completion.fixed{font-size:11px;word-break:break-all;line-height:1.3;display:inline;flex:none;text-align:center}
+.floor-completion.s3{font-size:11px}
+.floor-completion.fixed{font-size:11px;word-break:break-word;overflow-wrap:break-word;line-height:1.3;flex:1;max-width:100%;text-align:center}
 /* 【v1.12.0】记录完成时间二次确认弹窗 */
 .record-confirm-box{background:#fff;border-radius:12px;padding:24px 20px 18px;width:280px;max-width:85vw;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.15)}
 .record-confirm-text{font-size:15px;color:#333;margin-bottom:20px;line-height:1.5}
@@ -661,6 +661,10 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 /* 【v1.11.0】楼层卡片完成时间：像素风深色文字 */
 .theme-pixel .floor-completion{color:rgba(74,55,40,.8)}
 .theme-pixel .floor-completion.fixed{color:#5a3d2b}
+.theme-pixel .floor-completion .fc-time{font-weight:700}
+.theme-pixel .floor-completion.s1{font-size:13px}
+.theme-pixel .floor-completion.s2{font-size:11px}
+.theme-pixel .floor-completion.s3{font-size:10px}
 /* 座位编号按钮：铁块/石英材质 + 像素描边 */
 .theme-pixel .seat-btn{font-family:'Courier New',monospace;background:#d8d8d8;border:2px solid #888;border-radius:0;box-shadow:2px 2px 0 #2d2d2d;color:#3a3a3a;font-size:12px;font-weight:700;transition:transform .08s,box-shadow .08s}
 .theme-pixel .seat-btn:hover{background:#e0e0e0}
@@ -911,7 +915,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.13.7';
+const APP_VERSION = 'v1.13.14';
 // 【v1.10.18】更新日志：记录次版本号和主版本号变更，修订号变更不记录，最多保留3条
 const UPDATE_LOG = [
   { date: '6月25日', text: '计时按钮改为纯图标+二次确认；新增骨架屏加载动画；更新固定文案' },
@@ -1118,7 +1122,7 @@ function calcCompletionTime() {
   const mins = h * 60 + m; // 当天分钟数
 
   // 情况四：21:16–21:59
-  if (h === 21 && m >= 16) return { type: 'fixed', fixedText: '(💢｀Д´)我chovy你们都干嘛呢还在做座位管理' };
+  if (h === 21 && m >= 16) return { type: 'fixed', fixedText: '(?｀Д?)我chovy你们都干嘛呢还在做' };
   // 情况五：22:00–01:00
   if ((h >= 22) || (h <= 1 && (h < 1 || m <= 0))) return { type: 'fixed', fixedText: '晚安玛卡巴卡ﾍ(=^･ω･^=)ﾉ' };
   // 情况六：01:01–08:29
@@ -1471,14 +1475,15 @@ async function renderMain() {
       const shown = rec.records.slice(0, 6);
       const rows = [];
       for (let i = 0; i < shown.length; i += 2) {
-        const left = `<span>${shown[i].area}${shown[i].time}</span>`;
-        const right = shown[i + 1] ? `<span>${shown[i + 1].area}${shown[i + 1].time}</span>` : '';
-        const singleClass = !shown[i + 1] ? ' fc-single' : '';
+        const left = `<span>${shown[i].area}<span class="fc-time">${shown[i].time}</span></span>`;
+        const right = shown[i + 1] ? `<span>${shown[i + 1].area}<span class="fc-time">${shown[i + 1].time}</span></span>` : '';
+        // 只有1条记录时居中；多条记录最后一行只有一个时居左
+        const singleClass = (!shown[i + 1] && n === 1) ? ' fc-single-center' : '';
         rows.push(`<div class="fc-row${singleClass}">${left}${right}</div>`);
       }
       completionHtml = `<span class="floor-completion ${sizeClass}">${rows.join('')}</span>`;
     }
-    html += `<button class="floor-btn floor-${fid} ${expanded ? 'expanded' : ''}" data-action="toggle-floor" data-floor="${fid}"><span class="floor-name">${floor.name}</span>${completionHtml}<span class="floor-right"><span class="floor-count">${floorTotal}座</span><span class="arrow">▶</span></span></button>`;
+    html += `<button class="floor-btn floor-${fid} ${expanded ? 'expanded' : ''}" data-action="toggle-floor" data-floor="${fid}"><span class="floor-name">${floor.name}</span>${completionHtml}<span class="floor-right"><span class="floor-count">${floorTotal}座</span><span class="arrow"></span></span></button>`;
     html += `<div class="area-container ${expanded ? 'show' : ''}" id="areas-${fid}">`;
     floor.areas.forEach(area => {
       const aname = area.name, ak = areaKey(fid, aname), aExp = state.expandedAreas.has(ak);
@@ -1488,7 +1493,7 @@ async function renderMain() {
       for (let si = 0; si < getAreaSeatCount(fid, aname); si++) {
         if (state.seatHasImages.has(seatKey(fid, aname, si))) { areaHasImages = true; break; }
       }
-      html += `<button class="area-btn ${aExp ? 'expanded' : ''} ${areaHasImages ? 'has-images' : ''}" data-action="toggle-area" data-floor="${fid}" data-area="${aname}"><span>${aname}<span class="arrow">▶</span></span><span class="area-count">${areaTotal}座</span></button>`;
+      html += `<button class="area-btn ${aExp ? 'expanded' : ''} ${areaHasImages ? 'has-images' : ''}" data-action="toggle-area" data-floor="${fid}" data-area="${aname}"><span>${aname}<span class="arrow"></span></span><span class="area-count">${areaTotal}座</span></button>`;
       // 【v1.11.0】区域展开时，在区域按钮右侧显示"记录完成时间"按钮
       if (aExp) {
         html += `<button class="record-time-btn" data-action="record-time" data-floor="${fid}" data-area="${aname}">⏱️记录完成时间</button>`;
@@ -1525,6 +1530,50 @@ async function renderMain() {
     if (_renderMainSeq !== mySeq) return; // 有更新的 renderMain 调用，当前调用终止
     await renderTimeSlots(sk);
   }
+  // 【v1.13.14】楼层卡片中间区域字号自适应：检测溢出并缩字号或分行
+  adjustFloorCompletion();
+}
+
+// 【v1.13.14】楼层卡片中间区域字号自适应
+function adjustFloorCompletion() {
+  const rows = document.querySelectorAll('.fc-row');
+  rows.forEach(row => {
+    const spans = row.querySelectorAll(':scope > span');
+    if (spans.length < 2) return; // 单条记录无需调整
+    // 重置行内样式
+    row.style.fontSize = '';
+    const container = row.closest('.floor-completion');
+    const baseSize = parseFloat(getComputedStyle(container || row).fontSize);
+    const rowWidth = row.clientWidth;
+    const GAP = 12;
+    // 检测两 span 自然宽度是否超出
+    const totalNatural = Array.from(spans).reduce((sum, s) => sum + s.scrollWidth, 0);
+    if (totalNatural + GAP <= rowWidth) return; // 空间足够
+    // 逐步缩小字号
+    const minSize = 10;
+    let fit = false;
+    for (let sz = baseSize - 1; sz >= minSize; sz--) {
+      row.style.fontSize = sz + 'px';
+      const newTotal = Array.from(spans).reduce((sum, s) => sum + s.scrollWidth, 0);
+      if (newTotal + GAP <= rowWidth) { fit = true; break; }
+    }
+    if (!fit) {
+      // 最小字号仍放不下 → 分行：每个 span 独占一行居左
+      row.style.fontSize = '';
+      const parent = container || row.parentElement;
+      if (parent) {
+        const nextSibling = row.nextSibling;
+        spans.forEach(span => {
+          const newRow = document.createElement('div');
+          newRow.className = 'fc-row';
+          row.removeChild(span);
+          newRow.appendChild(span);
+          parent.insertBefore(newRow, nextSibling);
+        });
+        row.remove();
+      }
+    }
+  });
 }
 
 // 【修复Bug3】确保"功能"按钮文字始终显示，防止异步竞态或页面恢复时文字消失
