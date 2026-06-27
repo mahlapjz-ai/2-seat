@@ -115,6 +115,11 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .floor-completion .fc-row{display:flex;justify-content:space-between;width:100%;gap:12px}
 .floor-completion .fc-row.fc-single-center{justify-content:center}
 .floor-completion .fc-row>span{white-space:nowrap;flex:1 1 0%;min-width:0}
+.floor-completion .fc-row>span.fc-item{display:inline-flex;align-items:baseline;gap:2px}
+.floor-completion .fc-row>span.fc-item.fc-odd{justify-content:flex-start}
+.floor-completion .fc-row>span.fc-item.fc-even{justify-content:flex-end}
+.floor-completion .fc-area{flex-shrink:0}
+.floor-completion .fc-time{white-space:nowrap}
 .floor-completion.s1{font-size:14px}
 .floor-completion.s2{font-size:12px}
 .floor-completion.s3{font-size:11px}
@@ -375,7 +380,8 @@ html.theme-normal{background:repeating-linear-gradient(175deg,#e8f0f8 0%,#eaf2e4
 .theme-normal .record-time-btn{font-family:Georgia,'KaiTi','STKaiti',serif;background:rgba(255,248,230,.92);border:1.5px solid #c8bca8;color:#8B7355;box-shadow:0 1px 4px rgba(120,100,70,.08)}
 .theme-normal .record-time-btn:active,.theme-normal .record-time-btn._pressing{transform:scale(.95);background:rgba(255,240,215,.96)}
 /* 【v1.11.0】楼层卡片完成时间：暖棕色文字 */
-.theme-normal .floor-completion{color:rgba(74,55,40,.7)}
+.theme-normal .floor-completion{color:rgba(74,55,40,.7);display:flex;flex-direction:column}
+.theme-normal .floor-completion .fc-row{display:flex}
 .theme-normal .floor-completion.fixed{color:#8B7355}
 /* 座位编号按钮：米白底，暖棕边框 */
 .theme-normal .seat-btn{font-family:Georgia,'KaiTi','STKaiti',serif;background:rgba(255,253,248,.96);border:1px solid #c8bca8;color:#4A3728;font-size:12px;transition:background .12s,border-color .12s}
@@ -915,7 +921,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.13.14';
+const APP_VERSION = 'v1.13.16';
 // 【v1.10.18】更新日志：记录次版本号和主版本号变更，修订号变更不记录，最多保留3条
 const UPDATE_LOG = [
   { date: '6月25日', text: '计时按钮改为纯图标+二次确认；新增骨架屏加载动画；更新固定文案' },
@@ -1475,8 +1481,8 @@ async function renderMain() {
       const shown = rec.records.slice(0, 6);
       const rows = [];
       for (let i = 0; i < shown.length; i += 2) {
-        const left = `<span>${shown[i].area}<span class="fc-time">${shown[i].time}</span></span>`;
-        const right = shown[i + 1] ? `<span>${shown[i + 1].area}<span class="fc-time">${shown[i + 1].time}</span></span>` : '';
+        const left = `<span class="fc-item fc-odd">${shown[i].area}<span class="fc-time">${shown[i].time}</span></span>`;
+        const right = shown[i + 1] ? `<span class="fc-item fc-even">${shown[i + 1].area}<span class="fc-time">${shown[i + 1].time}</span></span>` : '';
         // 只有1条记录时居中；多条记录最后一行只有一个时居左
         const singleClass = (!shown[i + 1] && n === 1) ? ' fc-single-center' : '';
         rows.push(`<div class="fc-row${singleClass}">${left}${right}</div>`);
@@ -1542,20 +1548,29 @@ function adjustFloorCompletion() {
     if (spans.length < 2) return; // 单条记录无需调整
     // 重置行内样式
     row.style.fontSize = '';
-    const container = row.closest('.floor-completion');
-    const baseSize = parseFloat(getComputedStyle(container || row).fontSize);
     const rowWidth = row.clientWidth;
     const GAP = 12;
-    // 检测两 span 自然宽度是否超出
-    const totalNatural = Array.from(spans).reduce((sum, s) => sum + s.scrollWidth, 0);
-    if (totalNatural + GAP <= rowWidth) return; // 空间足够
+    // 检测方式：每个 span 在 flex 分配空间内是否溢出
+    // flex:1 1 0% 让两个 span 平分行宽，每个分配宽度 = (rowWidth - GAP) / 2
+    const allocWidth = (rowWidth - GAP) / 2;
+    let hasOverflow = false;
+    Array.from(spans).forEach(s => {
+      if (s.scrollWidth > allocWidth + 1) hasOverflow = true;
+    });
+    if (!hasOverflow) return; // 空间足够
     // 逐步缩小字号
+    const container = row.closest('.floor-completion');
+    const baseSize = parseFloat(getComputedStyle(container || row).fontSize);
     const minSize = 10;
     let fit = false;
     for (let sz = baseSize - 1; sz >= minSize; sz--) {
       row.style.fontSize = sz + 'px';
-      const newTotal = Array.from(spans).reduce((sum, s) => sum + s.scrollWidth, 0);
-      if (newTotal + GAP <= rowWidth) { fit = true; break; }
+      const newAlloc = (row.clientWidth - GAP) / 2;
+      let newOk = true;
+      Array.from(spans).forEach(s => {
+        if (s.scrollWidth > newAlloc + 1) newOk = false;
+      });
+      if (newOk) { fit = true; break; }
     }
     if (!fit) {
       // 最小字号仍放不下 → 分行：每个 span 独占一行居左
