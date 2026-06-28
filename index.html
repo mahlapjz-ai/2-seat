@@ -19,7 +19,7 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;font-size:15px;color:#333;background:#f0f2f5;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;font-size:15px;color:#333;background:#f0f2f5;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 /* 【v1.2.0 iOS兼容】所有可点击元素统一 cursor:pointer，iOS 不做悬停效果 */
 button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-slot-item,.floor-btn,.area-btn,.record-time-btn{cursor:pointer;-webkit-user-select:none;user-select:none}
 /* 【v1.9.25】按压视觉反馈：:active + ._pressing 双重匹配，移动端 touchstart 立即触发 */
@@ -97,18 +97,29 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .floor-5{background:linear-gradient(135deg,#fa709a,#fee140)}
 
 .area-container{display:none;padding:4px 0 8px 16px}
-.area-container.show{display:block}
-.area-btn{display:inline-flex;flex-direction:column;align-items:center;padding:12px 20px;margin:5px 4px;font-size:16px;font-weight:600;border:2px solid transparent;border-radius:8px;background:#fff;color:#333;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12);transition:transform .1s,border-color .15s}
+.area-container.show{display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:flex-start;gap:6px;padding:4px 12px 8px}
+.area-btn-wrap{position:relative;width:calc(33.33% - 8px);flex-shrink:0;overflow:visible}
+.area-btn-wrap:has(.expanded){margin-bottom:36px}
+.area-btn{display:inline-flex;flex-direction:column;align-items:center;width:100%;box-sizing:border-box;padding:8px 10px;font-size:14px;font-weight:600;border:2px solid transparent;border-radius:8px;background:#fff;color:#333;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12);transition:transform .1s,border-color .15s;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .area-btn:active,.area-btn._pressing{transform:scale(.95)}
 .area-btn .arrow{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;display:inline-block;vertical-align:middle;margin-left:6px;transition:transform .25s}
-.area-btn .area-count{font-size:11px;font-weight:400;color:#999;margin-top:2px}
+.area-btn .area-seat-count{font-size:10px;font-weight:400;color:#999;width:100%;text-align:left;line-height:1.3}
+.area-btn .area-name-row{display:flex;align-items:center;justify-content:center;line-height:1.4}
+.area-btn .area-stats{font-size:10px;font-weight:400;color:#999;width:100%;display:flex;justify-content:space-between;line-height:1.3;margin-top:1px}
+.area-btn .area-stats .as-left{white-space:nowrap}
+.area-btn .area-stats .as-right{white-space:nowrap}
 .area-btn.expanded .arrow{transform:rotate(180deg)}
+/* 【v1.17.2】区域按钮拖动调序 */
+.area-btn._dragging{box-shadow:0 8px 24px rgba(0,0,0,.25);transform:scale(1.05);z-index:100;opacity:.85;transition:box-shadow .15s,opacity .15s}
+.area-btn._drag-placeholder{visibility:hidden;border:2px dashed #722ed1;opacity:.3}
+.area-btn._drag-target{border-color:#722ed1;border-style:dashed}
+._drag-placeholder-wrap{visibility:hidden;border:2px dashed #722ed1;opacity:.3;border-radius:8px;box-sizing:border-box;width:calc(33.33% - 8px);flex-shrink:0}
 /* 【v1.3.15】选中高亮改为红色描边+无背景色，避免与蓝色提示混淆 */
 .area-btn.expanded{background:#fff;border-color:#ff4d4f;box-shadow:none}
 .area-btn.has-images{border:2px solid #52c41a;background:linear-gradient(135deg,#f6ffed,#d9f7be);color:#389e0d}
 .area-btn.has-images.expanded{border-color:#ff4d4f;background:linear-gradient(135deg,#f6ffed,#d9f7be);color:#389e0d}
 /* 【v1.12.1】记录完成时间按钮：圆角胶囊形 */
-.record-time-btn{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:6px 16px;margin:5px 4px;font-size:13px;font-weight:500;border:1.5px solid #d9d9d9;border-radius:20px;background:#f5f5f5;color:#666;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,transform .1s;-webkit-user-select:none;user-select:none}
+.record-time-btn{display:inline-flex;align-items:center;justify-content:center;min-width:36px;min-height:36px;padding:4px 10px;margin:0;font-size:11px;font-weight:500;border:1.5px solid #d9d9d9;border-radius:20px;background:#f5f5f5;color:#666;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,transform .1s;-webkit-user-select:none;user-select:none;position:absolute;top:100%;left:0;margin-top:4px;z-index:2}
 .record-time-btn:active,.record-time-btn._pressing{transform:scale(.95);background:#e8e8e8}
 /* 【v1.13.3】楼层卡片完成时间显示：居中填充中间空间 */
 .floor-completion{display:flex;flex-direction:column;flex:1;min-width:0;margin:0 8px;font-weight:400;color:rgba(255,255,255,.85);line-height:1.4;align-items:stretch;overflow:hidden}
@@ -135,7 +146,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .record-confirm-ok:active{opacity:.8}
 
 .seat-container{display:none;padding:8px 0}
-.seat-container.show{display:block}
+.seat-container.show{display:block;flex-basis:100%;width:100%}
 .seat-flow{display:flex;flex-wrap:wrap;gap:6px;padding:0 2px}
 .seat-btn{width:calc(20% - 5px);padding:10px 2px;font-size:13px;font-weight:500;border:2px solid #d9d9d9;border-radius:6px;background:#fff;cursor:pointer;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .15s,border-color .15s;position:relative}
 .seat-btn:active,.seat-btn._pressing{background:#e6f7ff}
@@ -264,16 +275,20 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .modal-btns button{flex:1;padding:12px;font-size:15px;font-weight:600;border:none;border-radius:8px;cursor:pointer}
 .modal-btns button:active{opacity:.8}
 .modal-cancel{background:#f0f0f0;color:#333}
+.modal-cancel.disabled{opacity:.4;pointer-events:none}
 .modal-confirm{background:#722ed1;color:#fff}
 
 .batch-section{margin-bottom:12px}
-.batch-section h4{font-size:14px;margin-bottom:8px;color:#666}
+.batch-section h4{font-size:14px;margin-bottom:8px;color:#666;display:flex;align-items:center;justify-content:space-between}
 .batch-grid{display:flex;flex-wrap:wrap;gap:6px}
 .batch-chip{padding:6px 12px;font-size:13px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;cursor:pointer;user-select:none;transition:all .1s}
 .batch-chip.checked{background:#722ed1;color:#fff;border-color:#722ed1}
 .batch-chip:active{opacity:.7}
+.batch-chip.disabled{opacity:.4;pointer-events:none}
 .batch-select-all{padding:6px 12px;font-size:12px;border:1px dashed #722ed1;border-radius:6px;background:#fff;color:#722ed1;cursor:pointer}
 .batch-select-all:active{opacity:.7}
+.batch-select-all.disabled{opacity:.4;pointer-events:none}
+.batch-progress{font-size:10px;color:#722ed1;font-weight:500;white-space:nowrap}
 
 .picker-row{display:flex;gap:4px;margin-bottom:16px;height:160px;position:relative;background:#f5f5f5;border-radius:8px;overflow:hidden}
 .picker-col{flex:1;height:100%;overflow-y:auto;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;position:relative}
@@ -369,10 +384,10 @@ html.theme-normal{background:repeating-linear-gradient(175deg,#e8f0f8 0%,#eaf2e4
 .theme-normal .floor-btn:hover{border-color:#7a9a5a;box-shadow:0 3px 12px rgba(122,154,90,.15);transform:scale(1.01)}
 .theme-normal .floor-btn:active,.theme-normal .floor-btn._pressing{transform:scale(.98)}
 /* 区域按钮：浅奶绿/淡天蓝 */
-.theme-normal .area-btn{font-family:Georgia,'KaiTi','STKaiti',serif;background:rgba(245,252,245,.92);border:1.5px solid #a8c898;color:#4A3728;box-shadow:0 1px 4px rgba(120,160,90,.08);transition:background .15s,border-color .15s}
+.theme-normal .area-btn{font-family:Georgia,'KaiTi','STKaiti',serif;background:rgba(245,252,245,.92);border:1.5px solid #a8c898;color:#4A3728;box-shadow:0 1px 4px rgba(120,160,90,.08);transition:background .15s,border-color .15s;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .theme-normal .area-btn:hover{background:rgba(255,248,230,.92);border-color:#8B7355}
 .theme-normal .area-btn:active,.theme-normal .area-btn._pressing{transform:scale(.95)}
-.theme-normal .area-btn .area-count{color:#7a9a5a}
+.theme-normal .area-btn .area-seat-count,.theme-normal .area-btn .area-stats{color:#7a9a5a}
 .theme-normal .area-btn.expanded{border-color:#7a9a5a;background:rgba(248,255,240,.92)}
 .theme-normal .area-btn.has-images{border-color:#6a9a4a;background:linear-gradient(135deg,rgba(235,250,228,.92),rgba(210,240,195,.92));color:#3a6a1a}
 .theme-normal .area-btn.has-images.expanded{border-color:#7a9a5a;background:linear-gradient(135deg,rgba(235,250,228,.92),rgba(210,240,195,.92));color:#3a6a1a}
@@ -507,10 +522,10 @@ html.theme-yiban{background:repeating-linear-gradient(180deg,#3c3c46 0%,#4a4540 
 .theme-yiban .floor-btn:hover{border-color:#00ffff;box-shadow:0 0 16px rgba(0,255,255,.4),inset 0 0 20px rgba(0,0,0,.3);transform:scale(1.01)}
 .theme-yiban .floor-btn:active,.theme-yiban .floor-btn._pressing{transform:scale(.98)}
 /* 区域按钮：铁灰 + 沙尘 + 霓虹橙边框 */
-.theme-yiban .area-btn{font-family:'Segoe UI','Helvetica Neue',sans-serif;background:rgba(55,55,62,.88);border:1px solid rgba(232,130,12,.5);color:#e0d0b8;box-shadow:0 0 4px rgba(232,130,12,.15),inset 0 1px 3px rgba(0,0,0,.3);transition:background .12s,border-color .12s,box-shadow .12s}
+.theme-yiban .area-btn{font-family:'Segoe UI','Helvetica Neue',sans-serif;background:rgba(55,55,62,.88);border:1px solid rgba(232,130,12,.5);color:#e0d0b8;box-shadow:0 0 4px rgba(232,130,12,.15),inset 0 1px 3px rgba(0,0,0,.3);transition:background .12s,border-color .12s,box-shadow .12s;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .theme-yiban .area-btn:hover{border-color:#00ffff;box-shadow:0 0 8px rgba(0,255,255,.25),inset 0 1px 3px rgba(0,0,0,.3)}
 .theme-yiban .area-btn:active,.theme-yiban .area-btn._pressing{transform:scale(.95)}
-.theme-yiban .area-btn .area-count{color:#e8820c}
+.theme-yiban .area-btn .area-seat-count,.theme-yiban .area-btn .area-stats{color:#e8820c}
 .theme-yiban .area-btn.expanded{border-color:#00ffff;background:rgba(60,60,68,.92);box-shadow:0 0 10px rgba(0,255,255,.25)}
 .theme-yiban .area-btn.has-images{border-color:#00cccc;background:linear-gradient(135deg,rgba(0,80,80,.35),rgba(55,55,62,.88));color:#00ffff}
 .theme-yiban .area-btn.has-images.expanded{border-color:#00ffff;background:linear-gradient(135deg,rgba(0,80,80,.35),rgba(55,55,62,.88));color:#00ffff}
@@ -654,10 +669,10 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 .theme-pixel .floor-btn:hover{background-color:#d8b978;box-shadow:4px 4px 0 #2d2d2d}
 .theme-pixel .floor-btn:active,.theme-pixel .floor-btn._pressing{transform:translate(2px,2px);box-shadow:2px 2px 0 #2d2d2d}
 /* 区域按钮：石材材质 + 像素描边 */
-.theme-pixel .area-btn{font-family:'Courier New',monospace;background:#aaa;border:3px solid #555;border-radius:0;box-shadow:3px 3px 0 #2d2d2d;color:#3a3a3a;font-weight:700;transition:transform .08s,box-shadow .08s}
+.theme-pixel .area-btn{font-family:'Courier New',monospace;background:#aaa;border:3px solid #555;border-radius:0;box-shadow:3px 3px 0 #2d2d2d;color:#3a3a3a;font-weight:700;transition:transform .08s,box-shadow .08s;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .theme-pixel .area-btn:hover{background:#bbb}
 .theme-pixel .area-btn:active,.theme-pixel .area-btn._pressing{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
-.theme-pixel .area-btn .area-count{color:#555}
+.theme-pixel .area-btn .area-seat-count,.theme-pixel .area-btn .area-stats{color:#555;font-size:9px;overflow:hidden}
 .theme-pixel .area-btn.expanded{border-color:#5a3d2b;background:#b8b8b8}
 .theme-pixel .area-btn.has-images{border-color:#7ec850;background:linear-gradient(135deg,#8dd850,#7ec850);color:#3a5a1a}
 .theme-pixel .area-btn.has-images.expanded{border-color:#5a3d2b;background:linear-gradient(135deg,#8dd850,#7ec850);color:#3a5a1a}
@@ -816,7 +831,7 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 <div class="modal-overlay" id="batch-modal">
   <div class="modal-box">
     <h3>批量下载</h3>
-    <div class="batch-section"><h4>选择区域 <button class="batch-select-all" data-target="area">全选/取消</button></h4><div class="batch-grid" id="batch-areas"></div></div>
+    <div class="batch-section"><h4>选择区域 <span class="batch-progress" id="batch-progress"></span> <button class="batch-select-all" data-target="area">全选/取消</button></h4><div class="batch-grid" id="batch-areas"></div></div>
     <div class="batch-section"><h4>选择时段 <button class="batch-select-all" data-target="time">全选/取消</button></h4><div class="batch-grid" id="batch-times"></div></div>
     <div class="modal-btns"><button class="modal-cancel" id="batch-cancel">取消</button><button class="modal-confirm" id="batch-exec">打包下载(ZIP)</button></div>
   </div>
@@ -921,7 +936,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.13.16';
+const APP_VERSION = 'v1.20.8';
 // 【v1.10.18】更新日志：记录次版本号和主版本号变更，修订号变更不记录，最多保留3条
 const UPDATE_LOG = [
   { date: '6月25日', text: '计时按钮改为纯图标+二次确认；新增骨架屏加载动画；更新固定文案' },
@@ -1086,6 +1101,19 @@ function getAreaSeatCount(fid, aname) {
   const ak = areaKey(fid, aname);
   const extra = state.extraSeats[ak] || 0;
   return base + extra;
+}
+
+/** 【v1.19.0】获取某区域的当前总图片数 */
+const MAX_AREA_IMAGES = 240;
+function getAreaImageTotal(fid, aname) {
+  let total = 0;
+  const seatCount = getAreaSeatCount(fid, aname);
+  for (let si = 0; si < seatCount; si++) {
+    const sk = seatKey(fid, aname, si);
+    const stat = seatImageStats.get(sk);
+    if (stat) total += stat.totalCount;
+  }
+  return total;
 }
 
 /** 获取座位默认编号 */
@@ -1491,7 +1519,11 @@ async function renderMain() {
     }
     html += `<button class="floor-btn floor-${fid} ${expanded ? 'expanded' : ''}" data-action="toggle-floor" data-floor="${fid}"><span class="floor-name">${floor.name}</span>${completionHtml}<span class="floor-right"><span class="floor-count">${floorTotal}座</span><span class="arrow"></span></span></button>`;
     html += `<div class="area-container ${expanded ? 'show' : ''}" id="areas-${fid}">`;
-    floor.areas.forEach(area => {
+    // 【v1.17.0】应用自定义区域排列顺序
+    const savedOrder = loadAreaOrder(fid);
+    const orderedAreas = savedOrder ? applyAreaOrder(floor.areas, savedOrder) : floor.areas;
+    let seatHtml = ''; // 【v1.17.6】座位列表延后输出，保证按钮布局稳定
+    orderedAreas.forEach(area => {
       const aname = area.name, ak = areaKey(fid, aname), aExp = state.expandedAreas.has(ak);
       const areaTotal = getAreaSeatCount(fid, aname) - (deletedCountMap[ak] || 0);
       // 判断区域是否有图片：遍历该区域所有座位检查 seatHasImages
@@ -1499,13 +1531,30 @@ async function renderMain() {
       for (let si = 0; si < getAreaSeatCount(fid, aname); si++) {
         if (state.seatHasImages.has(seatKey(fid, aname, si))) { areaHasImages = true; break; }
       }
-      html += `<button class="area-btn ${aExp ? 'expanded' : ''} ${areaHasImages ? 'has-images' : ''}" data-action="toggle-area" data-floor="${fid}" data-area="${aname}"><span>${aname}<span class="arrow"></span></span><span class="area-count">${areaTotal}座</span></button>`;
-      // 【v1.11.0】区域展开时，在区域按钮右侧显示"记录完成时间"按钮
+      // 【v1.16.0】统计有图座位数和总图片数
+      let seatsWithImages = 0, areaImageTotal = 0;
+      const seatCount = getAreaSeatCount(fid, aname);
+      for (let si = 0; si < seatCount; si++) {
+        const sk = seatKey(fid, aname, si);
+        if (state.seatHasImages.has(sk)) {
+          seatsWithImages++;
+          const stat = seatImageStats.get(sk);
+          if (stat) areaImageTotal += stat.totalCount;
+        }
+      }
+      // 【v1.19.0】区域图片总数显示上限240
+      const displayImageTotal = Math.min(areaImageTotal, MAX_AREA_IMAGES);
+      // 【v1.20.1】无图片时第三行隐藏文字但保留占位
+      const statsStyle = areaImageTotal === 0 ? ' style="visibility:hidden"' : '';
+      html += `<div class="area-btn-wrap"><button class="area-btn ${aExp ? 'expanded' : ''} ${areaHasImages ? 'has-images' : ''}" data-action="toggle-area" data-floor="${fid}" data-area="${aname}"><span class="area-seat-count">${areaTotal}座</span><span class="area-name-row">${aname}<span class="arrow"></span></span><span class="area-stats"${statsStyle}><span class="as-left">${seatsWithImages}离座</span><span class="as-right">共${displayImageTotal}图</span></span></button>`;
+      // 【v1.11.0】区域展开时，在区域按钮下方显示"记录完成时间"按钮
       if (aExp) {
         html += `<button class="record-time-btn" data-action="record-time" data-floor="${fid}" data-area="${aname}">⏱️记录完成时间</button>`;
       }
-      html += `<div class="seat-container ${aExp ? 'show' : ''}" id="seats-${ak}">${renderSeatFlow(fid, aname)}</div>`;
+      html += `</div>`;
+      seatHtml += `<div class="seat-container ${aExp ? 'show' : ''}" id="seats-${ak}">${renderSeatFlow(fid, aname)}</div>`;
     });
+    html += seatHtml;
     html += '</div>';
   });
   // 【v1.12.6】底部信息：使用说明 + 近期优化记录 + 致谢 + 免责声明 + 联系小字
@@ -1517,7 +1566,7 @@ async function renderMain() {
     + `<div class="footer-title">使用说明</div>`
     + `<div class="usage-guide">·座位如有单张图片且当前时段未隐藏，座位显示蓝色；若时段隐藏，则不显示颜色<br>·座位的同一时段有多张图片且未隐藏，座位显示橙色；若时段隐藏，则不显示颜色<br>·隐藏时段内若存在图片，座位按钮左上角显示"闭眼"图标<br>·若区域存在图片，区域按钮显示绿色<br>·通过"时段筛选"选定某一时段后，若该时段有图片，座位按钮右上角显示"图片"图标</div>`
     + `<div class="footer-collapsible" data-action="toggle-footer-opt">近期优化记录</div>`
-    + `<div class="footer-collapsible-body ${optExpanded ? 'expanded' : 'collapsed'}" data-action="expand-footer-opt">·琪同志反馈缩略图"×"按钮误触易删除图片：v1.13.5 新增"删除保护"功能，开启后可以防止误触删除图片。<br>·圳组、乔组建议增设占座倒计时：目前仅增设"记录完成时间"功能来辅助判断（06.25更新），真正的倒计时提醒待馆方自研系统实现。<br>·赖组反馈批量清理原功能易致页面崩溃：已修复功能为"清除图片"（06.21更新）。<br>·圳组建议的纸质登记辅助功能已简单实现：时段筛选设为当前拍照时段后，蓝底且带图标的座位可对应纸质表打"×"（06.18更新）。<br>·环总、馨同志建议数据互通：经费不足，待馆方自研系统实现。</div>`
+    + `<div class="footer-collapsible-body ${optExpanded ? 'expanded' : 'collapsed'}" data-action="expand-footer-opt">·v1.15~v1.20 汇总：完善记录时间与区域统计功能，优化批量下载与清除图片逻辑，修复区域布局与拖动调序问题（06.29更新）<br>·琪同志反馈缩略图"×"按钮误触易删除图片：v1.13.5 新增"删除保护"功能，开启后可以防止误触删除图片。<br>·圳组、乔组建议增设占座倒计时：目前仅增设"记录完成时间"功能来辅助判断（06.25更新），真正的倒计时提醒待馆方自研系统实现。<br>·赖组反馈批量清理原功能易致页面崩溃：已修复功能为"清除图片"（06.21更新）。<br>·圳组建议的纸质登记辅助功能已简单实现：时段筛选设为当前拍照时段后，蓝底且带图标的座位可对应纸质表打"×"（06.18更新）。<br>·环总、馨同志建议数据互通：经费不足，待馆方自研系统实现。</div>`
     + `<div class="footer-collapsible" data-action="toggle-footer-thx">给大佬的情书</div>`
     + `<div class="footer-collapsible-body ${thxExpanded ? 'expanded' : 'collapsed'}" data-action="expand-footer-thx">感谢以下不愿透露姓名的大佬的建议与使用体验反馈（排名不分先后）：<br>环总、何总、圳组、赖组、州组、乔组、伟同志、垚同志、馨同志、瑜同志、伦同志、元同志、彦同志、灵同志、琪同志……</div>`
     + `<div class="disclaimer">内部参考工具，功能尚不完善，数据可能丢失，不承担准确性与隐私责任</div><div class="contact${showContact ? '' : ' hidden'}">如有使用建议可联系老范尝试优化。</div></div>`;
@@ -1538,6 +1587,8 @@ async function renderMain() {
   }
   // 【v1.13.14】楼层卡片中间区域字号自适应：检测溢出并缩字号或分行
   adjustFloorCompletion();
+  // 【v1.17.0】初始化区域按钮拖动调序
+  initAreaDragReorder();
 }
 
 // 【v1.13.14】楼层卡片中间区域字号自适应
@@ -1589,6 +1640,213 @@ function adjustFloorCompletion() {
       }
     }
   });
+}
+
+// 【v1.17.0】区域排列顺序持久化
+function loadAreaOrder(fid) {
+  try { const d = localStorage.getItem(`area_order_${fid}`); return d ? JSON.parse(d) : null; } catch (e) { return null; }
+}
+function saveAreaOrder(fid, names) {
+  try { localStorage.setItem(`area_order_${fid}`, JSON.stringify(names)); } catch (e) {}
+}
+function applyAreaOrder(areas, savedNames) {
+  const map = new Map(areas.map(a => [a.name, a]));
+  const ordered = [];
+  savedNames.forEach(n => { if (map.has(n)) { ordered.push(map.get(n)); map.delete(n); } });
+  map.forEach(a => ordered.push(a));
+  return ordered;
+}
+
+// 【v1.17.2】区域按钮触摸事件处理：短按(<400ms)→点击展开，长按(≥400ms)→拖动调序
+// 互斥逻辑：400ms内移动>8px→取消长按（滚动/误触），400ms内未移动→进入拖动调序
+let _areaTouchHandled = false; // 防止 touch 处理后 click 再次触发
+function initAreaDragReorder() {
+  document.querySelectorAll('.area-container').forEach(container => {
+    const fid = container.id.replace('areas-', '');
+    let dragBtn = null, dragWrap = null, longPressTimer = null, dragActive = false;
+    let startX = 0, startY = 0, offsetX = 0, offsetY = 0;
+    let placeholder = null;
+    let currentTarget = null; // 当前插入目标
+
+    function cleanup() {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      if (placeholder) { placeholder.remove(); placeholder = null; }
+      if (dragBtn) {
+        dragBtn.classList.remove('_dragging');
+      }
+      if (dragWrap) {
+        dragWrap.style.pointerEvents = '';
+        dragWrap.style.position = '';
+        dragWrap.style.left = '';
+        dragWrap.style.top = '';
+        dragWrap.style.width = '';
+        dragWrap.style.zIndex = '';
+      }
+      if (currentTarget) { currentTarget.classList.remove('_drag-target'); currentTarget = null; }
+      dragBtn = null;
+      dragWrap = null;
+      dragActive = false;
+    }
+
+    container.addEventListener('touchstart', (e) => {
+      const btn = e.target.closest('.area-btn');
+      if (!btn || btn.classList.contains('_drag-placeholder')) return;
+      // 【v1.17.4】已展开的区域按钮不触发拖动调序
+      if (btn.classList.contains('expanded')) return;
+      // 【v1.20.7】不再在touchstart中preventDefault，避免阻止页面垂直滚动
+      // 文字选择和长按菜单已由全局CSS user-select:none; -webkit-touch-callout:none 禁止
+      cleanup();
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      const rect = btn.getBoundingClientRect();
+      offsetX = e.touches[0].clientX - rect.left;
+      offsetY = e.touches[0].clientY - rect.top;
+      dragBtn = btn;
+      dragWrap = btn.closest('.area-btn-wrap');
+      dragActive = false;
+      currentTarget = null;
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        dragActive = true;
+        btn.classList.add('_dragging');
+        // 清除可能已产生的文本选择
+        try { window.getSelection().removeAllRanges(); } catch(e2) {}
+        // 创建占位符并插入原位置（在 wrapper 层级）
+        placeholder = document.createElement('div');
+        placeholder.className = 'area-btn-wrap _drag-placeholder-wrap';
+        placeholder.style.height = rect.height + 'px';
+        dragWrap.parentNode.insertBefore(placeholder, dragWrap);
+        // 将拖动 wrapper 设为 fixed，脱离流
+        dragWrap.style.position = 'fixed';
+        dragWrap.style.left = rect.left + 'px';
+        dragWrap.style.top = rect.top + 'px';
+        dragWrap.style.width = rect.width + 'px';
+        dragWrap.style.zIndex = '1000';
+        dragWrap.style.pointerEvents = 'none'; // 让 elementFromPoint 穿过它
+      }, 500);
+    }, { passive: true });
+
+    container.addEventListener('touchmove', (e) => {
+      if (!dragBtn) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      const absDx = Math.abs(dx), absDy = Math.abs(dy);
+
+      if (!dragActive) {
+        // 【v1.20.4】手势意图识别：垂直滑动优先让页面滚动
+        if (absDy > 10 && absDy >= absDx) {
+          // 判定为页面滚动，取消长按计时器，放弃交互
+          if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+          dragBtn = null;
+          dragWrap = null;
+          return;
+        }
+        // 小范围移动不取消计时器（手指微抖正常），大范围水平移动取消
+        if ((absDx > 10 || absDy > 10) && absDx > absDy) {
+          if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+          dragBtn = null;
+          dragWrap = null;
+        }
+        return;
+      }
+      e.preventDefault(); // 仅在拖动调序激活时阻止滚动
+      const touch = e.touches[0];
+      // 移动拖动 wrapper
+      dragWrap.style.left = (touch.clientX - offsetX) + 'px';
+      dragWrap.style.top = (touch.clientY - offsetY) + 'px';
+
+      // 检测手指下方的区域按钮（拖动 wrapper 已设 pointerEvents:none，可穿透）
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (!el) return;
+      const target = el.closest('.area-btn');
+      if (!target || target === dragBtn || target.classList.contains('_drag-placeholder')) {
+        if (currentTarget) { currentTarget.classList.remove('_drag-target'); currentTarget = null; }
+        return;
+      }
+
+      // 更新视觉目标指示
+      if (currentTarget && currentTarget !== target) currentTarget.classList.remove('_drag-target');
+      target.classList.add('_drag-target');
+      currentTarget = target;
+
+      // 将占位符移到目标 wrapper 位置附近
+      const targetWrap = target.closest('.area-btn-wrap');
+      if (!targetWrap) return;
+
+      const targetRect = target.getBoundingClientRect();
+      const midX = targetRect.left + targetRect.width / 2;
+      if (touch.clientX < midX) {
+        if (placeholder.nextSibling !== targetWrap) container.insertBefore(placeholder, targetWrap);
+      } else {
+        if (placeholder !== targetWrap.nextSibling) container.insertBefore(placeholder, targetWrap.nextSibling);
+      }
+    }, { passive: false });
+
+    container.addEventListener('touchend', (e) => {
+      if (!dragBtn) { cleanup(); return; }
+
+      if (!dragActive) {
+        // 短按：视为点击，触发区域展开/收起
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        const fidStr = dragBtn.dataset.floor;
+        const aname = dragBtn.dataset.area;
+        dragBtn = null;
+        dragWrap = null;
+        if (fidStr && aname) {
+          toggleAreaExpand(parseInt(fidStr), aname);
+        }
+        e.preventDefault();
+        _areaTouchHandled = true;
+        setTimeout(() => { _areaTouchHandled = false; }, 300);
+        return;
+      }
+
+      // 拖动完成：将拖动 wrapper 插入到占位符位置
+      if (placeholder && placeholder.parentNode) {
+        container.insertBefore(dragWrap, placeholder);
+        placeholder.remove();
+      }
+      dragBtn.classList.remove('_dragging');
+      dragWrap.style.pointerEvents = '';
+      dragWrap.style.position = '';
+      dragWrap.style.left = '';
+      dragWrap.style.top = '';
+      dragWrap.style.width = '';
+      dragWrap.style.zIndex = '';
+      if (currentTarget) { currentTarget.classList.remove('_drag-target'); currentTarget = null; }
+
+      // 保存新的区域顺序
+      const names = [...container.querySelectorAll('.area-btn:not(.record-time-btn)')].map(b => b.dataset.area).filter(Boolean);
+      if (names.length > 0) saveAreaOrder(fid, names);
+
+      placeholder = null;
+      dragBtn = null;
+      dragWrap = null;
+      dragActive = false;
+      longPressTimer = null;
+      e.preventDefault();
+    }, { passive: false });
+
+    container.addEventListener('touchcancel', () => {
+      cleanup();
+    }, { passive: true });
+  });
+}
+
+// 【v1.17.1】区域展开/收起切换（供触摸事件调用）
+function toggleAreaExpand(fid, aname) {
+  const ak = areaKey(fid, aname);
+  if (state.expandedAreas.has(ak)) {
+    state.expandedAreas.delete(ak);
+  } else {
+    state.expandedAreas.add(ak);
+    // 【v1.17.3】手风琴规则：同楼层只允许展开一个区域
+    for (const k of [...state.expandedAreas]) {
+      if (k !== ak && k.startsWith(fid + '-')) state.expandedAreas.delete(k);
+    }
+  }
+  try { localStorage.setItem('expandedAreas', JSON.stringify([...state.expandedAreas])); } catch (e) {}
+  renderMain();
 }
 
 // 【修复Bug3】确保"功能"按钮文字始终显示，防止异步竞态或页面恢复时文字消失
@@ -2401,10 +2659,11 @@ async function generateMissingThumbnails(fid, aname, sidx) {
 // 六、文件输入
 // ============================================================
 const captureInput = document.createElement('input');
-captureInput.type = 'file'; captureInput.capture = 'environment'; captureInput.accept = 'image/*'; captureInput.style.display = 'none';
+captureInput.type = 'file'; captureInput.setAttribute('accept', 'image/*'); captureInput.setAttribute('capture', 'environment'); captureInput.style.display = 'none';
 document.body.appendChild(captureInput);
+// 【v1.13.17】上传按钮：规范 accept 为 image/*，确保不含 capture 属性以兼容小米等设备
 const uploadInput = document.createElement('input');
-uploadInput.type = 'file'; uploadInput.accept = 'image/*'; uploadInput.style.display = 'none';
+uploadInput.type = 'file'; uploadInput.setAttribute('accept', 'image/*'); uploadInput.removeAttribute('capture'); uploadInput.style.display = 'none';
 document.body.appendChild(uploadInput);
 let currentCaptureCellKey = null, currentUploadCellKey = null;
 function readFileAsDataURL(file) { return new Promise((r, j) => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.onerror = () => j(rd.error); rd.readAsDataURL(file); }); }
@@ -2452,6 +2711,8 @@ captureInput.addEventListener('change', async (e) => {
     const images = (cellData && cellData.images) ? [...cellData.images] : [];
     if (images.length >= MAX_IMAGES) { showToast('该时段图片已满'); captureInput.value = ''; return; }
     const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+    // 【v1.19.0】区域图片总数上限检查
+    if (getAreaImageTotal(fid, aname) >= MAX_AREA_IMAGES) { showToast('该区域图片已达上限（240张），请清理后再添加'); captureInput.value = ''; return; }
     const sName = getSeatNameSync(fid, aname, sidx);
     const bTime = getBeijingTime();
     const sk = cellToSeatKey(ck);
@@ -2606,6 +2867,8 @@ uploadInput.addEventListener('change', async (e) => {
       return;
     }
     const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+    // 【v1.19.0】区域图片总数上限检查
+    if (getAreaImageTotal(fid, aname) >= MAX_AREA_IMAGES) { showToast('该区域图片已达上限（240张），请清理后再添加'); uploadInput.value = ''; return; }
     const sName = getSeatNameSync(fid, aname, sidx);
     const bTime = getBeijingTime();
     const sk = cellToSeatKey(ck);
@@ -3444,10 +3707,30 @@ async function downloadConcatenated() {
 const batchModal = document.getElementById('batch-modal');
 const batchAreasDiv = document.getElementById('batch-areas');
 const batchTimesDiv = document.getElementById('batch-times');
+const batchProgress = document.getElementById('batch-progress');
 let batchSelectedAreas = new Set(), batchSelectedTimes = new Set();
+let batchPacking = false; // 【v1.14.0】打包进行中标志
+
+// 【v1.15.0】选择状态持久化
+function saveBatchSelection() {
+  try { localStorage.setItem('batch_download_selection', JSON.stringify({ areas: [...batchSelectedAreas], times: [...batchSelectedTimes] })); } catch (e) {}
+}
+function loadBatchSelection() {
+  try {
+    const data = JSON.parse(localStorage.getItem('batch_download_selection'));
+    if (data) { batchSelectedAreas = new Set(data.areas || []); batchSelectedTimes = new Set(data.times || []); }
+  } catch (e) {}
+}
+function applyBatchSelectionToUI() {
+  batchAreasDiv.querySelectorAll('.batch-chip').forEach(c => {
+    if (c.dataset.ak) c.classList.toggle('checked', batchSelectedAreas.has(c.dataset.ak));
+  });
+  batchTimesDiv.querySelectorAll('.batch-chip').forEach(c => {
+    if (c.dataset.tidx !== undefined) c.classList.toggle('checked', batchSelectedTimes.has(c.dataset.tidx));
+  });
+}
 
 async function initBatchModal() {
-  batchSelectedAreas = new Set(); batchSelectedTimes = new Set();
   // 【性能优化】从计数缓存扫描有图片的区域和时段，不加载完整图片数据
   const areasWithImages = new Set();
   const timesWithImages = new Set();
@@ -3473,14 +3756,22 @@ async function initBatchModal() {
     thtml += `<div class="batch-chip" data-tidx="${idx}">${ts}</div>`;
   });
   batchTimesDiv.innerHTML = thtml;
+  // 【v1.15.0】恢复上次的选中状态
+  loadBatchSelection();
+  applyBatchSelectionToUI();
 }
 
 batchModal.addEventListener('click', (e) => {
+  // 【v1.15.4】打包进行中禁止所有操作
+  if (batchPacking) return;
+  // 【v1.17.1】touch 已处理则跳过，防止双触发
+  if (_chipTouchHandled) return;
   const chip = e.target.closest('.batch-chip');
   if (chip) {
     chip.classList.toggle('checked');
     if (chip.dataset.ak) { chip.classList.contains('checked') ? batchSelectedAreas.add(chip.dataset.ak) : batchSelectedAreas.delete(chip.dataset.ak); }
     if (chip.dataset.tidx !== undefined) { const ti = chip.dataset.tidx; chip.classList.contains('checked') ? batchSelectedTimes.add(ti) : batchSelectedTimes.delete(ti); }
+    saveBatchSelection();
     return;
   }
   const selAll = e.target.closest('.batch-select-all');
@@ -3493,86 +3784,346 @@ batchModal.addEventListener('click', (e) => {
       if (allChecked) { c.classList.remove('checked'); if (c.dataset.ak) batchSelectedAreas.delete(c.dataset.ak); if (c.dataset.tidx !== undefined) batchSelectedTimes.delete(c.dataset.tidx); }
       else { c.classList.add('checked'); if (c.dataset.ak) batchSelectedAreas.add(c.dataset.ak); if (c.dataset.tidx !== undefined) batchSelectedTimes.add(c.dataset.tidx); }
     });
+    saveBatchSelection();
   }
 });
 
-document.getElementById('batch-cancel').addEventListener('click', () => batchModal.classList.remove('show'));
+document.getElementById('batch-cancel').addEventListener('click', () => {
+  if (batchPacking) return; // 【v1.15.4】打包中按钮已禁用
+  batchModal.classList.remove('show');
+});
+
+// 【v1.17.1】短按拖动多选（批量下载 + 清除图片共用）
+// 移动>8px进入拖动选择模式；≤8px视为点击，用preventDefault阻止合成click
+let _chipTouchHandled = false; // 防止 touch 处理后 click 再次触发
+function setupChipDragSelect(gridEl, onToggle, onClick) {
+  let dragMode = null; // 'select' | 'deselect'
+  let dragActive = false;
+  let startChip = null;
+  let startX = 0, startY = 0;
+  const touchedChips = new Set();
+  const DRAG_THRESHOLD = 8;
+
+  gridEl.addEventListener('touchstart', (e) => {
+    const chip = e.target.closest('.batch-chip');
+    if (!chip || chip.classList.contains('disabled')) return;
+    startChip = chip;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dragMode = null;
+    dragActive = false;
+    touchedChips.clear();
+    touchedChips.add(chip);
+  }, { passive: true });
+
+  gridEl.addEventListener('touchmove', (e) => {
+    if (!startChip) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (!dragActive) {
+      if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
+      dragActive = true;
+      dragMode = startChip.classList.contains('checked') ? 'deselect' : 'select';
+      startChip.classList.toggle('checked');
+      onToggle(startChip, dragMode === 'select');
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    const touch = e.touches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!el) return;
+    const chip = el.closest('.batch-chip');
+    if (!chip || chip.classList.contains('disabled') || touchedChips.has(chip)) return;
+    touchedChips.add(chip);
+    const shouldCheck = dragMode === 'select';
+    if (shouldCheck !== chip.classList.contains('checked')) {
+      chip.classList.toggle('checked');
+      onToggle(chip, shouldCheck);
+    }
+  }, { passive: false });
+
+  gridEl.addEventListener('touchend', (e) => {
+    if (startChip && !dragActive && onClick) {
+      onClick(startChip);
+      e.preventDefault(); // 阻止合成 click 事件，防止双触发
+      _chipTouchHandled = true;
+      setTimeout(() => { _chipTouchHandled = false; }, 300);
+    }
+    startChip = null;
+    dragActive = false;
+    dragMode = null;
+    touchedChips.clear();
+  }, { passive: false });
+
+  gridEl.addEventListener('touchcancel', () => {
+    startChip = null;
+    dragActive = false;
+    dragMode = null;
+    touchedChips.clear();
+  }, { passive: true });
+}
+
+// 批量下载拖动多选
+function batchChipToggle(chip, isChecked) {
+  if (chip.dataset.ak) { isChecked ? batchSelectedAreas.add(chip.dataset.ak) : batchSelectedAreas.delete(chip.dataset.ak); }
+  if (chip.dataset.tidx !== undefined) { const ti = chip.dataset.tidx; isChecked ? batchSelectedTimes.add(ti) : batchSelectedTimes.delete(ti); }
+  saveBatchSelection();
+}
+function batchChipClick(chip) {
+  chip.classList.toggle('checked');
+  batchChipToggle(chip, chip.classList.contains('checked'));
+}
+setupChipDragSelect(batchAreasDiv, batchChipToggle, batchChipClick);
+setupChipDragSelect(batchTimesDiv, batchChipToggle, batchChipClick);
+
+// 【v1.15.4】设置/恢复打包中的 UI 状态
+function setBatchPackingUI(packing) {
+  const cancelBtn = document.getElementById('batch-cancel');
+  const execBtn = document.getElementById('batch-exec');
+  const chips = batchModal.querySelectorAll('.batch-chip');
+  const selAllBtns = batchModal.querySelectorAll('.batch-select-all');
+  if (packing) {
+    cancelBtn.textContent = '打包进行中';
+    cancelBtn.classList.add('disabled');
+    execBtn.style.display = 'none';
+    chips.forEach(c => c.classList.add('disabled'));
+    selAllBtns.forEach(b => b.classList.add('disabled'));
+  } else {
+    cancelBtn.textContent = '取消';
+    cancelBtn.classList.remove('disabled');
+    execBtn.style.display = '';
+    chips.forEach(c => c.classList.remove('disabled'));
+    selAllBtns.forEach(b => b.classList.remove('disabled'));
+    batchProgress.textContent = '';
+  }
+}
+
+// 【v1.15.0】收集指定区域中指定座位的图片 Blob（seatIndices 为空则收集全部座位）
+async function collectAreaBlobs(ak, seatIndices) {
+  const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+  const seatCount = getAreaSeatCount(fid, aname);
+  const targetSeats = seatIndices || Array.from({length: seatCount}, (_, i) => i);
+  const neededKeys = [];
+  for (const sidx of targetSeats) {
+    if (sidx >= seatCount) continue;
+    const sk = seatKey(fid, aname, sidx);
+    if (state.deletedSeats.has(sk)) continue;
+    for (const tidx of batchSelectedTimes) {
+      const tIdx = parseInt(tidx);
+      neededKeys.push(cellKey(fid, aname, sidx, tIdx));
+    }
+  }
+  const cellDataMap = await getCellDataBatch(neededKeys);
+  const blobs = []; // [{ blob, filename, date }]
+  for (const sidx of targetSeats) {
+    if (sidx >= seatCount) continue;
+    const sk = seatKey(fid, aname, sidx);
+    if (state.deletedSeats.has(sk)) continue;
+    const sName = getSeatNameSync(fid, aname, sidx);
+    for (const tidx of batchSelectedTimes) {
+      const tIdx = parseInt(tidx);
+      const ck = cellKey(fid, aname, sidx, tIdx);
+      const cellData = cellDataMap[ck];
+      if (!cellData) continue;
+      for (let i = 0; i < cellData.images.length; i++) {
+        const img = cellData.images[i];
+        let blob = null;
+        if (img._fullBlob) blob = img._fullBlob;
+        if (!blob) { const memBlob = getMemoryBlobURL(ck, i); if (memBlob && memBlob.fullBlob) blob = memBlob.fullBlob; }
+        if (!blob && img.data && img.data.startsWith('data:') && img.data.indexOf(',') > 0 && img.data.split(',')[1].length > 10) {
+          try { blob = dataURLtoBlob(img.data); } catch (e) { blob = null; }
+        }
+        if (!blob && img.original && img.original.startsWith('data:')) {
+          try { blob = dataURLtoBlob(img.original); } catch (e) { blob = null; }
+        }
+        if (!blob || blob.size === 0) continue;
+        const safeTimeSlot = TIME_SLOTS[tIdx].replace(/:/g, '');
+        const safeSName = sName.replace(/[^\w]/g, '_');
+        const fileDate = new Date('2024-01-01T12:00:00');
+        blobs.push({ blob, filename: `${safeSName}_${safeTimeSlot}_${i + 1}.jpg`, date: fileDate });
+      }
+    }
+  }
+  return blobs;
+}
+
+// 【v1.15.1】将 Blob 列表打包为 ZIP 并触发下载
+async function packAndDownload(blobs, zipName) {
+  const zip = new JSZip();
+  blobs.forEach(b => zip.file(b.path, b.blob, { date: b.date }));
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  _triggerDownload(zipBlob, zipName);
+}
+
 document.getElementById('batch-exec').addEventListener('click', async () => {
   if (batchSelectedAreas.size === 0 || batchSelectedTimes.size === 0) { showToast('请选择区域和时段'); return; }
-  batchModal.classList.remove('show'); showToast('正在打包...');
+  if (batchSelectedAreas.size > 4) { showToast('最多选择4个区域'); return; }
+
+  // 【v1.15.4】强制清除上一次下载的所有残留状态
+  _clearDlState();
+  batchPacking = false;
+  setBatchPackingUI(false);
+
+  // 第一步：统计每个区域的图片数量
+  const areaCounts = new Map();
+  for (const ak of batchSelectedAreas) {
+    const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+    const seatCount = getAreaSeatCount(fid, aname);
+    let cnt = 0;
+    for (const tidx of batchSelectedTimes) {
+      const tIdx = parseInt(tidx);
+      for (let sidx = 0; sidx < seatCount; sidx++) {
+        const sk = seatKey(fid, aname, sidx);
+        if (state.deletedSeats.has(sk)) continue;
+        cnt += imageCountCache.get(cellKey(fid, aname, sidx, tIdx)) || 0;
+      }
+    }
+    areaCounts.set(ak, cnt);
+  }
+
+  // 【v1.15.4】记录超标区域但不取消勾选
+  const overLimitAreas = [];
+  const overLimitNames = [];
+  for (const [ak, cnt] of areaCounts) {
+    if (cnt > 240) { overLimitAreas.push(ak); overLimitNames.push(ak.split('-')[1]); }
+  }
+  overLimitAreas.forEach(ak => areaCounts.delete(ak));
+  if (areaCounts.size === 0) {
+    showToast(`${overLimitNames.join('、')}超240张请减选，无可下载区域`, 3000);
+    return;
+  }
+
+  // 确定区域顺序（按FLOORS排列，保证一致性）
+  const orderedAreas = [];
+  FLOORS.forEach(floor => {
+    floor.areas.forEach(area => {
+      const ak = areaKey(floor.id, area.name);
+      if (areaCounts.has(ak)) orderedAreas.push(ak);
+    });
+  });
+
+  // 进入打包模式
+  batchPacking = true;
+  setBatchPackingUI(true);
+
   try {
-    // 【性能优化】只收集需要的 key，批量读取，不加载全部图片
-    const neededKeys = [];
-    for (const ak of batchSelectedAreas) {
+    // 第二步：按区域顺序、座位编号从小到大收集所有图片
+    const allBlobs = []; // [{ blob, path, date, ak }]
+    for (const ak of orderedAreas) {
+      if (!batchPacking) break;
       const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
-      const seatCount = getAreaSeatCount(fid, aname);
-      for (const tidx of batchSelectedTimes) {
-        const tIdx = parseInt(tidx);
-        for (let sidx = 0; sidx < seatCount; sidx++) {
-          const sk = seatKey(fid, aname, sidx);
-          if (state.deletedSeats.has(sk)) continue;
-          neededKeys.push(cellKey(fid, aname, sidx, tIdx));
-        }
-      }
-    }
-    const cellDataMap = await getCellDataBatch(neededKeys);
-    const zip = new JSZip(); let count = 0;
-    for (const ak of batchSelectedAreas) {
-      const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
-      const seatCount = getAreaSeatCount(fid, aname);
       const floorObj = FLOORS.find(f => f.id === fid);
-      for (const tidx of batchSelectedTimes) {
-        const tIdx = parseInt(tidx);
-        for (let sidx = 0; sidx < seatCount; sidx++) {
-          const sk = seatKey(fid, aname, sidx);
-          if (state.deletedSeats.has(sk)) continue;
-          const ck = cellKey(fid, aname, sidx, tIdx);
-          const cellData = cellDataMap[ck];
-          if (!cellData) continue;
-          const sName = getSeatNameSync(fid, aname, sidx);
-          for (let i = 0; i < cellData.images.length; i++) {
-            // 从图片数据获取 Blob：优先 _fullBlob → data(Base64) → 内存缓存
-            // 跳过数据未就绪或无效的图片，避免空文件损坏 ZIP
-            const img = cellData.images[i];
-            let blob = null;
-            // 1. 优先 _fullBlob（仅拍照后当前会话内存中存在）
-            if (img._fullBlob) blob = img._fullBlob;
-            // 2. 内存 Blob 缓存
-            if (!blob) {
-              const memBlob = getMemoryBlobURL(ck, i);
-              if (memBlob && memBlob.fullBlob) blob = memBlob.fullBlob;
-            }
-            // 3. data 字段（Base64 → Blob）
-            if (!blob && img.data && img.data.startsWith('data:') && img.data.indexOf(',') > 0 && img.data.split(',')[1].length > 10) {
-              try { blob = dataURLtoBlob(img.data); } catch (e) { blob = null; }
-            }
-            // 【v1.4.0】移除 original 字段回退逻辑，新数据不再有 original
-            // 兼容旧数据：如果 data 为空但有 original，用 original 作为 data
-            if (!blob && img.original && img.original.startsWith('data:')) {
-              try { blob = dataURLtoBlob(img.original); } catch (e) { blob = null; }
-            }
-            if (!blob || blob.size === 0) continue; // 无有效数据，跳过
-            // 【v1.3.11】文件夹名仅用英文字母、数字、下划线
-            const folder = `${floorObj.name.replace(/[^\w]/g, '_')}_${aname.replace(/[^\w]/g, '_')}`;
-            // 【v1.3.11】文件名仅用英文字母、数字、下划线，冒号去掉
-            const safeTimeSlot = TIME_SLOTS[tIdx].replace(/:/g, '');
-            // 【v1.3.11】ZIP 文件时间戳统一为 2024-01-01 12:00:00（秒数取偶数）
-            const fileDate = new Date('2024-01-01T12:00:00');
-            // 用路径字符串代替 zip.folder()，避免生成 STORED 目录条目导致 Android 解压失败
-            const safeSName = sName.replace(/[^\w]/g, '_');
-            zip.file(`${folder}/${safeSName}_${safeTimeSlot}_${i + 1}.jpg`, blob, { date: fileDate });
-            count++;
-          }
+      const folder = `${floorObj.name}_${aname}`;
+      const blobs = await collectAreaBlobs(ak);
+      blobs.forEach(b => {
+        allBlobs.push({ blob: b.blob, path: `${folder}/${b.filename}`, date: b.date, ak });
+      });
+    }
+
+    if (!batchPacking) {
+      _clearDlState(); batchPacking = false; setBatchPackingUI(false);
+      return;
+    }
+    if (allBlobs.length === 0) {
+      _clearDlState(); batchPacking = false; setBatchPackingUI(false);
+      showToast('无图片可下载');
+      return;
+    }
+
+    // 第三步：按顺序分成最多2批，每批最多120张（严格按编号顺序紧密排列）
+    const MAX = 120;
+    const batches = [];
+    batches.push(allBlobs.slice(0, MAX));
+    if (allBlobs.length > MAX) batches.push(allBlobs.slice(MAX, MAX * 2));
+
+    // 确定每个区域跨几个批次（用于文件夹批次后缀）
+    const areaBatchMap = new Map();
+    batches.forEach((batchItems, bi) => {
+      new Set(batchItems.map(b => b.ak)).forEach(ak => {
+        if (!areaBatchMap.has(ak)) areaBatchMap.set(ak, new Set());
+        areaBatchMap.get(ak).add(bi);
+      });
+    });
+    const areaBatchLabelMap = new Map();
+    areaBatchMap.forEach((bis, ak) => {
+      if (bis.size > 1) {
+        [...bis].sort((a, b) => a - b).forEach((bi, num) => {
+          areaBatchLabelMap.set(`${ak}_${bi}`, num === 0 ? '第一批' : '第二批');
+        });
+      }
+    });
+
+    // 第四步：逐批打包下载
+    const downloadedAreas = new Set();
+    for (let bi = 0; bi < batches.length; bi++) {
+      if (!batchPacking) break;
+      const batchItems = batches[bi];
+      const globalLabel = bi === 0 ? '第一批' : '第二批';
+      batchProgress.textContent = `正在打包${globalLabel}（${bi + 1}/${batches.length}），请稍候…`;
+
+      // 为跨批次区域的文件夹添加批次后缀
+      const finalBlobs = batchItems.map(item => {
+        let path = item.path;
+        if (areaBatchMap.get(item.ak).size > 1) {
+          const label = areaBatchLabelMap.get(`${item.ak}_${bi}`);
+          const si = path.indexOf('/');
+          path = path.substring(0, si) + `_${label}` + path.substring(si);
         }
+        return { blob: item.blob, path, date: item.date };
+      });
+
+      // 压缩包文件名以区域命名
+      const batchAreaNames = [...new Set(batchItems.map(item => item.ak.split('-')[1]))];
+      const zipName = `${batchAreaNames.join('_')}_${globalLabel}_${finalBlobs.length}张.zip`;
+      await packAndDownload(finalBlobs, zipName);
+      batchItems.forEach(item => downloadedAreas.add(item.ak));
+
+      // 等待4秒后开始下一批
+      if (bi < batches.length - 1 && batchPacking) {
+        await new Promise(resolve => setTimeout(resolve, 4000));
       }
     }
-    if (count === 0) { showToast('所选范围内无图片'); return; }
-    const blob = await zip.generateAsync({ type: 'blob' });
-    // 【v1.10.7】清除旧状态后触发下载
+
+    // 打包完成后，清除所有下载状态锁
     _clearDlState();
-    _triggerDownload(blob, `批量下载_${count}张.zip`);
-    showToast(`已打包 ${count} 张图片，等待下载确认`);
-  } catch (err) { console.error('批量下载出错:', err); showToast('下载出错'); }
+    batchPacking = false;
+    setBatchPackingUI(false);
+
+    // 已下载的区域：仅当该区域所有图片都在批次内时才取消勾选
+    const allAreaKeys = [...new Set(allBlobs.map(b => b.ak))];
+    for (const ak of allAreaKeys) {
+      const totalInAll = allBlobs.filter(b => b.ak === ak).length;
+      const totalInBatches = batches.flat().filter(b => b.ak === ak).length;
+      if (totalInAll === totalInBatches) {
+        batchSelectedAreas.delete(ak);
+        const chip = batchAreasDiv.querySelector(`.batch-chip[data-ak="${ak}"]`);
+        if (chip) chip.classList.remove('checked');
+      }
+    }
+    saveBatchSelection();
+
+    // 【v1.15.4】合并提示：超标+下载完成合为一条，3秒显示
+    const dlNames = [...downloadedAreas].map(ak => ak.split('-')[1]);
+    const pendingAreas = [...batchSelectedAreas];
+
+    if (overLimitNames.length > 0 && dlNames.length > 0) {
+      showToast(`${overLimitNames.join('、')}超240张请减选，已提交下载：${dlNames.join('、')}`, 3000);
+    } else if (overLimitNames.length === 0 && dlNames.length > 0 && pendingAreas.length > 0) {
+      showToast(`已提交下载：${dlNames.join('、')}，其余待下次打包`, 3000);
+    } else if (overLimitNames.length === 0 && dlNames.length > 0 && pendingAreas.length === 0) {
+      showToast(`已提交下载：${dlNames.join('、')}`, 3000);
+    } else if (dlNames.length === 0) {
+      showToast('图片数量超出，请重新下载剩余区域', 3000);
+    }
+
+  } catch (err) {
+    console.error('批量下载出错:', err);
+    showToast('打包失败，请重试', 3000);
+    _clearDlState();
+    batchPacking = false;
+    setBatchPackingUI(false);
+  }
 });
 
 // ============================================================
@@ -4598,6 +5149,8 @@ function initCleanupModal() {
 
 // 【v1.10.4】清除弹窗内chip点击+全选/取消（与批量下载逻辑一致）
 cleanupModal.addEventListener('click', (e) => {
+  // 【v1.17.1】touch 已处理则跳过，防止双触发
+  if (_chipTouchHandled) return;
   const chip = e.target.closest('.batch-chip');
   if (chip) {
     chip.classList.toggle('checked');
@@ -4625,6 +5178,23 @@ cleanupModal.addEventListener('click', (e) => {
 
 // 取消按钮
 document.getElementById('cleanup-cancel').addEventListener('click', () => cleanupModal.classList.remove('show'));
+
+// 【v1.17.0】清除图片拖动多选
+function cleanupUpdateBtnState() {
+  const hasSelection = cleanupSelectedAreas.size > 0 && cleanupSelectedTimes.size > 0;
+  cleanupExecBtn.disabled = !hasSelection;
+}
+function cleanupChipToggle(chip, isChecked) {
+  if (chip.dataset.ak) { isChecked ? cleanupSelectedAreas.add(chip.dataset.ak) : cleanupSelectedAreas.delete(chip.dataset.ak); }
+  if (chip.dataset.tidx !== undefined) { const ti = chip.dataset.tidx; isChecked ? cleanupSelectedTimes.add(ti) : cleanupSelectedTimes.delete(ti); }
+  cleanupUpdateBtnState();
+}
+function cleanupChipClick(chip) {
+  chip.classList.toggle('checked');
+  cleanupChipToggle(chip, chip.classList.contains('checked'));
+}
+setupChipDragSelect(cleanupAreasDiv, cleanupChipToggle, cleanupChipClick);
+setupChipDragSelect(cleanupTimesDiv, cleanupChipToggle, cleanupChipClick);
 
 // 清除图片按钮 → 弹出二次确认
 cleanupExecBtn.addEventListener('click', () => {
@@ -4725,7 +5295,27 @@ document.getElementById('cleanup-confirm-exec').addEventListener('click', async 
 // ============================================================
 // 十一、提示与底部栏
 // ============================================================
-function showToast(msg, duration) { const d = duration || 2100; const t = document.createElement('div'); t.className = 'toast'; t.style.animationDuration = (d / 1000) + 's'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), d + 100); }
+// 【v1.16.0】轻提示防抖：同一内容2秒内只显示一次，重复触发刷新定时器
+const _toastMap = new Map(); // msg → { el, timer }
+function showToast(msg, duration) {
+  const d = duration || 2100;
+  const existing = _toastMap.get(msg);
+  if (existing) {
+    clearTimeout(existing.timer);
+    existing.el.style.animation = 'none';
+    void existing.el.offsetHeight;
+    existing.el.style.animation = `toast-in ${d / 1000}s ease`;
+    existing.timer = setTimeout(() => { existing.el.remove(); _toastMap.delete(msg); }, d + 100);
+    return;
+  }
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.style.animationDuration = (d / 1000) + 's';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  const timer = setTimeout(() => { t.remove(); _toastMap.delete(msg); }, d + 100);
+  _toastMap.set(msg, { el: t, timer });
+}
 const bottomBar = document.getElementById('bottom-bar'), selectedCount = document.getElementById('selected-count');
 function updateBottomBar() {
   if (state.selectedCells.length > 0) {
@@ -4759,6 +5349,8 @@ document.getElementById('btn-clear-select').addEventListener('click', () => { st
 // ============================================================
 // 【修复文字消失】事件委托改为 document，因为 page-header 已移出 app
 document.addEventListener('click', async (e) => {
+  // 【v1.17.1】touch 已处理则跳过区域按钮点击，防止双触发
+  if (_areaTouchHandled) { _areaTouchHandled = false; return; }
   const target = e.target;
   // 【v1.13.0】底部折叠区域：标题切换展开/收起，内容区只展开不收起
   const footerOpt = target.closest('[data-action="toggle-footer-opt"]');
@@ -4786,7 +5378,21 @@ document.addEventListener('click', async (e) => {
   const addBtn = target.closest('[data-action="add-seat"]');
   if (addBtn) {
     const fid = parseInt(addBtn.dataset.floor), aname = addBtn.dataset.area, ak = areaKey(fid, aname);
-    const nc = (state.extraSeats[ak] || 0) + 1;
+    const cfg = getAreaConfig(fid, aname);
+    const baseCount = cfg ? cfg.count : 0;
+    const currentExtra = state.extraSeats[ak] || 0;
+    // 【v1.18.0】新增座位上限30个：计算有效新增数 = extraSeats - 已删除的额外座位数
+    let deletedExtra = 0;
+    state.deletedSeats.forEach(dsk => {
+      const dp = dsk.split('-');
+      if (dp[1] === aname && parseInt(dp[0]) === fid && parseInt(dp[2]) >= baseCount) deletedExtra++;
+    });
+    const effectiveExtra = currentExtra - deletedExtra;
+    if (effectiveExtra >= 30) {
+      showToast('该区域新增座位已达上限（30个）');
+      return;
+    }
+    const nc = currentExtra + 1;
     state.extraSeats[ak] = nc;
     await saveExtraSeat(ak, nc);
     const sc = document.getElementById('seats-' + ak);
