@@ -98,7 +98,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 
 .area-container{display:none;padding:4px 0 8px 16px}
 .area-container.show{display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:flex-start;gap:6px;padding:4px 12px 8px}
-.area-btn-wrap{position:relative;width:calc(33.33% - 8px);flex-shrink:0;overflow:visible}
+.area-btn-wrap{position:relative;width:calc(33.33% - 4px);flex-shrink:0;overflow:visible}
 .area-btn-wrap:has(.expanded){margin-bottom:36px}
 .area-btn{display:inline-flex;flex-direction:column;align-items:center;width:100%;box-sizing:border-box;padding:8px 10px;font-size:14px;font-weight:600;border:2px solid transparent;border-radius:8px;background:#fff;color:#333;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12);transition:transform .1s,border-color .15s;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .area-btn:active,.area-btn._pressing{transform:scale(.95)}
@@ -113,7 +113,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .area-btn._dragging{box-shadow:0 8px 24px rgba(0,0,0,.25);transform:scale(1.05);z-index:100;opacity:.85;transition:box-shadow .15s,opacity .15s}
 .area-btn._drag-placeholder{visibility:hidden;border:2px dashed #722ed1;opacity:.3}
 .area-btn._drag-target{border-color:#722ed1;border-style:dashed}
-._drag-placeholder-wrap{visibility:hidden;border:2px dashed #722ed1;opacity:.3;border-radius:8px;box-sizing:border-box;width:calc(33.33% - 8px);flex-shrink:0}
+._drag-placeholder-wrap{visibility:hidden;border:2px dashed #722ed1;opacity:.3;border-radius:8px;box-sizing:border-box;width:calc(33.33% - 4px);flex-shrink:0}
 /* 【v1.3.15】选中高亮改为红色描边+无背景色，避免与蓝色提示混淆 */
 .area-btn.expanded{background:#fff;border-color:#ff4d4f;box-shadow:none}
 .area-btn.has-images{border:2px solid #52c41a;background:linear-gradient(135deg,#f6ffed,#d9f7be);color:#389e0d}
@@ -936,7 +936,7 @@ const FLOORS = [
 const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v1.20.8';
+const APP_VERSION = 'v1.20.11';
 // 【v1.10.18】更新日志：记录次版本号和主版本号变更，修订号变更不记录，最多保留3条
 const UPDATE_LOG = [
   { date: '6月25日', text: '计时按钮改为纯图标+二次确认；新增骨架屏加载动画；更新固定文案' },
