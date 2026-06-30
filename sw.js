@@ -7,7 +7,7 @@
 //   其他同源资源 → Stale-While-Revalidate（先返回缓存，后台静默更新）
 
 // 【v1.5.7】更新缓存版本号（每次发布新版本时必须递增，否则浏览器不会检测到 SW 更新）
-const CACHE_NAME = 'seat-cache-v74';
+const CACHE_NAME = 'seat-cache-v80';
 
 // 预缓存资源列表（安装时一次性缓存）
 const PRECACHE_ASSETS = [
