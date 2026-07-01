@@ -128,8 +128,8 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 
 .seat-container{display:none;padding:8px 0}
 .seat-container.show{display:block;flex-basis:100%;width:100%}
-.seat-flow{display:flex;flex-wrap:wrap;gap:4px;padding:0 2px;align-items:flex-start}
-.seat-btn{width:calc(20% - 5px);height:44px;padding:0 8px;font-size:12px;font-weight:500;border:2px solid #d9d9d9;border-radius:6px;background:#fff;cursor:pointer;text-align:center;white-space:nowrap;overflow:visible;text-overflow:clip;transition:background .15s,border-color .15s;position:relative;flex-shrink:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;flex-grow:0}
+.seat-flow{display:flex;flex-wrap:wrap;row-gap:4px;padding:0;align-items:flex-start;justify-content:flex-start}
+.seat-btn{width:calc(20% - 6px);height:44px;margin:0 3px;padding:0 8px;font-size:12px;font-weight:500;border:2px solid #d9d9d9;border-radius:6px;background:#fff;cursor:pointer;text-align:center;white-space:nowrap;overflow:visible;text-overflow:clip;transition:background .15s,border-color .15s;position:relative;flex-shrink:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;flex-grow:0}
 .seat-btn:active,.seat-btn._pressing{background:#e6f7ff}
 /* 【v1.3.15】选中高亮改为红色描边+无背景色 */
 .seat-btn.expanded{background:#fff;border:2px solid #ff4d4f}
@@ -695,6 +695,7 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 .theme-pixel .seat-btn.has-images-2.expanded{border:3px solid #5a3d2b;background:#f0ad4e;color:#5a3a0a;box-shadow:3px 3px 0 #2d2d2d}
 /* 【v1.20.13】安卓端座位按钮缩小字号，避免宽字体换行 */
 .android-device .seat-btn{font-size:11.5px;height:40px;padding:0 8px;flex-shrink:0;flex-grow:0;position:relative}
+.android-device:not(.theme-normal):not(.theme-yiban):not(.theme-pixel) .seat-btn{height:42px}
 .android-device.theme-normal .seat-btn{font-size:10.5px}
 .android-device.theme-yiban .seat-btn{font-size:11.5px}
 .android-device.theme-pixel .seat-btn{font-size:10.5px}
