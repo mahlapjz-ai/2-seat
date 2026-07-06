@@ -190,11 +190,13 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .thumb-del:active::before{background:rgba(255,0,0,.7)}
 
 #bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;box-shadow:0 -2px 8px rgba(0,0,0,.12);padding:10px 12px;padding-bottom:calc(10px + constant(safe-area-inset-bottom));padding-bottom:calc(10px + env(safe-area-inset-bottom));z-index:100;max-width:480px;margin:0 auto;flex-wrap:wrap}
-#bottom-bar.show{display:flex;align-items:center;gap:8px}
-#selected-count{font-size:13px;color:#666;flex-shrink:0;white-space:nowrap}
-#btn-clear-select{padding:8px 12px;font-size:13px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;color:#666;cursor:pointer;flex-shrink:0}
+#bottom-bar.show{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#selected-count{font-size:13px;color:#666;flex-shrink:0;white-space:nowrap;min-width:90px}
+#btn-clear-select{padding:8px 12px;font-size:13px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;color:#666;cursor:pointer;flex-shrink:0;min-width:80px;text-align:center}
 /* 【v1.3.1 Bug1修复】拼接预览按钮文字适配，防止安卓端溢出 */
-.bar-btn{padding:12px 8px;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar-btn{padding:10px 12px;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:80px;text-align:center}
+#btn-download-separate{min-width:80px}
+#btn-download-concat{min-width:100px}
 .app-footer{text-align:center;padding:12px 0 16px;max-width:480px;margin:0 auto}
 .app-footer .footer-title{font-size:12px;color:#999;font-weight:700;text-align:left;margin-bottom:4px;padding-left:16px}
 .app-footer .footer-collapsible{font-size:12px;color:#999;font-weight:700;text-align:left;margin-bottom:4px;padding-left:16px;cursor:pointer;min-height:44px;display:flex;align-items:center;-webkit-user-select:none;user-select:none}
@@ -208,7 +210,7 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .app-footer .contact.hidden{opacity:0;height:0;margin:0;overflow:hidden}
 .app-footer .version{font-size:11px;color:#aaa;margin-top:2px}
 .bar-btn:active{opacity:.8}
-#btn-download-separate{background:#1890ff;color:#fff;flex-shrink:0;min-width:auto}
+#btn-download-separate{background:#1890ff;color:#fff}
 #btn-download-concat{background:#fa8c16;color:#fff}
 #btn-download-concat:disabled{background:#ccc;color:#999;cursor:not-allowed}
 .concat-hint{font-size:11px;color:#999;width:100%;text-align:center;margin-top:2px}

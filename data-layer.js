@@ -86,7 +86,8 @@ async function getCellData(ck) {
   const { data, error } = await _sb.from('seat_photos')
     .select('id, url, status, uploaded_by, created_at, time_slot')
     .eq('cell_key', ck)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .limit(3);
   if (error) { console.warn('[dl] getCellData error:', error); return { key: ck, images: [] }; }
 
   const images = (data || []).map(p => ({
@@ -116,7 +117,7 @@ async function getCellDataBatch(cellKeys) {
   if (error) { missing.forEach(ck => { result[ck] = { key: ck, images: [] }; }); return result; }
 
   const byCellKey = {};
-  (data || []).forEach(p => { if (!byCellKey[p.cell_key]) byCellKey[p.cell_key] = []; byCellKey[p.cell_key].push(p); });
+  (data || []).forEach(p => { if (!byCellKey[p.cell_key]) byCellKey[p.cell_key] = []; if (byCellKey[p.cell_key].length < 3) byCellKey[p.cell_key].push(p); });
 
   missing.forEach(ck => {
     const photos = byCellKey[ck] || [];
@@ -145,7 +146,7 @@ async function saveCellData(ck, imgs) {
 
   // 删除不再存在的照片
   for (const p of (ex || [])) {
-    if (!newIds.has(p.id)) await dlDeletePhoto(p.id, p.url);
+    if (!newIds.has(p.id)) await dlDeletePhoto(p.id, p.url, ck);
   }
 
   // 新增照片：严格校验上传成功后才写数据库
@@ -167,13 +168,12 @@ async function saveCellData(ck, imgs) {
     }
   }
 
-  // 缓存更新：若全部失败，彻底清缓存并移除颜色提示
+  // 缓存更新：先删旧缓存再设新缓存，确保数据一致性
+  _cellDataCache.delete(ck);
+  _imageCountCache.delete(ck);
   if (successImgs.length > 0) {
     _cellDataCache.set(ck, successImgs);
     _imageCountCache.set(ck, successImgs.length);
-  } else {
-    _cellDataCache.delete(ck);
-    _imageCountCache.delete(ck);
   }
 }
 
@@ -198,14 +198,12 @@ async function dlUploadPhoto(ck, img) {
 
   // 2. 构造安全路径（彻底去中文）+ 语义化文件名
   const folder = getSafeFolder(floor, seatLabel);
-  // 文件名格式：{座位编号}_{时段序号}_{序号}.jpg
-  // 时段序号：TIME_SLOTS 索引+1，补零到2位（09:00→01, 10:00→02, ...）
+  // 文件名格式：{座位编号}_{时段序号}_{随机字符}.jpg
+  // 加随机字符串确保删除后再上传不会重名，避免浏览器缓存旧图
   const seatNum = seatLabel.replace(/\D/g, '') || '0';
   const timeIdx = String(tidx + 1).padStart(2, '0');
-  // 查询该 cell 当前已有图片数量，确定序号
-  const existing = _cellDataCache.get(ck) || [];
-  const seq = existing.length + 1;
-  const fileName = `${seatNum}_${timeIdx}_${seq}.jpg`;
+  const randSuffix = Math.random().toString(36).slice(2, 10);
+  const fileName = `${seatNum}_${timeIdx}_${randSuffix}.jpg`;
   const filePath = `${folder}/${fileName}`;
   console.log('[dl] 上传路径:', filePath);
 
@@ -279,6 +277,13 @@ async function dlUploadPhoto(ck, img) {
  */
 async function dlDeletePhoto(photoId, url, ck) {
   let storageOk = true;
+  // 0. 如果没有传 ck，先从数据库查询该图片的 cell_key（删除前查询）
+  if (!ck) {
+    try {
+      const { data } = await _sb.from('seat_photos').select('cell_key').eq('id', photoId).maybeSingle();
+      if (data) ck = data.cell_key;
+    } catch (e) {}
+  }
   // 1. 删除 Storage 文件（失败不阻断后续）
   if (url) {
     const path = extractStoragePath(url);
@@ -290,19 +295,11 @@ async function dlDeletePhoto(photoId, url, ck) {
   // 2. 删除数据库记录（即使 Storage 失败也要删）
   const { error: dbErr } = await _sb.from('seat_photos').delete().eq('id', photoId);
   if (dbErr) return { success: false, error: '数据库删除失败: ' + dbErr.message };
-  // 3. 清除前端缓存
+
+  // 3. 强制清空该 cell 的所有缓存，确保下次读取时从数据库重新获取
   if (ck) {
-    const cached = _cellDataCache.get(ck);
-    if (cached) {
-      const filtered = cached.filter(i => i.photo_id !== photoId);
-      if (filtered.length > 0) {
-        _cellDataCache.set(ck, filtered);
-        _imageCountCache.set(ck, filtered.length);
-      } else {
-        _cellDataCache.delete(ck);
-        _imageCountCache.delete(ck);
-      }
-    }
+    _cellDataCache.delete(ck);
+    _imageCountCache.delete(ck);
   }
   return { success: true, storageOk };
 }

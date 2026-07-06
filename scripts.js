@@ -90,6 +90,7 @@ const state = {
 
 // 上传串行化锁：同一 cell 同时只允许一个上传任务
 const _uploadLocks = new Map(); // Map<cellKey, Promise>
+const _deletingCells = new Set(); // 正在删除中的 cell 集合，防并发
 function isUploading(ck) { return _uploadLocks.has(ck); }
 function waitForUpload(ck) { return _uploadLocks.get(ck) || Promise.resolve(); }
 function setUploadLock(ck, promise) { _uploadLocks.set(ck, promise); promise.finally(() => _uploadLocks.delete(ck)); }
@@ -560,7 +561,7 @@ async function renderMain() {
       const displayImageTotal = Math.min(areaImageTotal, MAX_AREA_IMAGES);
       // 【v1.20.1】无图片时第三行隐藏文字但保留占位
       const statsStyle = areaImageTotal === 0 ? ' style="visibility:hidden"' : '';
-      html += `<div class="area-btn-wrap"><button class="area-btn ${aExp ? 'expanded' : ''} ${areaHasImages && canEditFloor(fid) ? 'has-images' : ''}" data-action="toggle-area" data-floor="${fid}" data-area="${aname}"><span class="area-seat-count">${areaTotal}座</span><span class="area-name-row">${aname}<span class="arrow"></span></span><span class="area-stats"${statsStyle}><span class="as-left">${seatsWithImages}离座</span><span class="as-right">共${displayImageTotal}图</span></span></button>`;
+      html += `<div class="area-btn-wrap"><button class="area-btn ${aExp ? 'expanded' : ''} ${areaHasImages ? 'has-images' : ''}" data-action="toggle-area" data-floor="${fid}" data-area="${aname}"><span class="area-seat-count">${areaTotal}座</span><span class="area-name-row">${aname}<span class="arrow"></span></span><span class="area-stats"${statsStyle}><span class="as-left">${seatsWithImages}离座</span><span class="as-right">共${displayImageTotal}图</span></span></button>`;
       // 【v1.11.0】区域展开时，在区域按钮下方显示"记录完成时间"按钮（仅对该楼层有写权限的用户显示）
       if (aExp && canEditFloor(fid)) {
         html += `<button class="record-time-btn" data-action="record-time" data-floor="${fid}" data-area="${aname}">⏱️记录完成时间</button>`;
@@ -933,15 +934,13 @@ function renderSeatFlow(fid, aname) {
     // 【v1.3.14 修复】移除 seatHasImages 兜底，蓝色/橙色严格基于可见时段统计
     const stat = seatImageStats.get(sk);
     let imgClass = '';
-    if (canEditFloor(fid)) {
-      if (stat && stat.visibleTotalCount >= 2 && stat.visibleHasSlotWithMulti) imgClass = 'has-images-2';
-      else if (stat && stat.visibleTotalCount >= 1) imgClass = 'has-images-1';
-    }
+    if (stat && stat.visibleTotalCount >= 2 && stat.visibleHasSlotWithMulti) imgClass = 'has-images-2';
+    else if (stat && stat.visibleTotalCount >= 1) imgClass = 'has-images-1';
     const longNameClass = (fid >= 2 && aname === '东区临时') ? ' long-name' : '';
-    // 【v1.4.1 修改】左上角闭眼图标：隐藏时段有图（展开时不显示，仅对该楼层有写权限时显示）
-    const hiddenIcon = (stat && stat.hiddenHasImages && !sExp && canEditFloor(fid)) ? '<span class="icon-hidden"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg></span>' : '';
-    // 【v1.3.10】右上角筛选命中图标：筛选非全选 + 可见时段有图（仅对该楼层有写权限时显示）
-    const filterHitIcon = (isFilterActive && stat && stat.visibleHasImages && canEditFloor(fid)) ? '<span class="icon-filter-hit"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg></span>' : '';
+    // 【v1.4.1 修改】左上角闭眼图标：隐藏时段有图（展开时不显示）
+    const hiddenIcon = (stat && stat.hiddenHasImages && !sExp) ? '<span class="icon-hidden"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg></span>' : '';
+    // 【v1.3.10】右上角筛选命中图标：筛选非全选 + 可见时段有图
+    const filterHitIcon = (isFilterActive && stat && stat.visibleHasImages) ? '<span class="icon-filter-hit"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg></span>' : '';
     html += `<button class="seat-btn ${sExp ? 'expanded' : ''} ${imgClass}${longNameClass}" data-action="toggle-seat" data-floor="${fid}" data-area="${aname}" data-seat="${i}">${hiddenIcon}${filterHitIcon}<span class="seat-btn-text">${sName}</span></button>`;
     html += `<div class="timeslot-container ${sExp ? 'show' : ''}" id="timeslots-${sk}"></div>`;
   }
@@ -1043,15 +1042,18 @@ async function renderTimeSlots(sk) {
       images.forEach((img, idx) => {
         // 【共享版】优先使用云端 URL，回退到 Blob URL / Base64
         let thumbSrc = '';
-        // 1. 云端缩略图 URL
-        if (img.thumbnail_url || img.url) thumbSrc = img.thumbnail_url || img.url;
+        // 1. 云端缩略图 URL（追加防缓存参数）
+        if (img.thumbnail_url || img.url) {
+          thumbSrc = img.thumbnail_url || img.url;
+          if (thumbSrc.startsWith('http') && img.photo_id) thumbSrc += '?id=' + img.photo_id;
+        }
         // 2. 刚拍照的 Blob URL（上传前临时使用）
         if (!thumbSrc) thumbSrc = img._thumbBlobURL || img._fullBlobURL || '';
         // 3. Base64 缩略图
         if (!thumbSrc) thumbSrc = img.thumbnail || img.thumb || '';
         // 4. 原图 base64
         if (!thumbSrc && img.data) thumbSrc = img.data;
-        
+
         if (thumbSrc && (thumbSrc.startsWith('http') || thumbSrc.startsWith('blob:') || thumbSrc.startsWith('data:'))) {
           const isHttp = thumbSrc.startsWith('http');
           const isBlob = thumbSrc.startsWith('blob:');
@@ -1134,23 +1136,21 @@ function updateSeatVisual(sk) {
     btn.querySelectorAll('.icon-hidden, .icon-filter-hit').forEach(el => el.remove());
     // 【v1.3.13 微调】颜色基于可见时段：可见总数≥2且某可见时段≥2张→橙色，可见总数≥1→蓝色
     const stat = seatImageStats.get(sk);
-    if (canEditFloor(parseInt(btn.dataset.floor))) {
-      if (stat && stat.visibleTotalCount >= 2 && stat.visibleHasSlotWithMulti) {
-        btn.classList.add('has-images-2');
-      } else if (stat && stat.visibleTotalCount >= 1) {
-        btn.classList.add('has-images-1');
-      }
+    if (stat && stat.visibleTotalCount >= 2 && stat.visibleHasSlotWithMulti) {
+      btn.classList.add('has-images-2');
+    } else if (stat && stat.visibleTotalCount >= 1) {
+      btn.classList.add('has-images-1');
     }
     // 【v1.3.14 修复】移除 seatHasImages 兜底，隐藏时段有图不再触发蓝色
-    // 【v1.4.1 修改】左上角闭眼图标：隐藏时段有图（仅对该楼层有写权限时显示）
-    if (stat && stat.hiddenHasImages && canEditFloor(parseInt(btn.dataset.floor))) {
+    // 【v1.4.1 修改】左上角闭眼图标：隐藏时段有图
+    if (stat && stat.hiddenHasImages) {
       const icon = document.createElement('span');
       icon.className = 'icon-hidden';
       icon.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>';
       btn.appendChild(icon);
     }
-    // 【v1.3.10】右上角筛选命中图标：筛选非全选 + 可见时段有图（仅对该楼层有写权限时显示）
-    if (isFilterActive && stat && stat.visibleHasImages && canEditFloor(parseInt(btn.dataset.floor))) {
+    // 【v1.3.10】右上角筛选命中图标：筛选非全选 + 可见时段有图
+    if (isFilterActive && stat && stat.visibleHasImages) {
       const icon = document.createElement('span');
       icon.className = 'icon-filter-hit';
       icon.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
@@ -1168,7 +1168,7 @@ function updateAreaVisual(fid, aname) {
     if (state.seatHasImages.has(seatKey(fid, aname, si))) { areaHasImages = true; break; }
   }
   document.querySelectorAll(`.area-btn[data-floor="${fid}"][data-area="${aname}"]`).forEach(btn => {
-    btn.classList.toggle('has-images', areaHasImages && canEditFloor(fid));
+    btn.classList.toggle('has-images', areaHasImages);
   });
 }
 
@@ -1641,8 +1641,13 @@ function appendThumbnailToDOM(ck, newImg, imgIdx) {
     thumbsDiv.className = 'ts-thumbs';
     card.appendChild(thumbsDiv);
   }
-  // 优先云端 URL，回退 Blob URL / Base64 缩略图
-  const thumbSrc = (newImg.url && newImg.url.startsWith('http') ? newImg.url : '') || newImg._thumbBlobURL || newImg._fullBlobURL || newImg.thumbnail || newImg.thumb || '';
+  // 优先云端 URL（追加防缓存参数），回退 Blob URL / Base64 缩略图
+  let thumbSrc = '';
+  if (newImg.url && newImg.url.startsWith('http')) {
+    thumbSrc = newImg.url;
+    if (newImg.photo_id) thumbSrc += '?id=' + newImg.photo_id;
+  }
+  if (!thumbSrc) thumbSrc = newImg._thumbBlobURL || newImg._fullBlobURL || newImg.thumbnail || newImg.thumb || '';
   if (thumbSrc) {
     const wrap = document.createElement('div');
     wrap.className = 'thumb-wrap';
@@ -1816,6 +1821,8 @@ captureInput.addEventListener('change', async (e) => {
     images.push(newImg);
     // 5. 更新内存 Blob 缓存（预览时直接使用）
     cacheCellBlobs(ck, images);
+    // 5.5 同步更新 _cellDataCache，确保拼接等操作能立即读取到新图片
+    _cellDataCache.set(ck, images);
     // 6. 立即显示缩略图（用 Blob URL 临时显示）
     imageCountCache.set(ck, images.length);
     state.seatHasImages.add(sk);
@@ -1959,6 +1966,8 @@ uploadInput.addEventListener('change', async (e) => {
       if (images.length >= MAX_IMAGES) { showToast('该时段图片已满'); return; }
       images.push(newImg);
       cacheCellBlobs(ck, images);
+      // 同步更新 _cellDataCache，确保拼接等操作能立即读取到新图片
+      _cellDataCache.set(ck, images);
 
       // 4. 先用 Blob URL 立即显示缩略图
       imageCountCache.set(ck, images.length);
@@ -2307,25 +2316,45 @@ function closeConcatSheet() {
 concatOverlay.addEventListener('click', closeConcatSheet);
 
 // 【v1.1.0 新增】根据选中时段图片总数，更新拼接按钮状态
-function updateConcatBtnState() {
+// 拼接预览按钮显示条件：仅根据图片数量规则，不检查用户角色或写权限
+// 注意：imageCountCache 的 key 可能不含时段（seatKey 格式），所以优先从 _cellDataCache 或云端查询
+async function updateConcatBtnState() {
   const oldHint = document.querySelector('.concat-hint');
   if (oldHint) oldHint.remove();
+  const dlConcatBtn = document.getElementById('btn-download-concat');
   if (state.selectedCells.length === 0) {
     concatBtn.disabled = false;
+    if (dlConcatBtn) dlConcatBtn.style.visibility = 'hidden';
     return;
   }
   let totalImgs = 0;
   for (const ck of state.selectedCells) {
-    totalImgs += imageCountCache.get(ck) || 0;
+    // 优先从 _cellDataCache 获取（含时段的 cellKey）
+    const cached = _cellDataCache.get(ck);
+    if (cached && cached.length > 0) {
+      totalImgs += cached.length;
+    } else {
+      // 本地缓存无数据，从云端按 cell_key 查询实际图片数
+      try {
+        const { count, error } = await _sb.from('seat_photos')
+          .select('*', { count: 'exact', head: true })
+          .eq('cell_key', ck);
+        const actual = count || 0;
+        totalImgs += actual;
+        console.log('拼接条件-云端查询', ck, actual);
+      } catch (e) {
+        console.warn('拼接条件-云端查询失败', ck, e);
+      }
+    }
   }
-  if (totalImgs < 2) {
-    concatBtn.disabled = true;
-    const hint = document.createElement('span');
-    hint.className = 'concat-hint';
-    hint.textContent = '需选择2张及以上图片才能拼接';
-    concatBtn.parentNode.insertBefore(hint, concatBtn.nextSibling);
-  } else {
+  console.log('拼接条件检查', totalImgs, state.selectedCells);
+  if (totalImgs >= 2) {
     concatBtn.disabled = false;
+    if (dlConcatBtn) dlConcatBtn.style.visibility = 'visible';
+  } else {
+    concatBtn.disabled = true;
+    // 拼接按钮仍可见但 disabled，保留占位避免布局跳动
+    if (dlConcatBtn) dlConcatBtn.style.visibility = 'visible';
   }
 }
 
@@ -2345,6 +2374,7 @@ async function getSelectedImagesData() {
 function getImgSrc(imgObj) {
   if (imgObj._fullBlobURL) return imgObj._fullBlobURL;
   if (imgObj._fullBlob) return URL.createObjectURL(imgObj._fullBlob);
+  if (imgObj.url && imgObj.url.startsWith('http')) return imgObj.url;
   if (imgObj.data) return imgObj.data;
   return null;
 }
@@ -2410,7 +2440,7 @@ async function stitchVertical(imgObjs) {
     return src;
   });
 
-  const rawImgs = await Promise.all(srcToUse.map(src => new Promise((r, j) => { const img = new Image(); img.onload = () => r(img); img.onerror = () => j(new Error('图片加载失败')); img.src = src; })));
+  const rawImgs = await Promise.all(srcToUse.map(src => new Promise((r, j) => { const img = new Image(); img.crossOrigin = 'anonymous'; img.onload = () => r(img); img.onerror = () => j(new Error('图片加载失败')); img.src = src; })));
 
   // 加载完成后立即释放 Blob URL
   blobURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
@@ -2466,7 +2496,7 @@ async function stitchHorizontal(imgObjs) {
     return src;
   });
 
-  const rawImgs = await Promise.all(srcToUse.map(src => new Promise((r, j) => { const img = new Image(); img.onload = () => r(img); img.onerror = () => j(new Error('图片加载失败')); img.src = src; })));
+  const rawImgs = await Promise.all(srcToUse.map(src => new Promise((r, j) => { const img = new Image(); img.crossOrigin = 'anonymous'; img.onload = () => r(img); img.onerror = () => j(new Error('图片加载失败')); img.src = src; })));
 
   // 加载完成后立即释放 Blob URL
   blobURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
@@ -2659,9 +2689,9 @@ async function downloadConcatenated() {
   try {
   const allImageData = await getSelectedImagesData();
   if (allImageData.length === 0) { showToast('无图片可拼接'); return; }
-  // 【v1.9.39】仅拦截拼接预览：有图片正在后台处理时阻止
-  const hasProcessing = allImageData.some(img => img.processingState === 'processing');
-  if (hasProcessing) { showToast('图片正在处理中，请稍后再试'); return; }
+  // 【v1.9.39 修复】判断图片是否可用于拼接：有可用的图片源即可
+  const hasUnusable = allImageData.some(img => !getImgSrc(img));
+  if (hasUnusable) { showToast('部分图片尚未就绪，请稍后再试'); return; }
 
   if (allImageData.length === 1) {
     showToast('需选择2张及以上图片才能拼接');
@@ -2718,28 +2748,16 @@ function applyBatchSelectionToUI() {
 }
 
 async function initBatchModal() {
-  // 【性能优化】从计数缓存扫描有图片的区域和时段，不加载完整图片数据
-  const areasWithImages = new Set();
-  const timesWithImages = new Set();
-  imageCountCache.forEach((cnt, key) => {
-    if (cnt > 0) {
-      const p = key.split('-');
-      areasWithImages.add(`${p[0]}-${p[1]}`);
-      timesWithImages.add(parseInt(p[3]));
-    }
-  });
   let ahtml = '';
   FLOORS.forEach(floor => {
     floor.areas.forEach(area => {
       const ak = areaKey(floor.id, area.name);
-      if (!areasWithImages.has(ak)) return; // 跳过无图片的区域
       ahtml += `<div class="batch-chip" data-ak="${ak}">${floor.name}${area.name}</div>`;
     });
   });
   batchAreasDiv.innerHTML = ahtml;
   let thtml = '';
   TIME_SLOTS.forEach((ts, idx) => {
-    if (!timesWithImages.has(idx)) return; // 跳过无图片的时段
     thtml += `<div class="batch-chip" data-tidx="${idx}">${ts}</div>`;
   });
   batchTimesDiv.innerHTML = thtml;
@@ -4321,26 +4339,20 @@ document.getElementById('cleanup-confirm-exec').addEventListener('click', async 
 // ============================================================
 // 十一、提示与底部栏
 // ============================================================
-// 【v1.16.0】轻提示防抖：同一内容2秒内只显示一次，重复触发刷新定时器
-const _toastMap = new Map(); // msg → { el, timer }
+// 【v1.16.0】轻提示：全局同一时间只显示一个 toast，新的会替换旧的
+let _activeToastEl = null;
+let _activeToastTimer = null;
 function showToast(msg, duration) {
   const d = duration || 2100;
-  const existing = _toastMap.get(msg);
-  if (existing) {
-    clearTimeout(existing.timer);
-    existing.el.style.animation = 'none';
-    void existing.el.offsetHeight;
-    existing.el.style.animation = `toast-in ${d / 1000}s ease`;
-    existing.timer = setTimeout(() => { existing.el.remove(); _toastMap.delete(msg); }, d + 100);
-    return;
-  }
+  // 清除已有的 toast
+  if (_activeToastEl) { _activeToastEl.remove(); clearTimeout(_activeToastTimer); }
   const t = document.createElement('div');
   t.className = 'toast';
   t.style.animationDuration = (d / 1000) + 's';
   t.textContent = msg;
   document.body.appendChild(t);
-  const timer = setTimeout(() => { t.remove(); _toastMap.delete(msg); }, d + 100);
-  _toastMap.set(msg, { el: t, timer });
+  _activeToastEl = t;
+  _activeToastTimer = setTimeout(() => { t.remove(); if (_activeToastEl === t) _activeToastEl = null; }, d + 100);
 }
 const bottomBar = document.getElementById('bottom-bar'), selectedCount = document.getElementById('selected-count');
 function updateBottomBar() {
@@ -4350,11 +4362,11 @@ function updateBottomBar() {
   } else {
     bottomBar.classList.remove('show');
   }
-  // 【功能开关】底部下载按钮和打包下载按钮
+  // 【功能开关】底部下载按钮和拼接预览按钮（各自独立显示/隐藏）
   const dlSeparateBtn = document.getElementById('btn-download-separate');
-  const dlConcatBtn = document.getElementById('btn-download-concat');
-  if (dlSeparateBtn) dlSeparateBtn.style.display = isFeatureEnabled('feat_bottom_download') ? '' : 'none';
-  if (dlConcatBtn) dlConcatBtn.style.display = isFeatureEnabled('feat_zip_download') ? '' : 'none';
+  // 下载按钮：功能开关控制，用 visibility 保留占位
+  if (dlSeparateBtn) dlSeparateBtn.style.visibility = isFeatureEnabled('feat_bottom_download') ? 'visible' : 'hidden';
+  // 拼接预览按钮：由 updateConcatBtnState 根据图片数量规则控制
   updateConcatBtnState();
   // 【v1.3.0 统一下载逻辑】根据图片总数更新按钮文字
   updateDownloadBtnText();
@@ -4366,7 +4378,13 @@ function updateDownloadBtnText() {
   if (state.selectedCells.length === 0) { dlBtn.textContent = '下载'; return; }
   let totalImgs = 0;
   for (const ck of state.selectedCells) {
-    totalImgs += imageCountCache.get(ck) || 0;
+    // 优先从 _cellDataCache 获取（含时段的 cellKey）
+    const cached = _cellDataCache.get(ck);
+    if (cached && cached.length > 0) {
+      totalImgs += cached.length;
+    } else {
+      totalImgs += imageCountCache.get(ck) || 0;
+    }
   }
   dlBtn.textContent = totalImgs <= 1 ? '下载' : '打包下载（ZIP）';
 }
@@ -4472,6 +4490,8 @@ document.addEventListener('click', async (e) => {
     const ck = delBtn.dataset.cellKey, imgIdx = parseInt(delBtn.dataset.imgIdx);
     const fid = parseInt(ck.split('-')[0]);
     if (!canEditFloor(fid)) { showToast('无该楼层操作权限'); return; }
+    // 删除加锁：同一 cell 正在删除中时忽略后续点击
+    if (_deletingCells.has(ck)) { return; }
     const cd = await getCellData(ck);
     let imgs = (cd && cd.images) ? [...cd.images] : [];
     if (imgIdx >= 0 && imgIdx < imgs.length) {
@@ -4480,42 +4500,49 @@ document.addEventListener('click', async (e) => {
       const photoUrl = img.url;
       if (!photoId) { showToast('该图片尚未上传完成'); return; }
 
-      // 立即从 DOM 中移除缩略图
+      // 加锁
+      _deletingCells.add(ck);
+      // 立即从 DOM 中移除缩略图（乐观更新）
       const thumbWrap = delBtn.closest('.thumb-wrap');
       if (thumbWrap) thumbWrap.remove();
 
-      // 调用三步删除：Storage + DB + 缓存
-      const result = await dlDeletePhoto(photoId, photoUrl, ck);
-      if (!result.success) {
-        showToast('删除失败：' + (result.error || '未知错误'));
-        // 恢复 DOM
-        invalidateTimeslotCache(cellToSeatKey(ck));
-        await renderTimeSlots(cellToSeatKey(ck));
-        return;
+      try {
+        // 调用三步删除：Storage + DB + 缓存
+        const result = await dlDeletePhoto(photoId, photoUrl, ck);
+        if (!result.success) {
+          showToast('删除失败：' + (result.error || '未知错误'));
+          // 恢复 DOM：重新渲染
+          invalidateTimeslotCache(cellToSeatKey(ck));
+          await renderTimeSlots(cellToSeatKey(ck));
+          return;
+        }
+
+        // 清除 Blob 缓存和 DOM 缓存
+        clearCellBlobCache(ck);
+        const sk = cellToSeatKey(ck);
+        invalidateTimeslotCache(sk);
+
+        // dlDeletePhoto 已清空该 cell 的 _cellDataCache，需重新查询计数
+        const refreshedData = await getCellData(ck);
+        const remaining = (refreshedData && refreshedData.images) ? refreshedData.images.length : 0;
+        imageCountCache.set(ck, remaining);
+        if (remaining > 0) {
+          state.seatHasImages.add(sk);
+        } else {
+          imageCountCache.delete(ck);
+          state.seatHasImages.delete(sk);
+          // 图片清零，从勾选集合中移除
+          const selIdx = state.selectedCells.indexOf(ck);
+          if (selIdx >= 0) state.selectedCells.splice(selIdx, 1);
+        }
+
+        // 重新渲染时段区域（更新 img-idx、勾选框状态）
+        await renderTimeSlots(sk);
+        updateSeatVisual(sk);
+        updateBottomBar();
+      } finally {
+        _deletingCells.delete(ck);
       }
-
-      // 清除 Blob 缓存和 DOM 缓存
-      clearCellBlobCache(ck);
-      const sk = cellToSeatKey(ck);
-      invalidateTimeslotCache(sk);
-
-      // 更新计数和座位状态
-      const remaining = (_cellDataCache.get(ck) || []).length;
-      imageCountCache.set(ck, remaining);
-      if (remaining > 0) {
-        state.seatHasImages.add(sk);
-      } else {
-        imageCountCache.delete(ck);
-        state.seatHasImages.delete(sk);
-        // 图片清零，从勾选集合中移除
-        const selIdx = state.selectedCells.indexOf(ck);
-        if (selIdx >= 0) state.selectedCells.splice(selIdx, 1);
-      }
-
-      // 重新渲染时段区域（更新 img-idx、勾选框状态）
-      await renderTimeSlots(sk);
-      updateSeatVisual(sk);
-      updateBottomBar();
     }
     return;
   }
@@ -4772,23 +4799,21 @@ async function refreshExpandedSeats() {
       btn.querySelectorAll('.icon-hidden, .icon-filter-hit').forEach(el => el.remove());
       // 【v1.3.16 修复】颜色基于可见时段统计，与 renderSeatFlow/updateSeatVisual 一致
       const stat = seatImageStats.get(sk);
-      if (canEditFloor(parseInt(btn.dataset.floor))) {
-        if (stat && stat.visibleTotalCount >= 2 && stat.visibleHasSlotWithMulti) {
-          btn.classList.add('has-images-2');
-        } else if (stat && stat.visibleTotalCount >= 1) {
-          btn.classList.add('has-images-1');
-        }
+      if (stat && stat.visibleTotalCount >= 2 && stat.visibleHasSlotWithMulti) {
+        btn.classList.add('has-images-2');
+      } else if (stat && stat.visibleTotalCount >= 1) {
+        btn.classList.add('has-images-1');
       }
       // 【v1.3.14 修复】移除 seatHasImages 兜底，隐藏时段有图不再触发蓝色
-      // 【v1.4.1 修改】左上角闭眼图标：隐藏时段有图（仅对该楼层有写权限时显示）
-      if (stat && stat.hiddenHasImages && canEditFloor(parseInt(btn.dataset.floor))) {
+      // 【v1.4.1 修改】左上角闭眼图标：隐藏时段有图
+      if (stat && stat.hiddenHasImages) {
         const icon = document.createElement('span');
         icon.className = 'icon-hidden';
         icon.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>';
         btn.appendChild(icon);
       }
-      // 【v1.3.10】右上角筛选命中图标：筛选非全选 + 可见时段有图（仅对该楼层有写权限时显示）
-      if (isFilterActive && stat && stat.visibleHasImages && canEditFloor(parseInt(btn.dataset.floor))) {
+      // 【v1.3.10】右上角筛选命中图标：筛选非全选 + 可见时段有图
+      if (isFilterActive && stat && stat.visibleHasImages) {
         const icon = document.createElement('span');
         icon.className = 'icon-filter-hit';
         icon.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
@@ -4906,8 +4931,8 @@ function renderFuncPanelBody() {
       <div class="func-toggle ${state.uploadWatermark ? 'on' : ''}" id="func-toggle-upload-wm"></div>
     </div>
     <!-- 【v1.3.0 菜单改名+重置功能】新增重置应用按钮 -->
-    <div class="func-item" data-func="reset-app" style="border-top:1px solid #e8e8e8;margin-top:8px;padding-top:16px;${isFeatureEnabled('feat_reset_app') ? '' : 'display:none'}">
-      <div class="func-item-label" style="color:#ff4d4f;font-weight:600">重置应用<div class="func-item-desc" style="color:#ff7875">清除所有图片和设置，不可恢复</div></div>
+    <div class="func-item" data-func="reset-app" style="border-top:1px solid #e8e8e8;margin-top:8px;padding-top:16px;${isFeatureEnabled('feat_reset_app') && state.allowDeleteSeat ? '' : 'display:none'}">
+      <div class="func-item-label" style="color:#ff4d4f;font-weight:600">重置应用<div class="func-item-desc" style="color:#ff7875">清除本地自定义数据（云端图片不受影响）</div></div>
       <span style="color:#ff4d4f;font-size:18px">›</span>
     </div>` : ''}`;
 }
@@ -5052,82 +5077,39 @@ funcPanelBody.addEventListener('click', (e) => {
     const toggle = document.getElementById('func-toggle-upload-wm');
     if (toggle) toggle.classList.toggle('on', state.uploadWatermark);
   }
-  // 【v1.3.0 菜单改名+重置功能】重置应用（v1.7.2 改为分批异步删除）
+  // 【v2.0.6】重置应用：仅清除本地自定义数据，保留云端图片
   else if (func === 'reset-app') {
-    if (!confirm('此操作将清除所有图片和设置，不可恢复。确认重置？')) return;
+    if (!state.allowDeleteSeat) { showToast('请先开启"允许删除座位"开关'); return; }
+    if (!confirm('此操作将清除所有本地自定义数据和偏好设置，座位数量恢复默认值。云端图片不受影响。确认重置？')) return;
     closeFuncPanel();
-    // 显示不可关闭的 loading 弹窗
-    cleanupLoadingText.textContent = '正在重置...';
-    cleanupLoadingModal.classList.add('show');
-    (async () => {
-      let hasError = false;
-      try {
-        // 第一步：分批异步清空 IndexedDB 所有 store
-        if (dbIsFallback) {
-          dbFallback = {};
-        } else if (dbInstance) {
-          const db = await openDB();
-          const storeNames = ['cells', 'seatNames', 'extraSeats', 'deletedSeats'];
-          const BATCH_SIZE = 50;
-          for (const storeName of storeNames) {
-            try {
-              // 统计该 store 总数
-              let totalCount = 0;
-              await new Promise((resolve) => {
-                const tx = db.transaction(storeName, 'readonly');
-                const countReq = tx.objectStore(storeName).count();
-                countReq.onsuccess = () => { totalCount = countReq.result; resolve(); };
-                countReq.onerror = () => resolve();
-              });
-              // 分批游标删除
-              let processed = 0;
-              let done = false;
-              while (!done) {
-                const batchKeys = [];
-                await new Promise((resolve) => {
-                  const tx = db.transaction(storeName, 'readonly');
-                  const req = tx.objectStore(storeName).openCursor();
-                  req.onsuccess = (e) => {
-                    const cursor = e.target.result;
-                    if (cursor && batchKeys.length < BATCH_SIZE) {
-                      batchKeys.push(cursor.primaryKey);
-                      cursor.continue();
-                    } else { resolve(); }
-                  };
-                  req.onerror = () => resolve();
-                });
-                if (batchKeys.length === 0) { done = true; break; }
-                // 删除本批
-                for (const key of batchKeys) {
-                  try { await dbDelete(storeName, key); } catch (e) { hasError = true; }
-                }
-                // 清除内存缓存（仅 cells store）
-                if (storeName === 'cells') {
-                  for (const key of batchKeys) {
-                    imageCountCache.set(key, 0);
-                    clearCellBlobCache(key);
-                  }
-                }
-                processed += batchKeys.length;
-                if (totalCount > 0) {
-                  const pct = Math.min(Math.round(processed / totalCount * 100), 99);
-                  cleanupLoadingText.textContent = `正在重置... ${pct}%`;
-                }
-                await new Promise(r => setTimeout(r, 0)); // 让出主线程
-              }
-            } catch (e) { console.warn('清空 store 出错:', storeName, e); hasError = true; }
-          }
-        }
-        // 第二步：清空 localStorage 中所有设置
-        try { localStorage.clear(); } catch (e) {}
-        // 第三步：刷新页面，回到初始状态
-        location.reload();
-      } catch (err) {
-        console.error('重置出错:', err);
-        cleanupLoadingModal.classList.remove('show');
-        showToast('重置出错，请手动清除浏览器数据');
+    try {
+      // 第一步：清除本地缓存
+      dlClearCache();
+      // 第二步：清除自定义数据
+      state.extraSeats = {};
+      state.deletedSeats = new Set();
+      state.seatNames = {};
+      Object.keys(_extraSeatsCache).forEach(k => delete _extraSeatsCache[k]);
+      _deletedSeatsCache.clear();
+      Object.keys(_seatNamesCache).forEach(k => delete _seatNamesCache[k]);
+      // 第三步：清除 localStorage 中所有非认证相关键（保留 supabase auth token）
+      const keysToKeep = new Set();
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith('sb-') || key.startsWith('supabase')) keysToKeep.add(key);
       }
-    })();
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!keysToKeep.has(key)) keysToRemove.push(key);
+      }
+      keysToRemove.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+      // 第四步：刷新页面，恢复 FLOORS 默认座位
+      location.reload();
+    } catch (err) {
+      console.error('重置出错:', err);
+      showToast('重置出错：' + (err.message || '未知错误'));
+    }
   }
 });
 
@@ -5277,27 +5259,25 @@ async function init() {
       setTimeout(() => skeletonEl.remove(), 200);
     }, minDelay);
   }
-  // 【v1.2.2 微信兼容】SW 注册包裹在 try-catch 中，微信浏览器中失败不影响主功能
-  // 微信内置浏览器中跳过 SW 注册（兼容性差且无 PWA 需求）
-  // 【v1.9.13】swRegistration 移至全局，供全局事件委托中的 check-update 使用
-  if (!isWeChat && 'serviceWorker' in navigator) {
-    try {
-      navigator.serviceWorker.register('./sw.js').then(reg => {
-        swRegistration = reg;
-        if (reg.waiting) { try { showUpdateBar(reg.waiting); } catch(e) {} }
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          if (!newWorker) return;
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              try { showUpdateBar(newWorker); } catch(e) {}
-            }
-          });
-        });
-        setInterval(() => { try { reg.update(); } catch(e) {} }, 30 * 60 * 1000);
-      }).catch(() => {});
-    } catch (e) { console.warn('SW 注册失败，不影响使用:', e); }
-  }
+  // Service Worker 已禁用
+  // if (!isWeChat && 'serviceWorker' in navigator) {
+  //   try {
+  //     navigator.serviceWorker.register('./sw.js').then(reg => {
+  //       swRegistration = reg;
+  //       if (reg.waiting) { try { showUpdateBar(reg.waiting); } catch(e) {} }
+  //       reg.addEventListener('updatefound', () => {
+  //         const newWorker = reg.installing;
+  //         if (!newWorker) return;
+  //         newWorker.addEventListener('statechange', () => {
+  //           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+  //             try { showUpdateBar(newWorker); } catch(e) {}
+  //           }
+  //         });
+  //       });
+  //       setInterval(() => { try { reg.update(); } catch(e) {} }, 30 * 60 * 1000);
+  //     }).catch(() => {});
+  //   } catch (e) { console.warn('SW 注册失败，不影响使用:', e); }
+  // }
   function showUpdateBar(worker) {
     try {
       const bar = document.getElementById('update-bar');
@@ -5554,6 +5534,28 @@ if (typeof QRCode === 'undefined' && typeof qrcode === 'function') {
   _qrScript.onerror = function() { console.error('[QR] 所有 QRCode CDN 均加载失败'); };
   document.head.appendChild(_qrScript);
 }
+
+// ========== 全局设置实时同步 ==========
+async function refreshSettingsAndUI() {
+  try {
+    await loadGlobalSettings();
+    // 更新所有依赖设置的 UI
+    updateBottomBar();
+    // 刷新功能面板中的开关状态
+    ensureFuncBtnText();
+    // 更新设置相关按钮
+    loadAllowDeleteState();
+    loadShowLogoState();
+    loadUploadWatermarkState();
+    loadDeleteProtectionState();
+  } catch(e) { console.warn('刷新设置失败:', e); }
+}
+// 从后台切回时重新拉取设置
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refreshSettingsAndUI();
+});
+// 定时轮询双保险（30秒）
+setInterval(refreshSettingsAndUI, 30000);
 
 // 【v1.2.2 微信兼容】最外层 try-catch 防止任何未捕获异常导致页面崩溃
 try {
