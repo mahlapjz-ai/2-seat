@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+<!-- 【v1.9.20】阻塞渲染：同步读取主题，防止非默认主题闪烁 -->
+<script>try{var t=localStorage.getItem('app_theme');if(t&&t!=='default'){var m={'normal':'theme-normal','yiban':'theme-yiban','pixel':'theme-pixel','pink':'theme-pink'};if(m[t])document.documentElement.className=m[t]}}catch(e){}try{if(/Android/i.test(navigator.userAgent))document.documentElement.classList.add('android-device')}catch(e){}</script>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="seat-icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="seat-icon.png">
+<link rel="apple-touch-icon" sizes="192x192" href="seat-icon-192.png">
+<link rel="apple-touch-icon" sizes="512x512" href="seat-icon.png">
+<meta name="theme-color" content="#1890ff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="座位管理">
+<link rel="apple-touch-icon" href="seat-icon.png">
+<title>座位图片管理</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
+<!-- Supabase SDK + 认证模块 + 数据层 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
+<script src="auth.js?v=2.0.5"></script>
+<script src="data-layer.js?v=2.0.5"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<!-- 拆分自原单文件 - 外部样式 -->
+<link rel="stylesheet" href="styles.css?v=2.0.5">
+<link rel="stylesheet" href="login.css?v=2.0.5">
+</head>
+<body>
+<!-- 【v1.12.0】骨架屏：页面加载时显示，数据就绪后移除 -->
+<div id="skeleton" class="skeleton-screen">
+  <div class="skeleton-header"><div class="skeleton-header-title"></div><div class="skeleton-header-btn"></div></div>
+  <div class="skeleton-floor"></div>
+  <div class="skeleton-floor"></div>
+  <div class="skeleton-floor"></div>
+  <div class="skeleton-floor"></div>
+  <div class="skeleton-floor"></div>
+  <div class="skeleton-footer"><div class="skeleton-footer-line"></div><div class="skeleton-footer-line"></div><div class="skeleton-footer-line"></div></div>
+</div>
+<div class="update-bar" id="update-bar">有新版本可用，点击刷新</div>
+<!-- 【修复文字消失】page-header 移出 app，作为静态 DOM，不会被 renderMain 重建 -->
+<!-- 用户信息条 -->
+<div class="user-bar" id="user-bar" style="display:none;max-width:480px;margin:0 auto">
+  <span class="user-bar-name" id="user-bar-name"></span>
+  <span class="user-bar-role" id="user-bar-role"></span>
+  <span class="user-bar-expire" id="user-bar-expire" style="display:none"></span>
+  <button class="user-bar-logout" id="user-bar-logout">登出</button>
+</div>
+<div class="page-header" id="page-header" style="opacity:0;transition:opacity .2s ease"><span class="page-title" style="pointer-events:none;position:relative;z-index:99">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">设置</button></div>
+<div id="app"></div>
+<div id="bottom-bar">
+  <span id="selected-count">已选 0 个时段</span>
+  <button id="btn-clear-select">取消全选</button>
+  <button class="bar-btn" id="btn-download-separate">下载</button>
+  <button class="bar-btn" id="btn-download-concat">拼接预览</button>
+</div>
+<div id="preview-modal">
+  <div id="preview-close">&times;</div>
+  <div id="preview-scroller"></div>
+  <div id="preview-indicator"></div>
+  <button id="preview-save-btn">保存图片</button>
+  <div id="preview-hint">双指/双击缩放 · 左右滑动 · 下滑关闭</div>
+</div>
+<div class="modal-overlay" id="batch-modal">
+  <div class="modal-box">
+    <h3>批量下载</h3>
+    <div class="batch-section"><h4>选择区域 <span class="batch-progress" id="batch-progress"></span> <button class="batch-select-all" data-target="area">全选/取消</button></h4><div class="batch-grid" id="batch-areas"></div></div>
+    <div class="batch-section"><h4>选择时段 <button class="batch-select-all" data-target="time">全选/取消</button></h4><div class="batch-grid" id="batch-times"></div></div>
+    <div class="modal-btns"><button class="modal-cancel" id="batch-cancel">取消</button><button class="modal-confirm" id="batch-exec">打包下载(ZIP)</button></div>
+  </div>
+</div>
+<!-- 【v1.10.4 改造】清除图片：复用批量下载的modal-overlay+batch-chip样式 -->
+<div class="modal-overlay" id="cleanup-modal">
+  <div class="modal-box">
+    <h3>清除图片</h3>
+    <div class="batch-section"><h4>选择区域 <button class="batch-select-all" data-target="cleanup-area">全选/取消</button></h4><div class="batch-grid" id="cleanup-areas"></div></div>
+    <div class="batch-section"><h4>选择时段 <button class="batch-select-all" data-target="cleanup-time">全选/取消</button></h4><div class="batch-grid" id="cleanup-times"></div></div>
+    <div class="modal-btns"><button class="modal-cancel" id="cleanup-cancel">取消</button><button class="cleanup-exec" id="cleanup-exec" disabled>清除图片</button></div>
+  </div>
+</div>
+<!-- 清除确认弹窗 -->
+<div class="modal-overlay" id="cleanup-confirm-modal">
+  <div class="modal-box">
+    <h3>确认清除</h3>
+    <p style="font-size:14px;color:#666;margin-bottom:14px;text-align:center">将清除所选区域和时段的全部图片，不可恢复。确认清除？</p>
+    <div class="cleanup-btns"><button class="cleanup-cancel" id="cleanup-confirm-cancel">取消</button><button class="cleanup-exec" id="cleanup-confirm-exec">确认清除</button></div>
+  </div>
+</div>
+<!-- 【v1.5.11 新增】清理进度 loading 弹窗 -->
+<div class="modal-overlay" id="cleanup-loading-modal" style="z-index:210">
+  <div class="modal-box" style="text-align:center">
+    <div class="cleanup-spinner"></div>
+    <p id="cleanup-loading-text" style="font-size:15px;color:#333;margin-top:16px">正在清理图片...</p>
+  </div>
+</div>
+<!-- 【v1.1.1 改造】拼接选择改为底部滑出面板 -->
+<div id="concat-overlay"></div>
+<div id="concat-sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header"><span class="sheet-title" id="concat-sheet-title">选择拼接方式</span></div>
+  <!-- 情况2：2~3张，只显示横拼/竖拼按钮 -->
+  <div class="concat-btns-simple" id="concat-btns-simple">
+    <button class="concat-h" id="concat-h-btn">横拼</button>
+    <button class="concat-v" id="concat-v-btn">竖拼</button>
+  </div>
+  <!-- 情况3：4~6张，显示缩略图网格+底部按钮 -->
+  <div class="concat-grid" id="concat-grid"></div>
+  <div class="concat-btns-grid" id="concat-btns-grid">
+    <button class="concat-h" id="concat-h-btn2">横拼</button>
+    <button class="concat-v" id="concat-v-btn2">竖拼</button>
+  </div>
+</div>
+<div class="filter-sheet-overlay" id="filter-overlay"></div>
+<div class="filter-sheet" id="filter-sheet">
+  <div class="filter-sheet-header"><span class="filter-sheet-title">选择显示时段（打勾为显示时段）</span><button class="filter-sheet-close" id="filter-close">&times;</button></div>
+  <div class="filter-sheet-actions">
+    <button class="filter-action-btn primary" id="filter-hide-passed">隐藏已过时段</button>
+    <button class="filter-action-btn" id="filter-select-all">全选</button>
+    <button class="filter-action-btn" id="filter-clear">清除</button>
+  </div>
+  <div class="filter-sheet-body" id="filter-body"></div>
+</div>
+<!-- 【修改3】功能面板 -->
+<div class="func-panel-overlay" id="func-panel-overlay"></div>
+<div class="func-panel" id="func-panel">
+  <div class="func-panel-header"><span class="func-panel-title">设置</span><button class="func-panel-close" id="func-panel-close">&times;</button></div>
+  <div class="func-panel-body" id="func-panel-body"></div>
+</div>
+<!-- 拆分自原单文件 - 外部脚本 -->
+<script src="scripts.js?v=2.0.5"></script>
+</body>
+</html>
