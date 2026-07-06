@@ -1,0 +1,825 @@
+/* 拆分自原单文件 index.html - 样式部分 */
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;font-size:15px;color:#333;background:#f0f2f5;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+/* 【v1.2.0 iOS兼容】所有可点击元素统一 cursor:pointer，iOS 不做悬停效果 */
+button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-slot-item,.floor-btn,.area-btn,.record-time-btn{cursor:pointer;-webkit-user-select:none;user-select:none}
+/* 【v1.9.25】按压视觉反馈：:active + ._pressing 双重匹配，移动端 touchstart 立即触发 */
+.floor-btn:active,.floor-btn._pressing{transition:transform .1s ease}
+.area-btn:active,.area-btn._pressing{transition:transform .1s ease}
+.record-time-btn:active,.record-time-btn._pressing{transition:background .1s ease,transform .1s ease}
+.seat-btn:active,.seat-btn._pressing{transition:background .1s ease,transform .1s ease}
+.func-item:active,.func-item._pressing{transition:background .1s ease}
+.header-btn:active,.header-btn._pressing{transition:opacity .1s ease,transform .1s ease}
+.btn-delete-seat:active,.btn-delete-seat._pressing{transition:background .1s ease}
+.update-bar:active,.update-bar._pressing{transition:opacity .1s ease}
+#app{max-width:480px;margin:0 auto;padding:0 10px 140px;min-height:calc(100vh - 50px)}
+
+/* 【修复文字消失】page-header 从 app 中移出，作为独立固定元素 */
+.page-header{display:flex;align-items:center;justify-content:center;padding:14px 10px 10px;gap:8px;flex-wrap:wrap;max-width:480px;margin:0 auto;background:#f0f2f5;position:relative;z-index:10}
+.page-title{font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:1px;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;pointer-events:auto!important;position:relative;z-index:10}
+.header-btn{padding:6px 12px;font-size:12px;font-weight:600;border:none;border-radius:6px;color:#fff;cursor:pointer;white-space:nowrap}
+.header-btn:active,.header-btn._pressing{opacity:.7}
+.btn-cleanup{background:#ff4d4f}
+.btn-batch-dl{background:#722ed1}
+
+/* 【修改1】删除座位按钮受开关控制 */
+.btn-delete-seat{padding:4px 12px;font-size:12px;font-weight:600;border:1px solid #ff4d4f;border-radius:4px;background:#fff;color:#ff4d4f;cursor:pointer;margin-left:auto;display:none}
+.btn-delete-seat.visible{display:inline-block}
+.btn-delete-seat:active,.btn-delete-seat._pressing{background:#fff1f0}
+
+/* 【v1.5.7】新版本更新提示条：滑入动画 + 不遮挡标题栏 */
+.update-bar{position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#1890ff,#096dd9);color:#fff;text-align:center;padding:12px 16px;font-size:14px;font-weight:500;cursor:pointer;box-shadow:0 2px 8px rgba(24,144,255,.4);transform:translateY(-100%);transition:transform .3s ease}
+.update-bar.show{transform:translateY(0)}
+.update-bar:active,.update-bar._pressing{opacity:.85}
+/* 提示条显示时下推标题栏，避免遮挡 */
+.page-header{transition:margin-top .3s ease}
+.update-bar.show+.page-header{margin-top:44px}
+
+/* 【修改3】功能面板 */
+.func-panel-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:260}
+.func-panel-overlay.show{display:block}
+/* 【v1.3.9 修复2+3】菜单面板：固定最大高度70vh，内部可滚动，阻止背景滑动穿透 */
+.func-panel{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:16px 16px 0 0;z-index:261;transform:translateY(100%);transition:transform .3s ease;max-width:480px;margin:0 auto;max-height:70vh;display:flex;flex-direction:column;padding-bottom:constant(safe-area-inset-bottom);padding-bottom:env(safe-area-inset-bottom)}
+.func-panel.show{transform:translateY(0)}
+.func-panel-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid #f0f0f0;flex-shrink:0}
+.func-panel-title{font-size:17px;font-weight:700;color:#1a1a1a}
+.func-panel-close{width:36px;height:36px;border:none;background:#f5f5f5;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#999;min-width:44px;min-height:44px}
+.func-panel-close:active{background:#e8e8e8}
+/* 【v1.3.9 修复3】func-panel-body 可内部滚动，overflow-y:auto */
+.func-panel-body{padding:8px 20px 24px;overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;min-height:0}
+/* 【v1.3.2 菜单优化4】菜单项高度缩小，更紧凑，保持 44px 最低触摸区域 */
+.func-item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;min-height:44px;border-bottom:1px solid #f5f5f5;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.func-item:last-child{border-bottom:none}
+.func-item:active,.func-item._pressing{background:#fafafa;border-radius:8px}
+.func-item-label{font-size:15px;color:#333;font-weight:500}
+.func-item-label .func-item-desc{font-size:12px;color:#999;font-weight:400;margin-top:2px}
+/* 开关样式 */
+.func-toggle{width:48px;height:28px;border-radius:14px;background:#bfbfbf;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0}
+.func-toggle.on{background:#52c41a}
+.func-toggle::after{content:'';position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s}
+.func-toggle.on::after{transform:translateX(20px)}
+
+/* 【修改4】预览保存按钮淡出 */
+#preview-save-btn{position:absolute;bottom:calc(50px + constant(safe-area-inset-bottom));bottom:calc(50px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);padding:10px 28px;font-size:14px;font-weight:600;border:none;border-radius:8px;background:rgba(24,144,255,.9);color:#fff;cursor:pointer;z-index:301;box-shadow:0 2px 12px rgba(24,144,255,.4);transition:opacity .5s ease}
+#preview-save-btn:active{opacity:.8}
+#preview-save-btn.faded{opacity:.1}
+
+.floor-btn{display:flex;align-items:center;justify-content:space-between;width:100%;padding:16px 20px;margin:8px 0;font-size:18px;font-weight:600;border:none;border-radius:10px;color:#fff;cursor:pointer;text-align:left;transition:transform .1s}
+.floor-btn:active,.floor-btn._pressing{transform:scale(.97)}
+.floor-btn .floor-name{flex-shrink:0;white-space:nowrap}
+.floor-btn .floor-right{flex-shrink:0;display:flex;align-items:center;gap:8px;white-space:nowrap;min-width:52px;justify-content:flex-end}
+.floor-btn .arrow{width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid currentColor;display:inline-block;vertical-align:middle;transition:transform .25s}
+.floor-btn.expanded .arrow{transform:rotate(180deg)}
+.floor-btn .floor-count{font-size:13px;font-weight:400;opacity:.85}
+.floor-1{background:linear-gradient(135deg,#667eea,#764ba2)}
+.floor-2{background:linear-gradient(135deg,#f093fb,#f5576c)}
+.floor-3{background:linear-gradient(135deg,#4facfe,#00f2fe)}
+.floor-4{background:linear-gradient(135deg,#43e97b,#38f9d7)}
+.floor-5{background:linear-gradient(135deg,#fa709a,#fee140)}
+
+.area-container{display:none;padding:4px 0 8px 16px}
+.area-container.show{display:flex;flex-wrap:wrap;justify-content:flex-start;align-items:flex-start;gap:6px;padding:4px 12px 8px}
+.area-btn-wrap{position:relative;width:calc(33.33% - 4px);flex-shrink:0;overflow:visible}
+.area-btn-wrap:has(.expanded){margin-bottom:36px}
+.area-btn{display:inline-flex;flex-direction:column;align-items:center;width:100%;box-sizing:border-box;padding:8px 10px;font-size:14px;font-weight:600;border:2px solid transparent;border-radius:8px;background:#fff;color:#333;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12);transition:transform .1s,border-color .15s;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.area-btn:active,.area-btn._pressing{transform:scale(.95)}
+.area-btn .arrow{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;display:inline-block;vertical-align:middle;margin-left:6px;transition:transform .25s}
+.area-btn .area-seat-count{font-size:10px;font-weight:400;color:#999;width:100%;text-align:left;line-height:1.3}
+.area-btn .area-name-row{display:flex;align-items:center;justify-content:center;line-height:1.4}
+.area-btn .area-stats{font-size:10px;font-weight:400;color:#999;width:100%;display:flex;justify-content:space-between;line-height:1.3;margin-top:1px}
+.area-btn .area-stats .as-left{white-space:nowrap}
+.area-btn .area-stats .as-right{white-space:nowrap}
+.area-btn.expanded .arrow{transform:rotate(180deg)}
+/* 【v1.17.2】区域按钮拖动调序 */
+.area-btn._dragging{box-shadow:0 8px 24px rgba(0,0,0,.25);transform:scale(1.05);z-index:100;opacity:.85;transition:box-shadow .15s,opacity .15s}
+.area-btn._drag-placeholder{visibility:hidden;border:2px dashed #722ed1;opacity:.3}
+.area-btn._drag-target{border-color:#722ed1;border-style:dashed}
+._drag-placeholder-wrap{visibility:hidden;border:2px dashed #722ed1;opacity:.3;border-radius:8px;box-sizing:border-box;width:calc(33.33% - 4px);flex-shrink:0}
+/* 【v1.3.15】选中高亮改为红色描边+无背景色，避免与蓝色提示混淆 */
+.area-btn.expanded{background:#fff;border-color:#ff4d4f;box-shadow:none}
+.area-btn.has-images{border:2px solid #52c41a;background:linear-gradient(135deg,#f6ffed,#d9f7be);color:#389e0d}
+.area-btn.has-images.expanded{border-color:#ff4d4f;background:linear-gradient(135deg,#f6ffed,#d9f7be);color:#389e0d}
+/* 【v1.12.1】记录完成时间按钮：圆角胶囊形 */
+.record-time-btn{display:inline-flex;align-items:center;justify-content:center;min-width:36px;min-height:36px;padding:4px 10px;margin:0;font-size:11px;font-weight:500;border:1.5px solid #d9d9d9;border-radius:20px;background:#f5f5f5;color:#666;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,transform .1s;-webkit-user-select:none;user-select:none;position:absolute;top:100%;left:0;margin-top:4px;z-index:2}
+.record-time-btn:active,.record-time-btn._pressing{transform:scale(.95);background:#e8e8e8}
+/* 【v1.13.3】楼层卡片完成时间显示：居中填充中间空间 */
+.floor-completion{display:flex;flex-direction:column;flex:1;min-width:0;margin:0 8px;font-weight:400;color:rgba(255,255,255,.85);line-height:1.4;align-items:stretch;overflow:hidden}
+.floor-completion .fc-row{display:flex;justify-content:space-between;width:100%;gap:12px}
+.floor-completion .fc-row.fc-single-center{justify-content:center}
+.floor-completion .fc-row>span{white-space:nowrap;flex:1 1 0%;min-width:0}
+.floor-completion .fc-row>span.fc-item{display:inline-flex;align-items:baseline;gap:2px}
+.floor-completion .fc-row>span.fc-item.fc-odd{justify-content:flex-start}
+.floor-completion .fc-row>span.fc-item.fc-even{justify-content:flex-end}
+.floor-completion .fc-area{flex-shrink:0}
+.floor-completion .fc-time{white-space:nowrap}
+.floor-completion.s1{font-size:14px}
+.floor-completion.s2{font-size:12px}
+.floor-completion.s3{font-size:11px}
+.floor-completion.fixed{font-size:11px;word-break:break-word;overflow-wrap:break-word;line-height:1.3;flex:1;max-width:100%;text-align:center}
+/* 【v1.12.0】记录完成时间二次确认弹窗 */
+.record-confirm-box{background:#fff;border-radius:12px;padding:24px 20px 18px;width:280px;max-width:85vw;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.15)}
+.record-confirm-text{font-size:15px;color:#333;margin-bottom:20px;line-height:1.5}
+.record-confirm-btns{display:flex;gap:12px;justify-content:center}
+.record-confirm-cancel,.record-confirm-ok{flex:1;padding:10px 0;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;transition:opacity .15s}
+.record-confirm-cancel{background:#f0f0f0;color:#666}
+.record-confirm-cancel:active{opacity:.7}
+.record-confirm-ok{background:#1890ff;color:#fff}
+.record-confirm-ok:active{opacity:.8}
+
+.seat-container{display:none;padding:8px 0}
+.seat-container.show{display:block;flex-basis:100%;width:100%}
+.seat-flow{display:flex;flex-wrap:wrap;row-gap:4px;padding:0;align-items:flex-start;justify-content:flex-start}
+.seat-btn{width:calc(20% - 6px);height:44px;margin:0 3px;padding:0 8px;font-size:12px;font-weight:500;border:2px solid #d9d9d9;border-radius:6px;background:#fff;cursor:pointer;text-align:center;white-space:nowrap;overflow:visible;text-overflow:clip;transition:background .15s,border-color .15s;position:relative;flex-shrink:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;flex-grow:0}
+.seat-btn:active,.seat-btn._pressing{background:#e6f7ff}
+/* 【v1.3.15】选中高亮改为红色描边+无背景色 */
+.seat-btn.expanded{background:#fff;border:2px solid #ff4d4f}
+/* 【v1.3.10 重构】座位视觉提示：颜色基于全时段总数，图标分层显示 */
+.seat-btn.has-images-1{border-color:#69c0ff;background:linear-gradient(135deg,#e6f7ff,#bae7ff);color:#096dd9;font-weight:700}
+.seat-btn.has-images-2{border-color:#fa8c16;background:linear-gradient(135deg,#fff7e6,#ffe7ba);color:#d46b08;font-weight:700}
+/* 【v1.3.15】有图+选中：红色描边，保留原有背景色 */
+.seat-btn.has-images-1.expanded{border:2px solid #ff4d4f;background:linear-gradient(135deg,#e6f7ff,#bae7ff);color:#096dd9;font-weight:700}
+.seat-btn.has-images-2.expanded{border:2px solid #ff4d4f;background:linear-gradient(135deg,#fff7e6,#ffe7ba);color:#d46b08;font-weight:700}
+/* 【v1.3.10】闭眼图标：左上角，表示隐藏时段有图 */
+.seat-btn .icon-hidden{position:absolute;top:2px;left:4px;right:auto;bottom:auto;width:14px;height:14px;display:flex;align-items:center;justify-content:center;z-index:5}
+.seat-btn .icon-hidden svg{width:12px;height:12px;fill:#999;filter:drop-shadow(0 1px 1px rgba(255,77,79,.5))}
+/* 【v1.3.10】筛选命中图标：右上角，表示可见时段有图（仅筛选非全选时显示） */
+.seat-btn .icon-filter-hit{position:absolute;top:2px;right:6px;left:auto;bottom:auto;width:14px;height:14px;display:flex;align-items:center;justify-content:center;z-index:5}
+.seat-btn .icon-filter-hit svg{width:12px;height:12px;fill:#52c41a}
+.seat-btn-text{display:inline;line-height:1.3;text-align:center;pointer-events:none}
+/* 二~五楼东区临时长编号字号缩小 */
+.seat-btn.long-name{font-size:11.5px}
+.theme-normal .seat-btn.long-name{font-size:11.5px}
+.theme-yiban .seat-btn.long-name{font-size:11.5px}
+.theme-pixel .seat-btn.long-name{font-size:9.5px}
+.android-device .seat-btn.long-name{font-size:10.5px}
+.android-device.theme-normal .seat-btn.long-name{font-size:9.5px}
+.android-device.theme-yiban .seat-btn.long-name{font-size:10.5px}
+.android-device.theme-pixel .seat-btn.long-name{font-size:8.5px}
+.add-seat-btn{width:calc(20% - 5px);height:44px;padding:0 8px;font-size:20px;font-weight:700;border:2px dashed #bfbfbf;border-radius:6px;background:#fafafa;cursor:pointer;text-align:center;color:#8c8c8c;transition:all .15s;flex-shrink:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;flex-grow:0}
+.add-seat-btn:active{background:#e6f7ff;border-color:#1890ff;color:#1890ff}
+
+.timeslot-container{display:none;width:100%;padding:8px 0}
+.timeslot-container.show{display:block}
+.seat-header{display:flex;align-items:center;padding:8px 4px 10px;gap:8px;flex-wrap:wrap}
+.seat-header-label{font-size:15px;color:#666}
+.seat-name-text{font-size:17px;font-weight:700;color:#1890ff;cursor:pointer;border-bottom:1px dashed #1890ff;padding-bottom:1px}
+.seat-name-hint{font-size:12px;color:#999;margin-left:4px}
+/* 隐藏时段有图片的文字提示 */
+.hidden-ts-hint{font-size:12px;color:#fa8c16;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-left:8px;flex-shrink:1;min-width:0}
+.seat-name-edit-input{font-size:17px;font-weight:700;color:#1890ff;border:none;border-bottom:2px solid #1890ff;outline:none;background:transparent;width:120px;padding-bottom:1px}
+
+.timeslot-card{background:#fff;border-radius:8px;margin:6px 0;padding:6px 10px;box-shadow:0 1px 3px rgba(0,0,0,.08);cursor:pointer;display:flex;align-items:center;gap:6px;min-height:44px;flex-wrap:wrap}
+.ts-top{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.ts-checkbox{width:22px;height:22px;border-radius:50%;border:2px solid #bbb;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.ts-checkbox.checked{background:#1890ff;border-color:#1890ff}
+.ts-checkbox.checked::after{content:'✓';color:#fff;font-size:14px;font-weight:700}
+.ts-checkbox.disabled{border-color:#e0e0e0;background:#f5f5f5;cursor:not-allowed;opacity:.5}
+.ts-time{font-size:15px;font-weight:600;color:#333;white-space:nowrap}
+.ts-btns{display:flex;gap:4px;flex-shrink:0;margin-left:auto}
+.ts-btn{padding:0 10px;font-size:13px;font-weight:600;border:none;border-radius:5px;cursor:pointer;transition:opacity .15s;min-height:36px;min-width:44px;display:flex;align-items:center;justify-content:center}
+.ts-btn:active{opacity:.7}
+.ts-btn-capture{background:#1890ff;color:#fff}
+.ts-btn-upload{background:#52c41a;color:#fff}
+.ts-btn:disabled{opacity:.4;cursor:not-allowed}
+.ts-thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;padding-left:28px;width:100%}
+.thumb-wrap{position:relative;width:80px;height:80px;border-radius:6px;overflow:hidden;border:1px solid #e8e8e8;flex-shrink:0}
+.thumb-wrap img{width:100%;height:100%;object-fit:cover;cursor:pointer;background:#f0f0f0}
+.thumb-wrap img[data-thumb-src]:not([src]){min-width:80px;min-height:80px}
+.thumb-del{position:absolute;top:-9px;right:-9px;width:44px;height:44px;border-radius:50%;cursor:pointer;z-index:2;display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;line-height:1;background:transparent;border:none}
+.thumb-del::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.55);z-index:-1}
+.thumb-del:active::before{background:rgba(255,0,0,.7)}
+
+#bottom-bar{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;box-shadow:0 -2px 8px rgba(0,0,0,.12);padding:10px 12px;padding-bottom:calc(10px + constant(safe-area-inset-bottom));padding-bottom:calc(10px + env(safe-area-inset-bottom));z-index:100;max-width:480px;margin:0 auto;flex-wrap:wrap}
+#bottom-bar.show{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#selected-count{font-size:13px;color:#666;flex-shrink:0;white-space:nowrap;min-width:90px}
+#btn-clear-select{padding:8px 12px;font-size:13px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;color:#666;cursor:pointer;flex-shrink:0;min-width:80px;text-align:center}
+/* 【v1.3.1 Bug1修复】拼接预览按钮文字适配，防止安卓端溢出 */
+.bar-btn{padding:10px 12px;font-size:13px;font-weight:600;border:none;border-radius:8px;cursor:pointer;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:80px;text-align:center}
+#btn-download-separate{min-width:80px}
+#btn-download-concat{min-width:100px}
+.app-footer{text-align:center;padding:12px 0 16px;max-width:480px;margin:0 auto}
+.app-footer .footer-title{font-size:12px;color:#999;font-weight:700;text-align:left;margin-bottom:4px;padding-left:16px}
+.app-footer .footer-collapsible{font-size:12px;color:#999;font-weight:700;text-align:left;margin-bottom:4px;padding-left:16px;cursor:pointer;min-height:44px;display:flex;align-items:center;-webkit-user-select:none;user-select:none}
+.app-footer .footer-collapsible-body{font-size:10px;color:#999;line-height:1.5;text-align:left;padding:0 16px;margin-bottom:6px;overflow:hidden;position:relative}
+.app-footer .footer-collapsible-body.collapsed{max-height:3em}
+.app-footer .footer-collapsible-body.collapsed::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1.5em;background:linear-gradient(transparent,var(--footer-fade-color,#f0f2f5));pointer-events:none}
+.app-footer .footer-collapsible-body.expanded{max-height:none}
+.app-footer .usage-guide{font-size:10px;color:#999;line-height:1.5;text-align:left;padding:0 16px;margin-bottom:6px}
+.app-footer .disclaimer{font-size:10px;color:#999}
+.app-footer .contact{font-size:9px;color:#999;margin-top:2px;transition:opacity .5s ease}
+.app-footer .contact.hidden{opacity:0;height:0;margin:0;overflow:hidden}
+.app-footer .version{font-size:11px;color:#aaa;margin-top:2px}
+.bar-btn:active{opacity:.8}
+#btn-download-separate{background:#1890ff;color:#fff}
+#btn-download-concat{background:#fa8c16;color:#fff}
+#btn-download-concat:disabled{background:#ccc;color:#999;cursor:not-allowed}
+.concat-hint{font-size:11px;color:#999;width:100%;text-align:center;margin-top:2px}
+/* 【v1.1.1 改造】拼接选择改为底部滑出面板 */
+#concat-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:260}
+#concat-overlay.show{display:block}
+#concat-sheet{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:16px 16px 0 0;z-index:261;transform:translateY(100%);transition:transform .3s ease;max-height:75vh;display:flex;flex-direction:column;max-width:480px;margin:0 auto}
+#concat-sheet.show{transform:translateY(0)}
+#concat-sheet .sheet-header{display:flex;align-items:center;justify-content:center;padding:14px 20px 8px;flex-shrink:0}
+#concat-sheet .sheet-title{font-size:15px;font-weight:600;color:#666}
+#concat-sheet .sheet-handle{width:36px;height:4px;border-radius:2px;background:#ddd;margin:0 auto 8px}
+#concat-sheet .concat-btns-simple{display:none;flex-direction:column;gap:10px;padding:8px 20px 24px;padding-bottom:calc(24px + constant(safe-area-inset-bottom));padding-bottom:calc(24px + env(safe-area-inset-bottom));flex-shrink:0}
+#concat-sheet .concat-btns-simple button{width:100%;padding:14px;font-size:16px;font-weight:600;border:none;border-radius:10px;cursor:pointer;min-height:48px}
+#concat-sheet .concat-btns-simple button:active{opacity:.8}
+#concat-sheet .concat-btns-simple button:disabled{background:#ccc;color:#999;cursor:not-allowed}
+#concat-sheet .concat-btns-simple .concat-h{background:#1890ff;color:#fff}
+#concat-sheet .concat-btns-simple .concat-v{background:#722ed1;color:#fff}
+#concat-sheet .concat-grid{display:none;grid-template-columns:repeat(3,1fr);gap:8px;padding:4px 20px 8px;overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch;touch-action:manipulation}
+#concat-sheet .concat-thumb{position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;border:2px solid transparent;cursor:pointer;background:#f5f5f5}
+#concat-sheet .concat-thumb.selected{border-color:#1890ff}
+#concat-sheet .concat-thumb.disabled{opacity:.4;cursor:not-allowed}
+#concat-sheet .concat-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+/* 【v1.1.1】全屏图标替换"展开"文字 */
+/* 【v1.3.1 Bug3修复】纯图标按钮：44×44px 点击热区，无多余背景，图标放大至 20px */
+/* 【v1.9.33】全屏图标紧贴左下角，热区 44×44px 从边缘开始，图标在热区内靠左下对齐 */
+#concat-sheet .concat-thumb .thumb-expand{position:absolute;left:0;bottom:0;width:44px;height:44px;background:transparent;border-radius:4px;cursor:pointer;z-index:2;display:flex;align-items:flex-end;justify-content:flex-start;padding:3px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+#concat-sheet .concat-thumb .thumb-expand svg{width:18px;height:18px;fill:rgba(255,255,255,.85);filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+#concat-sheet .concat-thumb .thumb-check{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px}
+#concat-sheet .concat-thumb.selected .thumb-check{background:#1890ff}
+#concat-sheet .concat-btns-grid{display:none;gap:10px;padding:12px 20px 24px;padding-bottom:calc(24px + constant(safe-area-inset-bottom));padding-bottom:calc(24px + env(safe-area-inset-bottom));flex-shrink:0}
+#concat-sheet .concat-btns-grid button{flex:1;padding:14px;font-size:16px;font-weight:600;border:none;border-radius:10px;cursor:pointer;min-height:48px}
+#concat-sheet .concat-btns-grid button:active{opacity:.8}
+#concat-sheet .concat-btns-grid button:disabled{background:#ccc;color:#999;cursor:not-allowed}
+#concat-sheet .concat-btns-grid .concat-h{background:#1890ff;color:#fff}
+#concat-sheet .concat-btns-grid .concat-v{background:#722ed1;color:#fff}
+
+#preview-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.92);z-index:300;overflow:hidden;touch-action:none}
+#preview-modal.show{display:block}
+#preview-close{position:absolute;top:12px;right:16px;font-size:32px;color:#fff;cursor:pointer;z-index:301;width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.3);border-radius:50%}
+#preview-scroller{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;will-change:transform}
+.pv-slide{flex:0 0 100%;width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:relative}
+.pv-slide img{max-width:100vw;max-height:100vh;object-fit:contain;border-radius:4px;transform-origin:center center;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;pointer-events:none;will-change:transform;transition:opacity .15s ease-out}
+.pv-slide img[data-decoding]{opacity:0}
+/* 【v1.5.5】预览 loading spinner：高清源未就绪时显示 */
+.pv-slide .pv-loading{position:absolute;width:36px;height:36px;border:3px solid rgba(255,255,255,.2);border-top-color:rgba(255,255,255,.6);border-radius:50%;animation:pv-spin .8s linear infinite;pointer-events:none}
+@keyframes pv-spin{to{transform:rotate(360deg)}}
+#preview-indicator{position:absolute;bottom:90px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.7);font-size:14px;pointer-events:none;z-index:301}
+#preview-hint{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.4);font-size:12px;pointer-events:none;white-space:nowrap;padding:0 16px}
+
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:250;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal-box{background:#fff;border-radius:12px;padding:20px 16px;width:92%;max-width:400px;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);max-height:85vh;overflow-y:auto}
+.modal-box h3{font-size:17px;margin-bottom:12px;text-align:center}
+.modal-btns{display:flex;gap:10px;margin-top:16px}
+.modal-btns button{flex:1;padding:12px;font-size:15px;font-weight:600;border:none;border-radius:8px;cursor:pointer}
+.modal-btns button:active{opacity:.8}
+.modal-cancel{background:#f0f0f0;color:#333}
+.modal-cancel.disabled{opacity:.4;pointer-events:none}
+.modal-confirm{background:#722ed1;color:#fff}
+
+.batch-section{margin-bottom:12px}
+.batch-section h4{font-size:14px;margin-bottom:8px;color:#666;display:flex;align-items:center;justify-content:space-between}
+.batch-grid{display:flex;flex-wrap:wrap;gap:6px}
+.batch-chip{padding:6px 12px;font-size:13px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;cursor:pointer;user-select:none;transition:all .1s}
+.batch-chip.checked{background:#722ed1;color:#fff;border-color:#722ed1}
+.batch-chip:active{opacity:.7}
+.batch-chip.disabled{opacity:.4;pointer-events:none}
+.batch-select-all{padding:6px 12px;font-size:12px;border:1px dashed #722ed1;border-radius:6px;background:#fff;color:#722ed1;cursor:pointer}
+.batch-select-all:active{opacity:.7}
+.batch-select-all.disabled{opacity:.4;pointer-events:none}
+.batch-progress{font-size:10px;color:#722ed1;font-weight:500;white-space:nowrap}
+
+.picker-row{display:flex;gap:4px;margin-bottom:16px;height:160px;position:relative;background:#f5f5f5;border-radius:8px;overflow:hidden}
+.picker-col{flex:1;height:100%;overflow-y:auto;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;position:relative}
+.picker-col::-webkit-scrollbar{display:none}
+.picker-pad{height:60px}
+.picker-item{height:40px;line-height:40px;text-align:center;font-size:16px;scroll-snap-align:center;cursor:pointer;color:#666;transition:color .15s}
+.picker-item.active{color:#1890ff;font-weight:700;font-size:18px}
+.picker-highlight{position:absolute;top:60px;left:0;right:0;height:40px;border-top:1px solid #d9d9d9;border-bottom:1px solid #d9d9d9;background:rgba(24,144,255,.06);pointer-events:none;z-index:1}
+.picker-col-label{position:absolute;top:4px;width:100%;text-align:center;font-size:11px;color:#999;z-index:2;pointer-events:none}
+.cleanup-btns{display:flex;gap:10px}
+.cleanup-btns button{flex:1;padding:12px;font-size:15px;font-weight:600;border:none;border-radius:8px;cursor:pointer}
+.cleanup-btns button:active{opacity:.8}
+.cleanup-cancel{background:#f0f0f0;color:#333}
+.cleanup-exec{background:#ff4d4f;color:#fff}
+.cleanup-exec[disabled]{opacity:.5;cursor:not-allowed}
+/* 【v1.5.11 新增】清理进度 spinner */
+.cleanup-spinner{width:36px;height:36px;margin:0 auto;border:3px solid #e8e8e8;border-top-color:#1890ff;border-radius:50%;animation:cleanup-spin .8s linear infinite}
+@keyframes cleanup-spin{to{transform:rotate(360deg)}}
+
+/* 【v1.9.30】使用 top/left/right/bottom:0 + margin:auto 居中，避免移动端滚动时 fixed+top:50%+transform 偏移 */
+.toast{position:fixed;top:0;left:0;right:0;bottom:0;margin:auto;width:max-content;height:max-content;max-width:80vw;background:rgba(0,0,0,.75);color:#fff;padding:14px 28px;border-radius:8px;font-size:15px;z-index:300;pointer-events:none;animation:toast-fade 2s forwards}
+@keyframes toast-fade{0%{opacity:1}70%{opacity:1}100%{opacity:0}}
+
+/* 时段筛选按钮 */
+.btn-filter{background:#fa8c16;font-size:13px;padding:6px 12px;font-weight:600;border:none;border-radius:6px;color:#fff;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+.btn-filter:active{opacity:.7}
+.btn-filter .filter-icon{font-size:14px}
+
+/* 筛选底部面板 */
+.filter-sheet-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:260}
+.filter-sheet-overlay.show{display:block}
+.filter-sheet{position:fixed;left:0;right:0;bottom:0;background:#fff;border-radius:16px 16px 0 0;z-index:261;transform:translateY(100%);transition:transform .3s ease;max-height:75vh;display:flex;flex-direction:column;max-width:480px;margin:0 auto}
+.filter-sheet.show{transform:translateY(0)}
+.filter-sheet-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 12px;border-bottom:1px solid #f0f0f0;flex-shrink:0}
+.filter-sheet-title{font-size:17px;font-weight:700;color:#1a1a1a}
+.filter-sheet-close{width:36px;height:36px;border:none;background:#f5f5f5;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#999}
+.filter-sheet-close:active{background:#e8e8e8}
+.filter-sheet-actions{display:flex;gap:8px;padding:12px 20px;border-bottom:1px solid #f0f0f0;flex-shrink:0}
+.filter-action-btn{flex:1;padding:10px 0;font-size:13px;font-weight:600;border:1px solid #d9d9d9;border-radius:8px;background:#fff;color:#333;cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:center}
+.filter-action-btn:active{background:#f5f5f5}
+.filter-action-btn.primary{border-color:#1890ff;color:#1890ff;background:#e6f7ff}
+.filter-action-btn.primary:active{background:#bae7ff}
+.filter-sheet-body{overflow-y:auto;padding:8px 20px 24px;padding-bottom:calc(24px + constant(safe-area-inset-bottom));padding-bottom:calc(24px + env(safe-area-inset-bottom));flex:1;-webkit-overflow-scrolling:touch}
+.filter-slot-item{display:flex;align-items:center;padding:10px 0;min-height:44px;gap:12px;border-bottom:1px solid #f5f5f5;cursor:pointer}
+.filter-slot-item:last-child{border-bottom:none}
+.filter-slot-item:active{background:#fafafa}
+.filter-slot-cb{width:22px;height:22px;border-radius:4px;border:2px solid #bbb;background:#fff;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.filter-slot-cb.checked{background:#1890ff;border-color:#1890ff}
+.filter-slot-cb.checked::after{content:'✓';color:#fff;font-size:14px;font-weight:700}
+.filter-slot-label{font-size:15px;color:#333;font-weight:500}
+.filter-slot-label.passed{color:#999}
+
+/* ============================================================
+   【v1.6.0 新增】主题系统 - 主题选择列表样式
+   ============================================================ */
+.theme-list{padding:0 0 4px;margin:0;list-style:none}
+.theme-list-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;margin:2px 0;border-radius:8px;cursor:pointer;font-size:14px;color:#333;transition:background .15s}
+.theme-list-item:active{background:#f5f5f5}
+.theme-list-item.active{background:rgba(24,144,255,.08);font-weight:600}
+.theme-list-item .theme-check{width:20px;height:20px;border-radius:50%;border:2px solid #bbb;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.theme-list-item.active .theme-check{background:#1890ff;border-color:#1890ff}
+.theme-list-item.active .theme-check::after{content:'✓';color:#fff;font-size:12px;font-weight:700}
+
+/* 【v2.0.0】协作密码楼层列表（展开菜单样式） */
+.collab-floor-list{padding:0 0 4px;margin:0;list-style:none}
+.collab-floor-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;margin:2px 0;border-radius:8px;cursor:pointer;font-size:14px;color:#333;transition:background .15s}
+.collab-floor-item:active{background:#f5f5f5}
+.collab-floor-name{font-weight:500}
+.collab-floor-status{color:#1890ff;flex-shrink:0}
+.collab-floor-item.no-perm{opacity:.45;cursor:default}
+.collab-floor-item.no-perm:active{background:transparent}
+.collab-floor-item.no-pw .collab-floor-status{color:#bfbfbf}
+.collab-no-pw-text{font-size:12px}
+
+/* ============================================================
+   【v1.7.0 新增】"普通"主题 - 吉卜力动画风格
+   色彩提取：天空蓝 / 草地暖绿 / 木质暖棕 / 云朵米白 / 花朵淡粉
+   纹理：CSS 模拟水彩纸纹 + 柔和云影
+   ============================================================ */
+/* 全局底色：天空蓝到草地暖绿渐变，模拟吉卜力经典天空 */
+/* 【v1.9.23】使用 repeating-linear-gradient 实现垂直镜像交替平铺，消除拼接痕迹 */
+html.theme-normal{background:repeating-linear-gradient(175deg,#e8f0f8 0%,#eaf2e4 20%,#f2f0e4 37.5%,#f8f4ec 50%,#f2f0e4 62.5%,#eaf2e4 80%,#e8f0f8 100%);min-height:100%;background-size:100% 100vh}
+.theme-normal{background:transparent;color:#4A3728;--footer-fade-color:#f2f0e4}
+/* 水彩纸纹 + 淡云纹理（#app::before，不遮挡固定元素） */
+.theme-normal #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(45deg,transparent,transparent 2px,rgba(200,185,165,.03) 2px,rgba(200,185,165,.03) 4px),radial-gradient(ellipse 65% 30% at 20% 10%,rgba(255,255,255,.45) 0%,transparent 70%),radial-gradient(ellipse 50% 25% at 80% 18%,rgba(255,255,255,.35) 0%,transparent 60%),radial-gradient(ellipse 80% 28% at 50% 82%,rgba(232,242,228,.3) 0%,transparent 55%)}
+/* 交互元素提升层级（modal-box 已有 fixed 定位，不覆盖其 position） */
+.theme-normal #app{position:relative;z-index:1}
+/* 【v1.9.26】#bottom-bar 保持 fixed 定位，仅提升 z-index */
+.theme-normal #bottom-bar{z-index:100}
+/* 页面标题：衬线体 + 暗红墨水感 */
+.theme-normal .page-header{background:linear-gradient(175deg,#e8f0f8 0%,#eaf2e4 100%);position:relative;z-index:10}
+.theme-normal .page-title{font-family:Georgia,'KaiTi','STKaiti',serif;color:#5B3A1A;letter-spacing:1.5px;text-shadow:0 1px 2px rgba(91,58,26,.08)}
+.theme-normal .page-title small{color:#9a8060!important}
+/* 菜单按钮：暖棕木牌 */
+.theme-normal .header-btn{background:#8B7355;border:1px solid rgba(139,115,85,.25);border-radius:8px;box-shadow:0 1px 3px rgba(139,115,85,.15)}
+.theme-normal .header-btn:active{opacity:.85;transform:scale(.97)}
+/* 楼层卡片：纸窗/木牌质感，手绘暖棕边框 */
+.theme-normal .floor-btn{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728;border:1.5px solid #a89070;border-radius:10px;box-shadow:0 2px 8px rgba(120,100,70,.1);transition:transform .15s,border-color .2s,box-shadow .2s,background .2s}
+.theme-normal .floor-1{background:linear-gradient(135deg,rgba(255,252,245,.94),rgba(250,242,228,.94))}
+.theme-normal .floor-2{background:linear-gradient(135deg,rgba(245,252,245,.94),rgba(230,245,225,.94))}
+.theme-normal .floor-3{background:linear-gradient(135deg,rgba(242,248,255,.94),rgba(225,238,252,.94))}
+.theme-normal .floor-4{background:linear-gradient(135deg,rgba(248,252,245,.94),rgba(232,248,225,.94))}
+.theme-normal .floor-5{background:linear-gradient(135deg,rgba(255,250,242,.94),rgba(252,242,222,.94))}
+.theme-normal .floor-btn:hover{border-color:#7a9a5a;box-shadow:0 3px 12px rgba(122,154,90,.15);transform:scale(1.01)}
+.theme-normal .floor-btn:active,.theme-normal .floor-btn._pressing{transform:scale(.98)}
+/* 区域按钮：浅奶绿/淡天蓝 */
+.theme-normal .area-btn{font-family:Georgia,'KaiTi','STKaiti',serif;background:rgba(245,252,245,.92);border:1.5px solid #a8c898;color:#4A3728;box-shadow:0 1px 4px rgba(120,160,90,.08);transition:background .15s,border-color .15s;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.theme-normal .area-btn:hover{background:rgba(255,248,230,.92);border-color:#8B7355}
+.theme-normal .area-btn:active,.theme-normal .area-btn._pressing{transform:scale(.95)}
+.theme-normal .area-btn .area-seat-count,.theme-normal .area-btn .area-stats{color:#7a9a5a}
+.theme-normal .area-btn.expanded{border-color:#7a9a5a;background:rgba(248,255,240,.92)}
+.theme-normal .area-btn.has-images{border-color:#6a9a4a;background:linear-gradient(135deg,rgba(235,250,228,.92),rgba(210,240,195,.92));color:#3a6a1a}
+.theme-normal .area-btn.has-images.expanded{border-color:#7a9a5a;background:linear-gradient(135deg,rgba(235,250,228,.92),rgba(210,240,195,.92));color:#3a6a1a}
+/* 【v1.12.1】记录完成时间按钮：暖色胶囊 */
+.theme-normal .record-time-btn{font-family:Georgia,'KaiTi','STKaiti',serif;background:rgba(255,248,230,.92);border:1.5px solid #c8bca8;color:#8B7355;box-shadow:0 1px 4px rgba(120,100,70,.08)}
+.theme-normal .record-time-btn:active,.theme-normal .record-time-btn._pressing{transform:scale(.95);background:rgba(255,240,215,.96)}
+/* 【v1.11.0】楼层卡片完成时间：暖棕色文字 */
+.theme-normal .floor-completion{color:rgba(74,55,40,.7);display:flex;flex-direction:column}
+.theme-normal .floor-completion .fc-row{display:flex}
+.theme-normal .floor-completion.fixed{color:#8B7355}
+/* 座位编号按钮：米白底，暖棕边框 */
+.theme-normal .seat-btn{font-family:Georgia,'KaiTi','STKaiti',serif;background:rgba(255,253,248,.96);border:1px solid #c8bca8;color:#4A3728;font-size:12.5px;transition:background .12s,border-color .12s}
+.theme-normal .seat-btn .icon-hidden{position:absolute;top:2px;left:4px;z-index:5}
+.theme-normal .seat-btn .icon-filter-hit{position:absolute;top:2px;right:6px;z-index:5}
+.theme-normal .seat-btn:hover{background:rgba(255,248,232,.96)}
+.theme-normal .seat-btn:active,.theme-normal .seat-btn._pressing{background:rgba(255,240,215,.96)}
+.theme-normal .seat-btn.expanded{border:2px solid #7a9a5a;background:rgba(255,253,248,.96)}
+/* 座位提示色保留，加暖色柔和光晕 */
+.theme-normal .seat-btn.has-images-1{border-color:#5a9ec8;background:linear-gradient(135deg,rgba(218,240,252,.92),rgba(195,228,248,.92));color:#1a6a9a;font-weight:700;box-shadow:0 0 6px rgba(90,158,200,.15)}
+.theme-normal .seat-btn.has-images-2{border-color:#d49838;background:linear-gradient(135deg,rgba(255,244,220,.92),rgba(255,232,190,.92));color:#a06010;font-weight:700;box-shadow:0 0 6px rgba(212,152,56,.15)}
+.theme-normal .seat-btn.has-images-1.expanded{border:2px solid #7a9a5a;background:linear-gradient(135deg,rgba(218,240,252,.92),rgba(195,228,248,.92));color:#1a6a9a}
+.theme-normal .seat-btn.has-images-2.expanded{border:2px solid #7a9a5a;background:linear-gradient(135deg,rgba(255,244,220,.92),rgba(255,232,190,.92));color:#a06010}
+/* 座位名称 */
+.theme-normal .seat-name-text{color:#7a9a5a;border-bottom-color:#a8c898}
+.theme-normal .seat-name-edit-input{color:#4A3728;border-bottom-color:#a8c898}
+.theme-normal .seat-header-label{color:#7a9a5a}
+.theme-normal .hidden-ts-hint{color:#b08840}
+/* 时段卡片：米白纸片 */
+.theme-normal .timeslot-card{background:rgba(255,253,248,.94);border:1px solid rgba(168,200,152,.15);box-shadow:0 1px 4px rgba(120,160,90,.06)}
+.theme-normal .ts-time{color:#4A3728;font-family:Georgia,'KaiTi','STKaiti',serif}
+/* 拍照/上传按钮 */
+.theme-normal .ts-btn-capture{background:#6a9a4a}
+.theme-normal .ts-btn-upload{background:#b08840}
+/* 菜单面板：奶油色半透明 + 暖色虚线 */
+.theme-normal .func-panel{background:rgba(255,252,245,.97);border-radius:16px 16px 0 0;box-shadow:0 -4px 18px rgba(120,100,70,.1)}
+.theme-normal .func-panel-header{border-bottom:1px dashed #d4c8b0}
+.theme-normal .func-panel-title{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal .func-panel-close{background:#f0e8d8;color:#8B7355}
+.theme-normal .func-item{border-bottom:1px dashed #d4c8b0}
+.theme-normal .func-item:active,.theme-normal .func-item._pressing{background:rgba(245,252,245,.5);border-radius:8px}
+.theme-normal .func-item-label{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal .func-item-label .func-item-desc{color:#9a8060}
+/* 开关按钮 */
+.theme-normal .func-toggle{background:#c8bca8}
+.theme-normal .func-toggle.on{background:#6a9a4a}
+.theme-normal .collab-floor-item{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal .collab-floor-item:active{background:rgba(245,252,245,.5)}
+.theme-normal .collab-floor-status{color:#6a9a4a}
+/* 筛选面板 */
+.theme-normal .filter-sheet{background:rgba(255,252,245,.97);box-shadow:0 -4px 18px rgba(120,100,70,.1)}
+.theme-normal .filter-sheet-header{border-bottom:1px dashed #d4c8b0}
+.theme-normal .filter-sheet-title{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal .filter-sheet-close{background:#f0e8d8;color:#8B7355}
+.theme-normal .filter-sheet-actions{border-bottom:1px dashed #d4c8b0}
+.theme-normal .filter-action-btn{border-color:#c8bca8;color:#4A3728;font-family:Georgia,'KaiTi','STKaiti',serif}
+.theme-normal .filter-action-btn.primary{border-color:#7a9a5a;color:#5a7a3a;background:rgba(245,252,245,.5)}
+.theme-normal .filter-slot-item{border-bottom:1px dashed #d4c8b0}
+.theme-normal .filter-slot-label{color:#4A3728;font-family:Georgia,'KaiTi','STKaiti',serif}
+/* 底部栏 */
+.theme-normal #bottom-bar{background:rgba(255,252,245,.97);box-shadow:0 -2px 8px rgba(120,100,70,.08)}
+.theme-normal #selected-count{color:#7a9a5a}
+.theme-normal #btn-clear-select{border-color:#c8bca8;color:#8B7355;background:rgba(255,252,245,.8)}
+.theme-normal #btn-download-separate{background:#6a9a4a}
+.theme-normal #btn-download-concat{background:#b08840}
+/* 弹窗 */
+.theme-normal .modal-box{background:rgba(255,252,245,.97);box-shadow:0 4px 18px rgba(120,100,70,.12)}
+.theme-normal .modal-box h3{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal .modal-cancel{background:#f0e8d8;color:#4A3728}
+.theme-normal .modal-confirm{background:#6a9a4a}
+/* 【v1.12.5】记录完成时间确认弹窗 */
+.theme-normal .record-confirm-box{background:rgba(255,252,245,.97);box-shadow:0 4px 18px rgba(120,100,70,.12);border:1.5px solid #c8bca8}
+.theme-normal .record-confirm-text{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal .record-confirm-cancel{background:#f0e8d8;color:#4A3728;border-radius:8px}
+.theme-normal .record-confirm-ok{background:#6a9a4a;border-radius:8px}
+/* 批量下载弹窗 */
+.theme-normal .batch-chip{border-color:#c8bca8;color:#4A3728;font-family:Georgia,'KaiTi','STKaiti',serif}
+.theme-normal .batch-chip.checked{background:#6a9a4a;color:#fff;border-color:#6a9a4a}
+.theme-normal .batch-select-all{border-color:#7a9a5a;color:#5a7a3a}
+/* 拼接面板 */
+.theme-normal #concat-sheet{background:rgba(255,252,245,.97)}
+.theme-normal #concat-sheet .sheet-title{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal #concat-sheet .sheet-handle{background:#d4c8b0}
+/* 【v1.9.32】拼接按钮：使用 #concat-sheet 提升优先级，覆盖默认蓝紫配色 */
+.theme-normal #concat-sheet .concat-h{background:#6a9a4a;color:#fff;font-family:Georgia,'KaiTi','STKaiti',serif;border:1.5px solid #5a8a3a;border-radius:10px;box-shadow:0 2px 8px rgba(106,154,74,.2)}
+.theme-normal #concat-sheet .concat-v{background:#8B7355;color:#fff;font-family:Georgia,'KaiTi','STKaiti',serif;border:1.5px solid #7a6345;border-radius:10px;box-shadow:0 2px 8px rgba(139,115,85,.2)}
+.theme-normal #concat-sheet .concat-h:active,.theme-normal #concat-sheet .concat-h._pressing{transform:scale(.98);box-shadow:0 1px 4px rgba(106,154,74,.2)}
+.theme-normal #concat-sheet .concat-v:active,.theme-normal #concat-sheet .concat-v._pressing{transform:scale(.98);box-shadow:0 1px 4px rgba(139,115,85,.2)}
+.theme-normal #concat-sheet .concat-h:disabled,.theme-normal #concat-sheet .concat-v:disabled{background:#c8bca8;color:#9a8a70;border-color:#b8a898;box-shadow:none;cursor:not-allowed}
+.theme-normal #concat-sheet button:disabled{background:#c8bca8;color:#9a8a70;border-color:#b8a898;box-shadow:none;cursor:not-allowed}
+.theme-normal #concat-sheet .concat-thumb{border-radius:8px;border-color:#d4c8b0;background:#f5f0e5}
+.theme-normal #concat-sheet .concat-thumb.selected{border-color:#6a9a4a}
+.theme-normal #concat-sheet .concat-thumb.selected .thumb-check{background:#6a9a4a}
+/* 【v1.9.32】保存图片按钮：吉卜力暖色系 */
+.theme-normal #preview-save-btn{background:rgba(106,154,74,.92);font-family:Georgia,'KaiTi','STKaiti',serif;border:1.5px solid #5a8a3a;border-radius:10px;box-shadow:0 2px 8px rgba(106,154,74,.3)}
+.theme-normal #preview-save-btn:active{opacity:.85}
+/* 缩略图 */
+.theme-normal .thumb-wrap{border-color:#d4c8b0}
+/* 新增/删除座位 */
+.theme-normal .add-seat-btn{border-color:#c8bca8;color:#a89070;background:rgba(255,252,245,.6)}
+.theme-normal .add-seat-btn:active{background:rgba(245,252,245,.8);border-color:#7a9a5a;color:#5a7a3a}
+.theme-normal .btn-delete-seat{border-color:#c87830;color:#c87830}
+/* Toast */
+.theme-normal .toast{background:rgba(74,55,40,.82)}
+/* 更新提示条 */
+.theme-normal .update-bar{background:linear-gradient(135deg,#6a9a4a,#8B7355)}
+
+/* ============================================================
+   【v1.8.0 新增】"一般"主题 - 2046废土赛博朋克未来科技风格
+   关键词：锈铁 / 霓虹 / 沙尘 / 暗沉 / 磨损 / 残破科技 / 末日光线
+   色彩：铁灰 + 沙黄 + 霓虹青 #00ffff + 暗红 #cc3333 + 暗橙 #e8820c
+   ============================================================ */
+/* 全局底色：铁灰到沙黄渐变 + 裂痕纹理 */
+/* 【v1.9.23】使用 repeating-linear-gradient 实现垂直镜像交替平铺，消除拼接痕迹 */
+/* 【v1.9.24】背景改为纯垂直渐变 + repeating-linear-gradient 镜像交替平铺，消除斜向渐变拼接痕迹 */
+html.theme-yiban{background:repeating-linear-gradient(180deg,#3c3c46 0%,#4a4540 15%,#5a5040 30%,#6a6050 50%,#5a5040 70%,#4a4540 85%,#3c3c46 100%);min-height:100%;background-size:100% 100vh}
+.theme-yiban{background:transparent;color:#c8c8c8;--footer-fade-color:#5a5040}
+/* 锈蚀金属纹理 + 扫描线（#app::before） */
+.theme-yiban #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,255,.015) 3px,rgba(0,255,255,.015) 4px),repeating-linear-gradient(90deg,transparent,transparent 80px,rgba(100,90,70,.06) 80px,rgba(100,90,70,.06) 81px),radial-gradient(ellipse 60% 40% at 30% 20%,rgba(0,255,255,.04) 0%,transparent 60%),radial-gradient(ellipse 50% 35% at 75% 70%,rgba(204,51,51,.03) 0%,transparent 55%)}
+/* 【v1.9.29】.toast 保持 fixed 定位，仅 #app 提升 z-index */
+.theme-yiban #app{position:relative;z-index:1}
+/* 【v1.9.26】#bottom-bar 保持 fixed 定位，仅提升 z-index */
+.theme-yiban #bottom-bar{z-index:100}
+/* 页面标题：霓虹青发光 */
+.theme-yiban .page-header{background:linear-gradient(170deg,#3c3c46 0%,#4a4540 100%);position:relative;z-index:10}
+.theme-yiban .page-title{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 15px rgba(0,255,255,.5),0 0 5px rgba(0,255,255,.4);letter-spacing:2px;font-weight:700}
+.theme-yiban .page-title small{color:#e8820c!important;text-shadow:none}
+/* 菜单按钮：废土金属感 */
+.theme-yiban .header-btn{background:linear-gradient(135deg,#4a4540,#3c3c46);border:1px solid rgba(0,255,255,.4);border-radius:4px;box-shadow:0 0 6px rgba(0,255,255,.2);color:#00ffff}
+.theme-yiban .header-btn:active{box-shadow:0 0 12px rgba(0,255,255,.5);transform:scale(.97)}
+/* 楼层卡片：锈蚀金属板 + 霓虹边框 */
+.theme-yiban .floor-btn{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;border:2px solid rgba(0,255,255,.5);border-radius:4px;box-shadow:0 0 8px rgba(0,255,255,.2),inset 0 0 20px rgba(0,0,0,.3);text-shadow:0 0 6px rgba(0,255,255,.3);transition:transform .12s,border-color .2s,box-shadow .2s}
+.theme-yiban .floor-1{background:linear-gradient(135deg,rgba(60,60,70,.88),rgba(70,65,55,.88))}
+.theme-yiban .floor-2{background:linear-gradient(135deg,rgba(55,60,68,.88),rgba(65,60,50,.88))}
+.theme-yiban .floor-3{background:linear-gradient(135deg,rgba(58,55,65,.88),rgba(68,62,52,.88))}
+.theme-yiban .floor-4{background:linear-gradient(135deg,rgba(62,58,60,.88),rgba(72,65,55,.88))}
+.theme-yiban .floor-5{background:linear-gradient(135deg,rgba(56,58,68,.88),rgba(66,62,52,.88))}
+.theme-yiban .floor-btn:hover{border-color:#00ffff;box-shadow:0 0 16px rgba(0,255,255,.4),inset 0 0 20px rgba(0,0,0,.3);transform:scale(1.01)}
+.theme-yiban .floor-btn:active,.theme-yiban .floor-btn._pressing{transform:scale(.98)}
+/* 区域按钮：铁灰 + 沙尘 + 霓虹橙边框 */
+.theme-yiban .area-btn{font-family:'Segoe UI','Helvetica Neue',sans-serif;background:rgba(55,55,62,.88);border:1px solid rgba(232,130,12,.5);color:#e0d0b8;box-shadow:0 0 4px rgba(232,130,12,.15),inset 0 1px 3px rgba(0,0,0,.3);transition:background .12s,border-color .12s,box-shadow .12s;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.theme-yiban .area-btn:hover{border-color:#00ffff;box-shadow:0 0 8px rgba(0,255,255,.25),inset 0 1px 3px rgba(0,0,0,.3)}
+.theme-yiban .area-btn:active,.theme-yiban .area-btn._pressing{transform:scale(.95)}
+.theme-yiban .area-btn .area-seat-count,.theme-yiban .area-btn .area-stats{color:#e8820c}
+.theme-yiban .area-btn.expanded{border-color:#00ffff;background:rgba(60,60,68,.92);box-shadow:0 0 10px rgba(0,255,255,.25)}
+.theme-yiban .area-btn.has-images{border-color:#00cccc;background:linear-gradient(135deg,rgba(0,80,80,.35),rgba(55,55,62,.88));color:#00ffff}
+.theme-yiban .area-btn.has-images.expanded{border-color:#00ffff;background:linear-gradient(135deg,rgba(0,80,80,.35),rgba(55,55,62,.88));color:#00ffff}
+/* 【v1.12.1】记录完成时间按钮：霓虹橙胶囊 */
+.theme-yiban .record-time-btn{font-family:'Segoe UI','Helvetica Neue',sans-serif;background:rgba(55,55,62,.88);border:1px solid rgba(232,130,12,.5);color:#e8820c;box-shadow:0 0 4px rgba(232,130,12,.15),inset 0 1px 3px rgba(0,0,0,.3);border-radius:20px}
+.theme-yiban .record-time-btn:active,.theme-yiban .record-time-btn._pressing{transform:scale(.95);border-color:#00ffff;box-shadow:0 0 8px rgba(0,255,255,.25),inset 0 1px 3px rgba(0,0,0,.3)}
+/* 【v1.11.0】楼层卡片完成时间：霓虹青文字 */
+.theme-yiban .floor-completion{color:rgba(0,255,255,.7);text-shadow:0 0 4px rgba(0,255,255,.2)}
+.theme-yiban .floor-completion.fixed{color:#e8820c;text-shadow:0 0 6px rgba(232,130,12,.3)}
+/* 座位编号按钮：暗灰 + 全息网格 + 暗青边框 */
+.theme-yiban .seat-btn{font-family:'Segoe UI','Helvetica Neue',sans-serif;background:rgba(45,45,52,.92);border:1px solid rgba(0,255,255,.2);color:#a0a8b0;font-size:12px;transition:background .1s,border-color .1s,box-shadow .1s}
+.theme-yiban .seat-btn:hover{background:rgba(55,55,62,.92);border-color:rgba(0,255,255,.4)}
+.theme-yiban .seat-btn:active,.theme-yiban .seat-btn._pressing{background:rgba(65,65,72,.92)}
+.theme-yiban .seat-btn.expanded{border:2px solid #00ffff;background:rgba(45,45,52,.92);box-shadow:0 0 6px rgba(0,255,255,.25)}
+/* 座位提示色保留，叠加霓虹光晕 */
+.theme-yiban .seat-btn.has-images-1{border-color:#00aacc;background:linear-gradient(135deg,rgba(0,100,120,.4),rgba(45,45,52,.92));color:#00ffff;font-weight:700;box-shadow:0 0 8px rgba(0,170,204,.25)}
+.theme-yiban .seat-btn.has-images-2{border-color:#cc6633;background:linear-gradient(135deg,rgba(120,60,20,.35),rgba(45,45,52,.92));color:#e8820c;font-weight:700;box-shadow:0 0 8px rgba(204,102,51,.2)}
+.theme-yiban .seat-btn.has-images-1.expanded{border:2px solid #00ffff;background:linear-gradient(135deg,rgba(0,100,120,.4),rgba(45,45,52,.92));color:#00ffff}
+.theme-yiban .seat-btn.has-images-2.expanded{border:2px solid #00ffff;background:linear-gradient(135deg,rgba(120,60,20,.35),rgba(45,45,52,.92));color:#e8820c}
+/* 座位名称 */
+.theme-yiban .seat-name-text{color:#00cccc;border-bottom-color:rgba(0,255,255,.3)}
+.theme-yiban .seat-name-edit-input{color:#e0d0b8;border-bottom-color:rgba(0,255,255,.3)}
+.theme-yiban .seat-header-label{color:#00cccc}
+.theme-yiban .hidden-ts-hint{color:#cc3333}
+/* 时段卡片：暗铁灰 + 扫描线 */
+.theme-yiban .timeslot-card{background:rgba(50,50,58,.92);border:1px solid rgba(0,255,255,.1);box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.theme-yiban .ts-time{color:#00cccc;font-family:'Segoe UI','Helvetica Neue',sans-serif}
+/* 拍照/上传按钮 */
+.theme-yiban .ts-btn-capture{background:#00888a}
+.theme-yiban .ts-btn-upload{background:#8a5500}
+/* 菜单面板：暗铁灰磨砂 + 霓虹分隔线 */
+.theme-yiban .func-panel{background:rgba(45,45,52,.97);border-radius:10px 10px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.4),0 0 12px rgba(0,255,255,.1)}
+.theme-yiban .func-panel-header{border-bottom:1px solid rgba(0,255,255,.2)}
+.theme-yiban .func-panel-title{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 8px rgba(0,255,255,.3)}
+.theme-yiban .func-panel-close{background:rgba(204,51,51,.3);color:#cc3333}
+.theme-yiban .func-item{border-bottom:1px dashed rgba(0,255,255,.15)}
+.theme-yiban .func-item:active,.theme-yiban .func-item._pressing{background:rgba(0,255,255,.08);border-radius:4px}
+.theme-yiban .func-item-label{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#c8c8c8}
+.theme-yiban .func-item-label .func-item-desc{color:#888}
+/* 开关按钮 */
+.theme-yiban .func-toggle{background:#555}
+.theme-yiban .func-toggle.on{background:#00888a;box-shadow:0 0 6px rgba(0,255,255,.3)}
+/* 筛选面板 */
+.theme-yiban .filter-sheet{background:rgba(45,45,52,.97);box-shadow:0 -4px 20px rgba(0,0,0,.4),0 0 12px rgba(0,255,255,.1)}
+.theme-yiban .filter-sheet-header{border-bottom:1px solid rgba(0,255,255,.2)}
+.theme-yiban .filter-sheet-title{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 8px rgba(0,255,255,.3)}
+.theme-yiban .filter-sheet-close{background:rgba(204,51,51,.3);color:#cc3333}
+.theme-yiban .filter-sheet-actions{border-bottom:1px dashed rgba(0,255,255,.15)}
+.theme-yiban .filter-action-btn{border-color:rgba(0,255,255,.3);color:#c8c8c8;font-family:'Segoe UI','Helvetica Neue',sans-serif}
+.theme-yiban .filter-action-btn.primary{border-color:#00ffff;color:#00ffff;background:rgba(0,255,255,.08)}
+.theme-yiban .filter-slot-item{border-bottom:1px dashed rgba(0,255,255,.1)}
+.theme-yiban .filter-slot-label{color:#c8c8c8;font-family:'Segoe UI','Helvetica Neue',sans-serif}
+/* 底部栏 */
+.theme-yiban #bottom-bar{background:rgba(45,45,52,.97);box-shadow:0 -2px 10px rgba(0,0,0,.3),0 0 8px rgba(0,255,255,.08)}
+.theme-yiban #selected-count{color:#00cccc}
+.theme-yiban #btn-clear-select{border-color:rgba(0,255,255,.3);color:#cc3333;background:rgba(45,45,52,.8)}
+.theme-yiban #btn-download-separate{background:#00888a;box-shadow:0 0 6px rgba(0,255,255,.2)}
+.theme-yiban #btn-download-concat{background:#8a5500;box-shadow:0 0 6px rgba(232,130,12,.2)}
+/* 弹窗 */
+.theme-yiban .modal-box{background:rgba(45,45,52,.97);border:1px solid rgba(0,255,255,.2);box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 12px rgba(0,255,255,.1)}
+.theme-yiban .modal-box h3{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 8px rgba(0,255,255,.3)}
+.theme-yiban .modal-cancel{background:rgba(80,80,88,.8);color:#c8c8c8}
+.theme-yiban .modal-confirm{background:#00888a;box-shadow:0 0 6px rgba(0,255,255,.2)}
+/* 【v1.12.5】记录完成时间确认弹窗 */
+.theme-yiban .record-confirm-box{background:rgba(45,45,52,.97);border:1px solid rgba(0,255,255,.2);box-shadow:0 4px 20px rgba(0,0,0,.4),0 0 12px rgba(0,255,255,.1)}
+.theme-yiban .record-confirm-text{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#e0d0b8}
+.theme-yiban .record-confirm-cancel{background:rgba(80,80,88,.8);color:#c8c8c8;border:1px solid rgba(0,255,255,.15);border-radius:4px}
+.theme-yiban .record-confirm-ok{background:#00888a;box-shadow:0 0 6px rgba(0,255,255,.2);border-radius:4px}
+/* 【v1.9.10 修复】蓝色主题下重置/清理进度弹窗文字不可见 */
+.theme-yiban #cleanup-loading-text{color:#00ffff!important}
+/* 批量下载弹窗 */
+.theme-yiban .batch-chip{border-color:rgba(0,255,255,.2);color:#c8c8c8;font-family:'Segoe UI','Helvetica Neue',sans-serif}
+.theme-yiban .batch-chip.checked{background:#00888a;color:#fff;border-color:#00cccc;box-shadow:0 0 6px rgba(0,255,255,.2)}
+.theme-yiban .batch-select-all{border-color:#00cccc;color:#00cccc}
+/* 拼接面板 */
+.theme-yiban #concat-sheet{background:rgba(45,45,52,.97)}
+.theme-yiban #concat-sheet .sheet-title{font-family:'Segoe UI','Helvetica Neue',sans-serif;color:#00ffff;text-shadow:0 0 6px rgba(0,255,255,.3)}
+.theme-yiban #concat-sheet .sheet-handle{background:rgba(0,255,255,.25)}
+/* 【v1.9.32】拼接按钮：使用 #concat-sheet 提升优先级，覆盖默认蓝紫配色 */
+.theme-yiban #concat-sheet .concat-h{background:#00888a;color:#fff;font-family:'Segoe UI','Helvetica Neue',sans-serif;border:2px solid rgba(0,255,255,.5);border-radius:4px;box-shadow:0 0 8px rgba(0,255,255,.2),inset 0 0 20px rgba(0,0,0,.3);text-shadow:0 0 6px rgba(0,255,255,.3)}
+.theme-yiban #concat-sheet .concat-v{background:#8a5500;color:#fff;font-family:'Segoe UI','Helvetica Neue',sans-serif;border:2px solid rgba(255,170,0,.5);border-radius:4px;box-shadow:0 0 8px rgba(255,170,0,.2),inset 0 0 20px rgba(0,0,0,.3);text-shadow:0 0 6px rgba(255,170,0,.3)}
+.theme-yiban #concat-sheet .concat-h:active,.theme-yiban #concat-sheet .concat-h._pressing{transform:scale(.98);box-shadow:0 0 4px rgba(0,255,255,.3),inset 0 0 20px rgba(0,0,0,.3)}
+.theme-yiban #concat-sheet .concat-v:active,.theme-yiban #concat-sheet .concat-v._pressing{transform:scale(.98);box-shadow:0 0 4px rgba(255,170,0,.3),inset 0 0 20px rgba(0,0,0,.3)}
+.theme-yiban #concat-sheet .concat-h:disabled,.theme-yiban #concat-sheet .concat-v:disabled{background:rgba(45,45,52,.8);color:#555;border-color:rgba(0,255,255,.1);box-shadow:none;text-shadow:none;cursor:not-allowed}
+.theme-yiban #concat-sheet button:disabled{background:rgba(45,45,52,.8);color:#555;border-color:rgba(0,255,255,.1);box-shadow:none;text-shadow:none;cursor:not-allowed}
+.theme-yiban #concat-sheet .concat-thumb{border-radius:2px;border-color:rgba(0,255,255,.15);background:rgba(30,30,38,.9)}
+.theme-yiban #concat-sheet .concat-thumb.selected{border-color:#00ffff;box-shadow:0 0 6px rgba(0,255,255,.3)}
+.theme-yiban #concat-sheet .concat-thumb.selected .thumb-check{background:#00888a}
+/* 【v1.9.32】保存图片按钮：霓虹青发光 */
+.theme-yiban #preview-save-btn{background:rgba(0,136,138,.9);font-family:'Segoe UI','Helvetica Neue',sans-serif;border:2px solid rgba(0,255,255,.5);border-radius:4px;box-shadow:0 0 12px rgba(0,255,255,.3),inset 0 0 20px rgba(0,0,0,.3);text-shadow:0 0 6px rgba(0,255,255,.3)}
+.theme-yiban #preview-save-btn:active{opacity:.85}
+/* 缩略图 */
+.theme-yiban .thumb-wrap{border-color:rgba(0,255,255,.15)}
+/* 新增/删除座位 */
+.theme-yiban .add-seat-btn{border-color:rgba(0,255,255,.2);color:#888;background:rgba(45,45,52,.6)}
+.theme-yiban .add-seat-btn:active{background:rgba(0,255,255,.08);border-color:#00cccc;color:#00cccc}
+.theme-yiban .btn-delete-seat{border-color:#cc3333;color:#cc3333}
+/* Toast */
+.theme-yiban .toast{background:rgba(30,30,38,.9);border:1px solid rgba(0,255,255,.2)}
+/* 更新提示条 */
+.theme-yiban .update-bar{background:linear-gradient(135deg,#00888a,#cc3333)}
+/* 清理弹窗按钮 */
+.theme-yiban .cleanup-cancel{background:rgba(80,80,88,.8);color:#c8c8c8}
+.theme-yiban .cleanup-exec{background:#cc3333;box-shadow:0 0 6px rgba(204,51,51,.3)}
+/* 【v1.8.1 修复】主题选择列表文字在暗色背景下不可见 */
+.theme-yiban .theme-list-item{color:#e0e0e0}
+.theme-yiban .theme-list-item:active{background:rgba(0,255,255,.08)}
+.theme-yiban .theme-list-item.active{background:rgba(0,255,255,.1)}
+.theme-yiban .theme-list-item .theme-check{border-color:#666}
+.theme-yiban .theme-list-item.active .theme-check{background:#00cccc;border-color:#00cccc}
+.theme-yiban .collab-floor-item{color:#e0e0e0}
+.theme-yiban .collab-floor-item:active{background:rgba(0,255,255,.08)}
+.theme-yiban .collab-floor-status{color:#00cccc}
+
+/* ============================================================
+   【v1.9.0 新增】"像素"主题 - 16位像素风格（参考《我的世界》）
+   关键词：方块 / 像素 / 泥土棕 / 草地绿 / 石材灰 / 木板米黄 / 矿石蓝金
+   描边：4px 实线直角 + 黑色像素描边（box-shadow 硬阴影）
+   悬停：像素位移按压效果 translate(2px,2px) + shadow 缩短
+   ============================================================ */
+/* 全局底色：MC 天空淡蓝到草地绿渐变 + 像素点阵纹理 */
+/* 【v1.9.23】使用 repeating-linear-gradient 实现垂直镜像交替平铺，消除拼接痕迹 */
+html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 30%,#7ec850 50%,#a8d8a8 70%,#7ec8e8 100%);min-height:100%;background-size:100% 100vh}
+.theme-pixel{background:transparent;color:#4a3728;--footer-fade-color:#a8d8a8}
+/* 像素点阵纹理（#app::before） */
+.theme-pixel #app::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.02) 3px,rgba(0,0,0,.02) 4px),repeating-linear-gradient(90deg,transparent,transparent 3px,rgba(0,0,0,.02) 3px,rgba(0,0,0,.02) 4px)}
+/* 【v1.9.29】.toast 保持 fixed 定位，仅 #app 提升 z-index */
+.theme-pixel #app{position:relative;z-index:1}
+.theme-pixel #bottom-bar{z-index:100}
+/* 页面标题：像素风 + 硬阴影 */
+.theme-pixel .page-header{background:linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 100%);position:relative;z-index:10}
+.theme-pixel .page-title{font-family:'Courier New',monospace;color:#3e2b1f;letter-spacing:1px;font-weight:900;text-shadow:2px 2px 0 #e0d7c5}
+.theme-pixel .page-title small{color:#ffaa00!important}
+/* 菜单按钮：木板材质 + 像素描边 */
+.theme-pixel .header-btn{background:#c8a96e;border:4px solid #5a3d2b;border-radius:0;box-shadow:4px 4px 0 #2d2d2d;color:#4a3728;font-family:'Courier New',monospace;font-weight:700;transition:transform .08s,box-shadow .08s}
+.theme-pixel .header-btn:active{transform:translate(2px,2px);box-shadow:2px 2px 0 #2d2d2d}
+/* 楼层卡片：木板/工作台材质 + 像素描边 + 按压效果 */
+.theme-pixel .floor-btn{font-family:'Courier New',monospace;color:#4a3728;border:4px solid #5a3d2b;border-radius:0;box-shadow:4px 4px 0 #2d2d2d;font-weight:700;transition:transform .08s,box-shadow .08s}
+.theme-pixel .floor-1{background:linear-gradient(135deg,#c8a96e,#b89858);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#c8a96e,#b89858)}
+.theme-pixel .floor-2{background:linear-gradient(135deg,#b8a058,#a89048);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#b8a058,#a89048)}
+.theme-pixel .floor-3{background:linear-gradient(135deg,#c0a060,#b09050);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#c0a060,#b09050)}
+.theme-pixel .floor-4{background:linear-gradient(135deg,#d0b070,#c0a060);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#d0b070,#c0a060)}
+.theme-pixel .floor-5{background:linear-gradient(135deg,#baa060,#aa9048);background-image:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(90,61,43,.08) 8px,rgba(90,61,43,.08) 10px),linear-gradient(135deg,#baa060,#aa9048)}
+.theme-pixel .floor-btn:hover{background-color:#d8b978;box-shadow:4px 4px 0 #2d2d2d}
+.theme-pixel .floor-btn:active,.theme-pixel .floor-btn._pressing{transform:translate(2px,2px);box-shadow:2px 2px 0 #2d2d2d}
+/* 区域按钮：石材材质 + 像素描边 */
+.theme-pixel .area-btn{font-family:'Courier New',monospace;background:#aaa;border:3px solid #555;border-radius:0;box-shadow:3px 3px 0 #2d2d2d;color:#3a3a3a;font-weight:700;transition:transform .08s,box-shadow .08s;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.theme-pixel .area-btn:hover{background:#bbb}
+.theme-pixel .area-btn:active,.theme-pixel .area-btn._pressing{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
+.theme-pixel .area-btn .area-seat-count,.theme-pixel .area-btn .area-stats{color:#555;font-size:9px;overflow:hidden}
+.theme-pixel .area-btn.expanded{border-color:#5a3d2b;background:#b8b8b8}
+.theme-pixel .area-btn.has-images{border-color:#7ec850;background:linear-gradient(135deg,#8dd850,#7ec850);color:#3a5a1a}
+.theme-pixel .area-btn.has-images.expanded{border-color:#5a3d2b;background:linear-gradient(135deg,#8dd850,#7ec850);color:#3a5a1a}
+/* 【v1.12.1】记录完成时间按钮：像素风药丸 */
+.theme-pixel .record-time-btn{font-family:'Courier New',monospace;background:#d8d8d8;border:2px solid #888;border-radius:0;box-shadow:2px 2px 0 #2d2d2d;color:#3a3a3a;font-weight:700}
+.theme-pixel .record-time-btn:active,.theme-pixel .record-time-btn._pressing{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
+/* 【v1.11.0】楼层卡片完成时间：像素风深色文字 */
+.theme-pixel .floor-completion{color:rgba(74,55,40,.8)}
+.theme-pixel .floor-completion.fixed{color:#5a3d2b}
+.theme-pixel .floor-completion .fc-time{font-weight:700}
+.theme-pixel .floor-completion.s1{font-size:13px}
+.theme-pixel .floor-completion.s2{font-size:11px}
+.theme-pixel .floor-completion.s3{font-size:10px}
+/* 座位编号按钮：铁块/石英材质 + 像素描边 */
+.theme-pixel .seat-btn{font-family:'Courier New',monospace;background:#d8d8d8;border:2px solid #888;border-radius:0;box-shadow:2px 2px 0 #2d2d2d;color:#3a3a3a;font-size:11px;font-weight:700;transition:transform .08s,box-shadow .08s}
+.theme-pixel .seat-btn .icon-hidden{position:absolute;top:2px;left:4px;z-index:5}
+.theme-pixel .seat-btn .icon-hidden svg{filter:drop-shadow(1px 0 0 #333) drop-shadow(-1px 0 0 #333) drop-shadow(0 1px 0 #333) drop-shadow(0 -1px 0 #333)}
+.theme-pixel .seat-btn .icon-filter-hit{position:absolute;top:2px;right:6px;z-index:5}
+.theme-pixel .seat-btn .icon-filter-hit svg{filter:drop-shadow(1px 0 0 #333) drop-shadow(-1px 0 0 #333) drop-shadow(0 1px 0 #333) drop-shadow(0 -1px 0 #333)}
+.theme-pixel .seat-btn:hover{background:#e0e0e0}
+.theme-pixel .seat-btn:active,.theme-pixel .seat-btn._pressing{transform:translate(1px,1px);box-shadow:1px 1px 0 #2d2d2d}
+.theme-pixel .seat-btn.expanded{border:3px solid #5a3d2b;background:#d8d8d8;box-shadow:3px 3px 0 #2d2d2d}
+/* 座位提示色：MC 钻石蓝 / 金橙 / 草绿 + 像素描边 */
+.theme-pixel .seat-btn.has-images-1{border-color:#5bc0de;background:#5bc0de;color:#1a4a5a;font-weight:700;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .seat-btn.has-images-2{border-color:#f0ad4e;background:#f0ad4e;color:#5a3a0a;font-weight:700;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .seat-btn.has-images-1.expanded{border:3px solid #5a3d2b;background:#5bc0de;color:#1a4a5a;box-shadow:3px 3px 0 #2d2d2d}
+.theme-pixel .seat-btn.has-images-2.expanded{border:3px solid #5a3d2b;background:#f0ad4e;color:#5a3a0a;box-shadow:3px 3px 0 #2d2d2d}
+/* 【v1.20.13】安卓端座位按钮缩小字号，避免宽字体换行 */
+.android-device .seat-btn{font-size:11.5px;height:40px;padding:0 8px;flex-shrink:0;flex-grow:0;position:relative}
+.android-device:not(.theme-normal):not(.theme-yiban):not(.theme-pixel) .seat-btn{height:42px}
+.android-device.theme-normal .seat-btn{font-size:10.5px}
+.android-device.theme-yiban .seat-btn{font-size:11.5px}
+.android-device.theme-pixel .seat-btn{font-size:10.5px}
+/* 座位名称 */
+.theme-pixel .seat-name-text{color:#5a3d2b;border-bottom-color:#5a3d2b}
+.theme-pixel .seat-name-edit-input{color:#4a3728;border-bottom-color:#5a3d2b}
+.theme-pixel .seat-header-label{color:#5a3d2b}
+.theme-pixel .hidden-ts-hint{color:#cc3333}
+/* 时段卡片：浅米黄 + 像素边框 */
+.theme-pixel .timeslot-card{background:#e8dcc0;border:2px solid #8b7355;border-radius:0;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .ts-time{color:#4a3728;font-family:'Courier New',monospace;font-weight:700}
+/* 拍照/上传按钮 */
+.theme-pixel .ts-btn-capture{background:#7ec850;border:2px solid #5a8a30;border-radius:0;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .ts-btn-upload{background:#c8a96e;border:2px solid #8b7355;border-radius:0;box-shadow:2px 2px 0 #2d2d2d}
+/* 菜单面板：箱子/背包界面 - 米黄底 + 厚边框 + 像素描边 */
+.theme-pixel .func-panel{background:#c8a96e;border-radius:0;box-shadow:0 -4px 0 #5a3d2d,0 -6px 0 #2d2d2d}
+.theme-pixel .func-panel-header{border-bottom:4px solid #5a3d2b}
+.theme-pixel .func-panel-title{font-family:'Courier New',monospace;color:#4a3728;font-weight:900}
+.theme-pixel .func-panel-close{background:#8b7355;color:#fff;border:2px solid #5a3d2b;border-radius:0;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .func-item{border-bottom:2px dashed #8b7355}
+.theme-pixel .func-item:active,.theme-pixel .func-item._pressing{background:rgba(90,61,43,.15)}
+.theme-pixel .func-item-label{font-family:'Courier New',monospace;color:#4a3728;font-weight:700}
+.theme-pixel .func-item-label .func-item-desc{color:#8b7355}
+/* 开关按钮 */
+.theme-pixel .func-toggle{background:#888;border-radius:0}
+.theme-pixel .func-toggle.on{background:#7ec850;box-shadow:inset 0 0 0 2px #5a8a30}
+/* 筛选面板 */
+.theme-pixel .filter-sheet{background:#c8a96e;border-radius:0;box-shadow:0 -4px 0 #5a3d2d,0 -6px 0 #2d2d2d}
+.theme-pixel .filter-sheet-header{border-bottom:4px solid #5a3d2b}
+.theme-pixel .filter-sheet-title{font-family:'Courier New',monospace;color:#4a3728;font-weight:900}
+.theme-pixel .filter-sheet-close{background:#8b7355;color:#fff;border:2px solid #5a3d2b;border-radius:0;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel .filter-sheet-actions{border-bottom:2px dashed #8b7355}
+.theme-pixel .filter-action-btn{border:2px solid #8b7355;border-radius:0;color:#4a3728;font-family:'Courier New',monospace;font-weight:700}
+.theme-pixel .filter-action-btn.primary{border-color:#5a3d2b;color:#5a3d2b;background:rgba(90,61,43,.1)}
+.theme-pixel .filter-slot-item{border-bottom:2px dashed #8b7355}
+.theme-pixel .filter-slot-label{color:#4a3728;font-family:'Courier New',monospace}
+/* 底部栏 */
+.theme-pixel #bottom-bar{background:#c8a96e;border-top:4px solid #5a3d2b;box-shadow:0 -4px 0 #2d2d2d}
+.theme-pixel #selected-count{color:#5a3d2b;font-weight:700}
+.theme-pixel #btn-clear-select{border:2px solid #8b7355;border-radius:0;color:#5a3d2b;background:#e8dcc0}
+.theme-pixel #btn-download-separate{background:#7ec850;border:2px solid #5a8a30;border-radius:0;box-shadow:2px 2px 0 #2d2d2d;color:#3a5a1a}
+.theme-pixel #btn-download-concat{background:#c8a96e;border:2px solid #8b7355;border-radius:0;box-shadow:2px 2px 0 #2d2d2d;color:#4a3728}
+/* 弹窗 */
+.theme-pixel .modal-box{background:#c8a96e;border:4px solid #5a3d2b;border-radius:0;box-shadow:6px 6px 0 #2d2d2d}
+.theme-pixel .modal-box h3{font-family:'Courier New',monospace;color:#4a3728;font-weight:900}
+.theme-pixel .modal-cancel{background:#aaa;border:2px solid #555;border-radius:0;color:#3a3a3a}
+.theme-pixel .modal-confirm{background:#7ec850;border:2px solid #5a8a30;border-radius:0;color:#3a5a1a}
+/* 【v1.12.5】记录完成时间确认弹窗 */
+.theme-pixel .record-confirm-box{background:#c8a96e;border:4px solid #5a3d2b;border-radius:0;box-shadow:6px 6px 0 #2d2d2d}
+.theme-pixel .record-confirm-text{font-family:'Courier New',monospace;color:#4a3728;font-weight:700}
+.theme-pixel .record-confirm-cancel{background:#aaa;border:2px solid #555;border-radius:0;color:#3a3a3a;font-weight:700}
+.theme-pixel .record-confirm-ok{background:#7ec850;border:2px solid #5a8a30;border-radius:0;color:#3a5a1a;font-weight:700}
+/* 批量下载弹窗 */
+.theme-pixel .batch-chip{border:2px solid #8b7355;border-radius:0;color:#4a3728;font-family:'Courier New',monospace}
+.theme-pixel .batch-chip.checked{background:#7ec850;color:#3a5a1a;border-color:#5a8a30}
+.theme-pixel .batch-select-all{border:2px solid #5a3d2b;color:#5a3d2b;border-radius:0}
+/* 拼接面板 */
+.theme-pixel #concat-sheet{background:#c8a96e}
+.theme-pixel #concat-sheet .sheet-title{font-family:'Courier New',monospace;color:#4a3728;font-weight:900}
+.theme-pixel #concat-sheet .sheet-handle{background:#8b7355}
+/* 【v1.9.32】拼接按钮：使用 #concat-sheet 提升优先级，覆盖默认蓝紫配色 */
+.theme-pixel #concat-sheet .concat-h{background:#7ec850;color:#3a5a1a;font-family:'Courier New',monospace;font-weight:700;border:3px solid #5a8a30;border-radius:0;box-shadow:3px 3px 0 #2d2d2d}
+.theme-pixel #concat-sheet .concat-v{background:#8b7355;color:#f0e8d0;font-family:'Courier New',monospace;font-weight:700;border:3px solid #5a3d2b;border-radius:0;box-shadow:3px 3px 0 #2d2d2d}
+.theme-pixel #concat-sheet .concat-h:active,.theme-pixel #concat-sheet .concat-h._pressing{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
+.theme-pixel #concat-sheet .concat-v:active,.theme-pixel #concat-sheet .concat-v._pressing{transform:translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
+.theme-pixel #concat-sheet .concat-h:disabled,.theme-pixel #concat-sheet .concat-v:disabled{background:#999;color:#666;border-color:#777;box-shadow:none;cursor:not-allowed}
+.theme-pixel #concat-sheet button:disabled{background:#999;color:#666;border-color:#777;box-shadow:none;cursor:not-allowed}
+.theme-pixel #concat-sheet .concat-thumb{border-radius:0;border:2px solid #8b7355;background:#b89858}
+.theme-pixel #concat-sheet .concat-thumb.selected{border-color:#7ec850;box-shadow:2px 2px 0 #2d2d2d}
+.theme-pixel #concat-sheet .concat-thumb.selected .thumb-check{background:#7ec850}
+/* 【v1.9.32】保存图片按钮：像素风硬阴影 */
+.theme-pixel #preview-save-btn{background:#7ec850;color:#3a5a1a;font-family:'Courier New',monospace;font-weight:700;border:3px solid #5a8a30;border-radius:0;box-shadow:3px 3px 0 #2d2d2d}
+.theme-pixel #preview-save-btn:active{transform:translateX(-50%) translate(2px,2px);box-shadow:1px 1px 0 #2d2d2d}
+/* 缩略图 */
+.theme-pixel .thumb-wrap{border-color:#8b7355}
+/* 新增/删除座位 */
+.theme-pixel .add-seat-btn{border:2px solid #8b7355;border-radius:0;color:#8b7355;background:rgba(200,169,110,.5)}
+.theme-pixel .add-seat-btn:active{background:rgba(200,169,110,.8);border-color:#5a3d2b;color:#5a3d2b}
+.theme-pixel .btn-delete-seat{border:2px solid #cc3333;border-radius:0;color:#cc3333}
+/* Toast */
+.theme-pixel .toast{background:#4a3728;border:3px solid #2d2d2d;border-radius:0;color:#e8dcc0;font-family:'Courier New',monospace}
+/* 更新提示条 */
+.theme-pixel .update-bar{background:#7ec850;border-bottom:3px solid #5a8a30;color:#3a5a1a;font-family:'Courier New',monospace;font-weight:700}
+/* 清理弹窗按钮 */
+.theme-pixel .cleanup-cancel{background:#aaa;border:2px solid #555;border-radius:0;color:#3a3a3a}
+.theme-pixel .cleanup-exec{background:#cc3333;border:2px solid #991a1a;border-radius:0;color:#fff}
+/* 主题选择列表：像素风 */
+.theme-pixel .theme-list-item{color:#4a3728;font-family:'Courier New',monospace;font-weight:700;border-radius:0}
+.theme-pixel .theme-list-item:active{background:rgba(90,61,43,.15)}
+.theme-pixel .theme-list-item.active{background:#7ec850;border:2px solid #5a8a30}
+.theme-pixel .theme-list-item .theme-check{border-radius:0;border:2px solid #5a3d2b}
+.theme-pixel .theme-list-item.active .theme-check{background:#7ec850;border-color:#5a8a30}
+.theme-pixel .collab-floor-item{color:#4a3728;font-family:'Courier New',monospace;font-weight:700;border-radius:0}
+.theme-pixel .collab-floor-item:active{background:rgba(90,61,43,.15)}
+.theme-pixel .collab-floor-status{color:#5a8a30}
+/* 【v1.12.0】骨架屏加载动画 */
+@keyframes skeleton-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.skeleton-screen{position:fixed;top:0;left:0;right:0;bottom:0;padding:0 16px;background:#f0f2f5;z-index:500;animation:skeleton-fadein .2s ease;overflow-y:auto}
+@keyframes skeleton-fadein{from{opacity:0}to{opacity:1}}
+.skeleton-header{display:flex;justify-content:space-between;align-items:center;padding:14px 0;margin-bottom:8px}
+.skeleton-header-title{width:140px;height:22px;border-radius:4px;background:linear-gradient(90deg,#e8e8e8 25%,#f5f5f5 50%,#e8e8e8 75%);background-size:200% 100%;animation:skeleton-shimmer 1.5s infinite}
+.skeleton-header-btn{width:50px;height:32px;border-radius:6px;background:linear-gradient(90deg,#e8e8e8 25%,#f5f5f5 50%,#e8e8e8 75%);background-size:200% 100%;animation:skeleton-shimmer 1.5s infinite}
+.skeleton-floor{width:100%;height:54px;border-radius:10px;margin:8px 0;background:linear-gradient(90deg,#e8e8e8 25%,#f5f5f5 50%,#e8e8e8 75%);background-size:200% 100%;animation:skeleton-shimmer 1.5s infinite}
+.skeleton-footer{margin-top:24px;padding:0 4px}
+.skeleton-footer-line{height:12px;border-radius:3px;margin:6px 0;background:linear-gradient(90deg,#e8e8e8 25%,#f5f5f5 50%,#e8e8e8 75%);background-size:200% 100%;animation:skeleton-shimmer 1.5s infinite}
+.skeleton-footer-line:nth-child(1){width:60%}
+.skeleton-footer-line:nth-child(2){width:80%}
+.skeleton-footer-line:nth-child(3){width:45%}

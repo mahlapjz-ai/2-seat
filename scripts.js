@@ -1,0 +1,5587 @@
+// 拆分自原单文件 index.html - 脚本部分
+const dbIsFallback = false; // 已迁移至 Supabase，不再使用 IndexedDB
+// ============================================================
+// 一、楼层/区域/座位配置
+// ============================================================
+// 每个区域：name=显示名, prefix=编号前缀, start=起始编号, count=座位数
+const FLOORS = [
+  { id: 1, name: '一楼', areas: [
+    { name: '中庭', prefix: '中', start: 1001, count: 96 },
+    { name: '报刊', prefix: '报', start: 1097, count: 130 }
+  ]},
+  { id: 2, name: '二楼', areas: [
+    { name: '东区', prefix: '东', start: 2001, count: 84 },
+    { name: '东区临时', prefix: '东临', start: 2085, count: 7 },
+    { name: '南区', prefix: '南', start: 2001, count: 74 },
+    { name: '西区', prefix: '西', start: 2001, count: 84 },
+    { name: '北区', prefix: '北', start: 2001, count: 61 },
+    { name: '青少年区', prefix: '青', start: 2001, count: 24 }
+  ]},
+  { id: 3, name: '三楼', areas: [
+    { name: '东区', prefix: '东', start: 3001, count: 156 },
+    { name: '东区临时', prefix: '东临', start: 3157, count: 42 },
+    { name: '南区', prefix: '南', start: 3001, count: 66 },
+    { name: '西区', prefix: '西', start: 3001, count: 110 },
+    { name: '北区', prefix: '北', start: 3001, count: 62 }
+  ]},
+  { id: 4, name: '四楼', areas: [
+    { name: '东区', prefix: '东', start: 4001, count: 36 },
+    { name: '东区临时', prefix: '东临', start: 4037, count: 30 },
+    { name: '南区', prefix: '南', start: 4001, count: 50 },
+    { name: '西区', prefix: '西', start: 4001, count: 64 },
+    { name: '北区', prefix: '北', start: 4001, count: 40 }
+  ]},
+  { id: 5, name: '五楼', areas: [
+    { name: '东区', prefix: '东', start: 5001, count: 114 },
+    { name: '东区临时', prefix: '东临', start: 5115, count: 28 },
+    { name: '西区', prefix: '西', start: 5001, count: 64 },
+    { name: '南区', prefix: '南', start: 5001, count: 16 }
+  ]}
+];
+
+const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
+const MAX_IMAGES = 3;
+// v1.9.4 像素主题标题去除文字阴影
+const APP_VERSION = 'v2.0.5';
+// 【v1.10.18】更新日志：记录次版本号和主版本号变更，修订号变更不记录，最多保留3条
+const UPDATE_LOG = [
+  { date: '6月25日', text: '计时按钮改为纯图标+二次确认；新增骨架屏加载动画；更新固定文案' },
+  { date: '6月25日', text: '新增"记录完成时间"功能：区域按钮旁计时按钮，楼层卡片显示下轮参考时间' },
+  { date: '6月23日', text: '修复批量下载分批弹窗问题；清除图片改为选择性界面；新增22时段勾选限制' },
+];
+UPDATE_LOG.__hasOlder = true; // 历史上曾有更早记录已移除
+const UPDATE_LOG_MAX = 3; // 最多保留3条
+const DB_NAME = 'SeatImageDB';
+const DB_VERSION = 4;
+// 【v1.3.2 Bug1修复】将平台检测移到顶部，确保拼接函数可正确访问
+const isWeChat = /MicroMessenger/i.test(navigator.userAgent);
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+
+// ============================================================
+// 二、数据层（已替换为 Supabase API，见 data-layer.js）
+// ============================================================
+// 以下函数由 data-layer.js 提供：
+// openDB, saveCellData, getCellData, getCellDataBatch,
+// dbGetImageCounts, saveSeatName, getAllSeatNames,
+// saveExtraSeat, getAllExtraSeats, saveDeletedSeat, getAllDeletedSeats
+// 新增函数：dlUploadPhoto, dlDeletePhoto, dlDeletePhotosByAreaAndTime,
+// dlGetCollabPasswords, dlCreateCollabPassword, dlClearCache, dlInvalidateCell
+
+// ============================================================
+// 三、状态与工具函数
+// ============================================================
+const state = {
+  expandedFloors: new Set(), expandedAreas: new Set(), expandedSeats: new Set(),
+  selectedCells: [], seatNames: {}, seatHasImages: new Set(),
+  extraSeats: {}, deletedSeats: new Set(),
+  visibleTimeSlots: new Set(), _filterNone: false, // 时段筛选：空集+!_filterNone=全显，空集+_filterNone=全不显
+  autoShare: false, // 拍照后自动分享开关，默认关闭
+  allowDeleteSeat: false, // 【修改1】允许删除座位开关，默认关闭
+  showLogo: false, // 【v1.3.2 新功能3】深业运营 LOGO 水印开关，默认关闭
+  uploadWatermark: false, // 【v1.3.9 新功能1】上传图片加水印开关，默认关闭
+  deleteProtection: false, // 【v1.13.5】删除保护开关，默认关闭
+  currentTheme: 'default', // 【v1.6.0】当前主题，默认为 'default'
+  // 【v1.11.0】记录完成时间：每楼层存储区域记录或固定文案
+  completionRecords: {}, // { floorId: { records: [{area, time}], fixedText: '' } }
+  // 【共享版】当前登录用户信息（引用 auth.js 中的 currentUser）
+  currentUser: null,
+};
+
+// 上传串行化锁：同一 cell 同时只允许一个上传任务
+const _uploadLocks = new Map(); // Map<cellKey, Promise>
+const _deletingCells = new Set(); // 正在删除中的 cell 集合，防并发
+function isUploading(ck) { return _uploadLocks.has(ck); }
+function waitForUpload(ck) { return _uploadLocks.get(ck) || Promise.resolve(); }
+function setUploadLock(ck, promise) { _uploadLocks.set(ck, promise); promise.finally(() => _uploadLocks.delete(ck)); }
+
+/** 禁用/启用指定 cellKey 对应座位的所有操作按钮（拍照、上传、删除） */
+function disableSeatButtons(ck, disabled) {
+  const sk = ck.split('-').slice(0, 3).join('-');
+  const seatEl = document.querySelector(`.seat[data-seat-key="${sk}"]`);
+  if (!seatEl) return;
+  const btns = seatEl.querySelectorAll('[data-action="capture"], [data-action="upload"], [data-action="delete-img"]');
+  btns.forEach(btn => {
+    btn.disabled = disabled;
+    btn.style.opacity = disabled ? '0.5' : '';
+    btn.style.pointerEvents = disabled ? 'none' : '';
+  });
+  // 如果禁用，在座位上显示上传中状态
+  const statusEl = seatEl.querySelector('.upload-status');
+  if (statusEl) statusEl.textContent = disabled ? '上传中...' : '';
+}
+// 【v1.12.7】记录完成时间持久化：保存到 localStorage
+function saveCompletionRecords() { try { localStorage.setItem('completionRecords', JSON.stringify(state.completionRecords)); } catch(e) {} }
+function loadCompletionRecords() { try { const d = localStorage.getItem('completionRecords'); if (d) state.completionRecords = JSON.parse(d); } catch(e) {} }
+
+/** 生成区域 key */
+function areaKey(fid, aname) { return `${fid}-${aname}`; }
+/** 生成座位 key */
+function seatKey(fid, aname, idx) { return `${fid}-${aname}-${idx}`; }
+/** 生成单元格 key */
+function cellKey(fid, aname, sidx, tidx) { return `${fid}-${aname}-${sidx}-${tidx}`; }
+/** 从单元格 key 提取座位 key */
+function cellToSeatKey(ck) { return ck.split('-').slice(0, 3).join('-'); }
+
+/** 获取某区域的配置（从 FLOORS 常量中查找） */
+function getAreaConfig(fid, aname) {
+  const floor = FLOORS.find(f => f.id === parseInt(fid));
+  return floor ? floor.areas.find(a => a.name === aname) : null;
+}
+
+/** 获取某区域的座位数量（基础 + 新增） */
+function getAreaSeatCount(fid, aname) {
+  const cfg = getAreaConfig(fid, aname);
+  const base = cfg ? cfg.count : 0;
+  const ak = areaKey(fid, aname);
+  const extra = state.extraSeats[ak] || 0;
+  return base + extra;
+}
+
+/** 【v1.19.0】获取某区域的当前总图片数 */
+const MAX_AREA_IMAGES = 999;
+function getAreaImageTotal(fid, aname) {
+  let total = 0;
+  const seatCount = getAreaSeatCount(fid, aname);
+  for (let si = 0; si < seatCount; si++) {
+    const sk = seatKey(fid, aname, si);
+    const stat = seatImageStats.get(sk);
+    if (stat) total += stat.totalCount;
+  }
+  return total;
+}
+
+/** 获取座位默认编号 */
+function defaultSeatName(fid, aname, idx) {
+  const cfg = getAreaConfig(fid, aname);
+  if (!cfg) {
+    console.warn('[scripts] defaultSeatName fallback: fid=', fid, 'aname=', aname, 'idx=', idx);
+    return `S${fid}${idx + 1}`;
+  }
+  return `${cfg.prefix}${cfg.start + idx}`;
+}
+
+/** 获取座位编号（优先自定义） */
+function getCleanSeatName(name) { return name.replace(/\u200B/g, ''); }
+function getSeatNameSync(fid, aname, idx) {
+  const sk = seatKey(fid, aname, idx);
+  const custom = state.seatNames[sk];
+  return custom || defaultSeatName(fid, aname, idx);
+}
+
+/** 获取北京时间字符串 */
+function getBeijingTime() {
+  const now = new Date();
+  const opts = { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+  const parts = new Intl.DateTimeFormat('zh-CN', opts).formatToParts(now);
+  const get = (type) => parts.find(p => p.type === type).value;
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
+}
+
+// 【v1.11.0】记录完成时间：根据北京时间判断时段，计算下轮参考时间
+// 返回 { type: 'time'|'fixed', time: 'HH:MM:SS', fixedText: '' } 或 { type: 'fixed', fixedText: '...' }
+function calcCompletionTime() {
+  const now = new Date();
+  const bjOpts = { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
+  const bjParts = new Intl.DateTimeFormat('zh-CN', bjOpts).formatToParts(now);
+  const bjGet = (type) => bjParts.find(p => p.type === type).value;
+  const h = parseInt(bjGet('hour')), m = parseInt(bjGet('minute')), s = parseInt(bjGet('second'));
+  const mins = h * 60 + m; // 当天分钟数
+
+  // 情况四：21:16–21:59
+  if (h === 21 && m >= 16) return { type: 'fixed', fixedText: '(?｀Д?)我chovy你们都干嘛呢还在做' };
+  // 情况五：22:00–01:00
+  if ((h >= 22) || (h <= 1 && (h < 1 || m <= 0))) return { type: 'fixed', fixedText: '晚安玛卡巴卡ﾍ(=^･ω･^=)ﾉ' };
+  // 情况六：01:01–08:29
+  if ((h === 1 && m >= 1) || (h >= 2 && h <= 7) || (h === 8 && m <= 29)) return { type: 'fixed', fixedText: '大佬早，本页面还没睡醒(。-ω-)💤' };
+
+  // 情况三：13:01–13:29 → 固定 14:00:01
+  if (h === 13 && m >= 1 && m <= 29) return { type: 'time', time: '14:00:01' };
+
+  // 情况二：11:30–13:00、16:30–18:30 → +60分01秒
+  const isCase2 = (h === 11 && m >= 30) || (h === 12) || (h === 13 && m === 0)
+               || (h === 16 && m >= 30) || (h >= 17 && h <= 18 && (h < 18 || m <= 30));
+  if (isCase2) {
+    const target = new Date(now.getTime() + (60 * 60 + 1) * 1000);
+    const tParts = new Intl.DateTimeFormat('zh-CN', bjOpts).formatToParts(target);
+    const tGet = (type) => tParts.find(p => p.type === type).value;
+    return { type: 'time', time: `${tGet('hour')}:${tGet('minute')}:${tGet('second')}` };
+  }
+
+  // 情况一：08:30–11:29、13:30–16:29、18:31–21:15 → +30分01秒
+  const target = new Date(now.getTime() + (30 * 60 + 1) * 1000);
+  const tParts = new Intl.DateTimeFormat('zh-CN', bjOpts).formatToParts(target);
+  const tGet = (type) => tParts.find(p => p.type === type).value;
+  return { type: 'time', time: `${tGet('hour')}:${tGet('minute')}:${tGet('second')}` };
+}
+
+// 【v1.12.0】记录完成时间：二次确认弹窗
+function showRecordConfirm(fid, aname) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay record-confirm-modal';
+  overlay.innerHTML = `<div class="record-confirm-box"><div class="record-confirm-text">确认记录本轮完成时间并显示下轮参考开始时间？</div><div class="record-confirm-btns"><button class="record-confirm-cancel">取消</button><button class="record-confirm-ok">确认</button></div></div>`;
+  document.body.appendChild(overlay);
+  // 强制回流后显示，触发过渡动画
+  overlay.offsetHeight;
+  overlay.classList.add('show');
+  const close = () => { overlay.classList.remove('show'); setTimeout(() => overlay.remove(), 200); };
+  overlay.querySelector('.record-confirm-cancel').onclick = close;
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  overlay.querySelector('.record-confirm-ok').onclick = () => {
+    close();
+    const result = calcCompletionTime();
+    if (result.type === 'fixed') {
+      state.completionRecords[fid] = { records: [], fixedText: result.fixedText };
+    } else {
+      if (!state.completionRecords[fid]) state.completionRecords[fid] = { records: [], fixedText: '' };
+      const rec = state.completionRecords[fid];
+      rec.fixedText = '';
+      const existing = rec.records.find(r => r.area === aname);
+      if (existing) { existing.time = result.time; }
+      else { rec.records.push({ area: aname, time: result.time }); }
+    }
+    saveCompletionRecords();
+    renderMain();
+  };
+}
+
+// 【v1.3.13 微调】座位图片统计：{ totalCount, hasSlotWithMulti, visibleTotalCount, visibleHasSlotWithMulti, visibleCount, hiddenHasImages, visibleHasImages }
+// totalCount: 全时段图片总数（区域绿色判断）
+// hasSlotWithMulti: 全时段中是否存在某时段图片数≥2
+// visibleTotalCount: 可见时段图片总数（蓝色/橙色判断）
+// visibleHasSlotWithMulti: 可见时段中是否存在某时段图片数≥2（橙色判断）
+// visibleCount: 可见时段有图的时段数，visibleHasImages: 可见时段是否有图（筛选命中提示）
+// hiddenHasImages: 隐藏时段是否有图（闭眼图标提示）
+const seatImageStats = new Map();
+
+// 【性能优化】只读取图片计数，不加载完整图片数据
+// 使用轻量索引存储，避免 dbGetAll('cells') 加载所有图片到内存
+const imageCountCache = new Map(); // Map<cellKey, number> 缓存每个单元格的图片数量
+
+/** 【性能优化】从云端批量读取图片计数（不加载图片数据） */
+// 已移至 data-layer.js，此处仅保留调用入口
+async function dbGetImageCountsLocal() {
+  return await dbGetImageCounts();
+}
+
+async function buildSeatHasImages() {
+  // 【性能优化】使用轻量计数读取，不加载完整图片数据
+  const counts = await dbGetImageCounts();
+  imageCountCache.clear();
+  counts.forEach((cnt, key) => imageCountCache.set(key, cnt));
+  state.seatHasImages = new Set();
+  seatImageStats.clear();
+  imageCountCache.forEach((cnt, key) => {
+    if (cnt > 0) {
+      const sk = key.split('-').slice(0, 3).join('-');
+      state.seatHasImages.add(sk);
+    }
+  });
+  // 计算分层统计
+  refreshSeatImageStatsFromCache();
+}
+
+/** 【性能优化】从内存缓存计算统计，不再读取 IndexedDB */
+// 【v1.3.13 微调】新增 visibleTotalCount 和 visibleHasSlotWithMulti
+function refreshSeatImageStatsFromCache() {
+  seatImageStats.clear();
+  imageCountCache.forEach((cnt, key) => {
+    if (cnt <= 0) return;
+    const p = key.split('-');
+    const sk = p.slice(0, 3).join('-');
+    const tidx = parseInt(p[3]);
+    if (!seatImageStats.has(sk)) seatImageStats.set(sk, { totalCount: 0, hasSlotWithMulti: false, visibleTotalCount: 0, visibleHasSlotWithMulti: false, visibleCount: 0, hiddenHasImages: false, visibleHasImages: false });
+    const stat = seatImageStats.get(sk);
+    stat.totalCount += cnt;
+    if (cnt >= 2) stat.hasSlotWithMulti = true;
+    if (isTimeSlotVisible(tidx)) {
+      stat.visibleTotalCount += cnt; // 【v1.3.13】可见时段图片总数
+      if (cnt >= 2) stat.visibleHasSlotWithMulti = true; // 【v1.3.13】可见时段某时段≥2张
+      stat.visibleCount++;
+      stat.visibleHasImages = true;
+    } else {
+      stat.hiddenHasImages = true;
+    }
+  });
+}
+
+/** 【修改2】刷新所有座位的图片统计（可见时段图片数、隐藏时段是否有图） */
+async function refreshSeatImageStats() {
+  // 【性能优化】优先从内存缓存计算，仅缓存为空时才读 IndexedDB
+  if (imageCountCache.size > 0) {
+    refreshSeatImageStatsFromCache();
+    return;
+  }
+  const counts = await dbGetImageCounts();
+  imageCountCache.clear();
+  counts.forEach((cnt, key) => imageCountCache.set(key, cnt));
+  refreshSeatImageStatsFromCache();
+}
+
+/** 【v1.3.13 微调】刷新单个座位的图片统计（同步，仅读内存缓存） */
+function refreshSingleSeatStats(sk) {
+  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  let totalCount = 0, hasSlotWithMulti = false, visibleTotalCount = 0, visibleHasSlotWithMulti = false, visibleCount = 0, hiddenHasImages = false, visibleHasImages = false;
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    const ck = cellKey(fid, aname, sidx, t);
+    const cnt = imageCountCache.get(ck) || 0;
+    if (cnt <= 0) continue;
+    totalCount += cnt;
+    if (cnt >= 2) hasSlotWithMulti = true;
+    if (isTimeSlotVisible(t)) {
+      visibleTotalCount += cnt; // 【v1.3.13】可见时段图片总数
+      if (cnt >= 2) visibleHasSlotWithMulti = true; // 【v1.3.13】可见时段某时段≥2张
+      visibleCount++;
+      visibleHasImages = true;
+    } else {
+      hiddenHasImages = true;
+    }
+  }
+  seatImageStats.set(sk, { totalCount, hasSlotWithMulti, visibleTotalCount, visibleHasSlotWithMulti, visibleCount, hiddenHasImages, visibleHasImages });
+}
+function saveUIState() { try { localStorage.setItem('seat_ui_state', JSON.stringify({ f: [...state.expandedFloors], a: [...state.expandedAreas], s: [...state.expandedSeats] })); } catch (e) {} }
+function loadUIState() { try { const o = JSON.parse(localStorage.getItem('seat_ui_state')); if (o.f) state.expandedFloors = new Set(o.f); if (o.a) state.expandedAreas = new Set(o.a); if (o.s) state.expandedSeats = new Set(o.s); } catch (e) {} }
+// 拍照后分享开关状态持久化
+function saveAutoShareState() { try { localStorage.setItem('seat_auto_share', state.autoShare ? '1' : '0'); } catch (e) {} }
+function loadAutoShareState() { try { state.autoShare = localStorage.getItem('seat_auto_share') === '1'; } catch (e) {} }
+// 【修改1】允许删除座位开关状态持久化
+function saveAllowDeleteState() { try { localStorage.setItem('seat_allow_delete', state.allowDeleteSeat ? '1' : '0'); } catch (e) {} }
+function loadAllowDeleteState() { try { state.allowDeleteSeat = localStorage.getItem('seat_allow_delete') === '1'; } catch (e) {} }
+// 【v1.13.5】删除保护开关状态持久化
+function saveDeleteProtectionState() { try { localStorage.setItem('seat_delete_protection', state.deleteProtection ? '1' : '0'); } catch (e) {} }
+function loadDeleteProtectionState() { try { state.deleteProtection = localStorage.getItem('seat_delete_protection') === '1'; } catch (e) {} }
+// 【v1.3.2 新功能3】深业运营 LOGO 水印开关状态持久化
+function saveShowLogoState() { try { localStorage.setItem('seat_show_logo', state.showLogo ? '1' : '0'); } catch (e) {} }
+function loadShowLogoState() { try { state.showLogo = localStorage.getItem('seat_show_logo') === '1'; } catch (e) {} }
+// 【v1.3.9 新功能1】上传图片加水印开关状态持久化
+function saveUploadWatermarkState() { try { localStorage.setItem('seat_upload_watermark', state.uploadWatermark ? '1' : '0'); } catch (e) {} }
+function loadUploadWatermarkState() { try { state.uploadWatermark = localStorage.getItem('seat_upload_watermark') === '1'; } catch (e) {} }
+// 【v1.6.0】主题状态持久化
+function saveThemeState() { try { localStorage.setItem('app_theme', state.currentTheme); } catch (e) {} }
+function loadThemeState() {
+  try {
+    let t = localStorage.getItem('app_theme');
+    // 【v1.6.2】如果存储的是已删除的主题，重置为默认
+    if (t && t !== 'default' && t !== 'normal' && t !== 'yiban' && t !== 'pixel') {
+      t = 'default';
+      state.currentTheme = 'default';
+      localStorage.setItem('app_theme', 'default');
+    }
+    if (t) { state.currentTheme = t; applyTheme(t); }
+  } catch (e) {}
+}
+function applyTheme(theme) {
+  // 【v1.9.22】同时在 <html> 和 <body> 上添加主题类名，确保背景覆盖整个文档画布
+  document.documentElement.className = '';
+  document.body.className = '';
+  if (theme === 'normal') { document.documentElement.classList.add('theme-normal'); document.body.classList.add('theme-normal'); }
+  if (theme === 'yiban') { document.documentElement.classList.add('theme-yiban'); document.body.classList.add('theme-yiban'); }
+  if (theme === 'pixel') { document.documentElement.classList.add('theme-pixel'); document.body.classList.add('theme-pixel'); }
+}
+
+// 【v1.3.18 修复】筛选状态 localStorage 键名（隔离旧键名，避免被旧数据污染）
+const FILTER_KEY_MAIN = 'seat_filter_timeslots_v2_main';
+const FILTER_KEY_BACKUP = 'seat_filter_timeslots_v2_backup';
+
+/** 【v1.3.18 深度修复】保存时段筛选设置到 localStorage（双重备份 + 写入校验 + 版本标记） */
+function saveFilterState() {
+  try {
+    const data = JSON.stringify({ v: 2, slots: [...state.visibleTimeSlots], none: state._filterNone, ts: Date.now() });
+    localStorage.setItem(FILTER_KEY_MAIN, data);
+    localStorage.setItem(FILTER_KEY_BACKUP, data);
+    // 写入后立即校验主键
+    const verify = localStorage.getItem(FILTER_KEY_MAIN);
+    if (verify !== data) {
+      console.warn('[筛选持久化] 主键写入校验失败，尝试重写');
+      localStorage.setItem(FILTER_KEY_MAIN, data);
+      localStorage.setItem(FILTER_KEY_BACKUP, data);
+    }
+    console.log('[筛选持久化] 保存成功', { slots: [...state.visibleTimeSlots], none: state._filterNone });
+  } catch (e) {
+    console.error('[筛选持久化] 保存失败', e);
+  }
+}
+/** 【v1.3.18 深度修复】加载时段筛选设置（主键→备用键→旧键兼容→两键都空才默认全选） */
+function loadFilterState() {
+  try {
+    // 1. 先尝试主键
+    let raw = localStorage.getItem(FILTER_KEY_MAIN);
+    // 2. 主键失败，尝试备用键
+    if (!raw) raw = localStorage.getItem(FILTER_KEY_BACKUP);
+    // 3. 新键都为空，尝试读取旧键名（兼容 v1.3.17 及之前的数据）
+    if (!raw) {
+      const oldRaw = localStorage.getItem('seat_time_filter') || localStorage.getItem('seat_time_filter_bak');
+      if (oldRaw) {
+        // 迁移旧数据到新键名
+        try {
+          const oldObj = JSON.parse(oldRaw);
+          if (oldObj && Array.isArray(oldObj.slots)) {
+            raw = JSON.stringify({ v: 2, slots: oldObj.slots, none: !!oldObj.none, ts: Date.now() });
+            localStorage.setItem(FILTER_KEY_MAIN, raw);
+            localStorage.setItem(FILTER_KEY_BACKUP, raw);
+            console.log('[筛选持久化] 旧键数据已迁移到新键名');
+          }
+        } catch (migrateErr) { /* 迁移失败忽略 */ }
+      }
+    }
+    if (raw) {
+      const o = JSON.parse(raw);
+      if (o && Array.isArray(o.slots)) {
+        state.visibleTimeSlots = new Set(o.slots);
+        state._filterNone = !!o.none;
+        console.log('[筛选持久化] 加载成功', { slots: [...state.visibleTimeSlots], none: state._filterNone });
+        return;
+      }
+    }
+    // 两键都为空或数据异常，才默认全选（首次使用场景）
+    console.warn('[筛选持久化] 无有效存储，默认全选');
+  } catch (e) {
+    console.error('[筛选持久化] 加载异常，默认全选', e);
+  }
+}
+/** 【v1.3.18 深度修复】从 localStorage 恢复筛选状态到内存（用于 visibilitychange 等场景） */
+function restoreFilterStateFromStorage() {
+  try {
+    let raw = localStorage.getItem(FILTER_KEY_MAIN) || localStorage.getItem(FILTER_KEY_BACKUP);
+    if (!raw) return false;
+    const o = JSON.parse(raw);
+    if (o && Array.isArray(o.slots)) {
+      const storedSlots = new Set(o.slots);
+      const storedNone = !!o.none;
+      // 仅当内存状态与存储不一致时才恢复
+      const memSlots = [...state.visibleTimeSlots].sort().join(',');
+      const diskSlots = [...storedSlots].sort().join(',');
+      if (memSlots !== diskSlots || state._filterNone !== storedNone) {
+        console.warn('[筛选持久化] 检测到内存状态与存储不一致，从存储恢复', {
+          内存: { slots: [...state.visibleTimeSlots], none: state._filterNone },
+          存储: { slots: [...storedSlots], none: storedNone }
+        });
+        state.visibleTimeSlots = storedSlots;
+        state._filterNone = storedNone;
+        return true; // 表示状态已恢复
+      }
+    }
+    return false;
+  } catch (e) {
+    console.error('[筛选持久化] 恢复异常', e);
+    return false;
+  }
+}
+
+/** 判断某时段索引是否在当前北京时间已过（严格大于时段时间为已过） */
+function isTimeSlotPassed(tIdx) {
+  const now = new Date();
+  const opts = { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false };
+  const parts = new Intl.DateTimeFormat('en-US', opts).formatToParts(now);
+  // 【修复】处理某些 locale 返回 hour=24 的边界情况
+  const h = parseInt(parts.find(p => p.type === 'hour').value) % 24;
+  const m = parseInt(parts.find(p => p.type === 'minute').value);
+  const nowMinutes = h * 60 + m;
+  const slot = TIME_SLOTS[tIdx];
+  const [sh, sm] = slot.split(':').map(Number);
+  const slotMinutes = sh * 60 + sm;
+  // 当前时间 > 时段时间表示该时段已过
+  return nowMinutes > slotMinutes;
+}
+
+/** 判断某时段是否应该显示 */
+function isTimeSlotVisible(tIdx) {
+  // visibleTimeSlots 为空且无特殊标记时，默认全部显示
+  if (state.visibleTimeSlots.size === 0 && !state._filterNone) return true;
+  return state.visibleTimeSlots.has(tIdx);
+}
+
+// ============================================================
+// 四、渲染
+// ============================================================
+const app = document.getElementById('app');
+// 【修复Bug3】renderMain 并发保护：序列号机制，旧调用自动让路给新调用
+let _renderMainSeq = 0;
+async function renderMain() {
+  const mySeq = ++_renderMainSeq;
+  // 【修复文字消失】page-header 已移到 body 静态 HTML，不再由 renderMain 生成
+  let html = '';
+  // 【优化】预计算每个区域的已删除座位数，避免每个区域都遍历全量 deletedSeats
+  const deletedCountMap = {};
+  state.deletedSeats.forEach(sk => {
+    const parts = sk.split('-');
+    const ak = `${parts[0]}-${parts[1]}`;
+    deletedCountMap[ak] = (deletedCountMap[ak] || 0) + 1;
+  });
+  FLOORS.forEach(floor => {
+    const fid = floor.id, expanded = state.expandedFloors.has(fid);
+    // 计算楼层总座位数
+    let floorTotal = 0;
+    floor.areas.forEach(area => { floorTotal += getAreaSeatCount(fid, area.name) - (deletedCountMap[areaKey(fid, area.name)] || 0); });
+    // 【v1.13.3】楼层卡片中间显示完成时间记录或固定文案
+    const rec = state.completionRecords[fid];
+    let completionHtml = '';
+    if (rec && rec.fixedText) {
+      completionHtml = `<span class="floor-completion fixed">${rec.fixedText}</span>`;
+    } else if (rec && rec.records && rec.records.length > 0) {
+      const n = rec.records.length;
+      const sizeClass = n <= 2 ? 's1' : n <= 4 ? 's2' : 's3';
+      const shown = rec.records.slice(0, 6);
+      const rows = [];
+      for (let i = 0; i < shown.length; i += 2) {
+        const left = `<span class="fc-item fc-odd">${shown[i].area}<span class="fc-time">${shown[i].time}</span></span>`;
+        const right = shown[i + 1] ? `<span class="fc-item fc-even">${shown[i + 1].area}<span class="fc-time">${shown[i + 1].time}</span></span>` : '';
+        // 只有1条记录时居中；多条记录最后一行只有一个时居左
+        const singleClass = (!shown[i + 1] && n === 1) ? ' fc-single-center' : '';
+        rows.push(`<div class="fc-row${singleClass}">${left}${right}</div>`);
+      }
+      completionHtml = `<span class="floor-completion ${sizeClass}">${rows.join('')}</span>`;
+    }
+    html += `<button class="floor-btn floor-${fid} ${expanded ? 'expanded' : ''}" data-action="toggle-floor" data-floor="${fid}"><span class="floor-name">${floor.name}</span>${completionHtml}<span class="floor-right"><span class="floor-count">${floorTotal}座</span><span class="arrow"></span></span></button>`;
+    html += `<div class="area-container ${expanded ? 'show' : ''}" id="areas-${fid}">`;
+    // 【v1.17.0】应用自定义区域排列顺序
+    const savedOrder = loadAreaOrder(fid);
+    const orderedAreas = savedOrder ? applyAreaOrder(floor.areas, savedOrder) : floor.areas;
+    let seatHtml = ''; // 【v1.17.6】座位列表延后输出，保证按钮布局稳定
+    orderedAreas.forEach(area => {
+      const aname = area.name, ak = areaKey(fid, aname), aExp = state.expandedAreas.has(ak);
+      const areaTotal = getAreaSeatCount(fid, aname) - (deletedCountMap[ak] || 0);
+      // 判断区域是否有图片：遍历该区域所有座位检查 seatHasImages
+      let areaHasImages = false;
+      for (let si = 0; si < getAreaSeatCount(fid, aname); si++) {
+        if (state.seatHasImages.has(seatKey(fid, aname, si))) { areaHasImages = true; break; }
+      }
+      // 【v1.16.0】统计有图座位数和总图片数
+      let seatsWithImages = 0, areaImageTotal = 0;
+      const seatCount = getAreaSeatCount(fid, aname);
+      for (let si = 0; si < seatCount; si++) {
+        const sk = seatKey(fid, aname, si);
+        if (state.seatHasImages.has(sk)) {
+          seatsWithImages++;
+          const stat = seatImageStats.get(sk);
+          if (stat) areaImageTotal += stat.totalCount;
+        }
+      }
+      // 【v1.19.0】区域图片总数显示上限999
+      const displayImageTotal = Math.min(areaImageTotal, MAX_AREA_IMAGES);
+      // 【v1.20.1】无图片时第三行隐藏文字但保留占位
+      const statsStyle = areaImageTotal === 0 ? ' style="visibility:hidden"' : '';
+      html += `<div class="area-btn-wrap"><button class="area-btn ${aExp ? 'expanded' : ''} ${areaHasImages ? 'has-images' : ''}" data-action="toggle-area" data-floor="${fid}" data-area="${aname}"><span class="area-seat-count">${areaTotal}座</span><span class="area-name-row">${aname}<span class="arrow"></span></span><span class="area-stats"${statsStyle}><span class="as-left">${seatsWithImages}离座</span><span class="as-right">共${displayImageTotal}图</span></span></button>`;
+      // 【v1.11.0】区域展开时，在区域按钮下方显示"记录完成时间"按钮（仅对该楼层有写权限的用户显示）
+      if (aExp && canEditFloor(fid)) {
+        html += `<button class="record-time-btn" data-action="record-time" data-floor="${fid}" data-area="${aname}">⏱️记录完成时间</button>`;
+      }
+      html += `</div>`;
+      seatHtml += `<div class="seat-container ${aExp ? 'show' : ''}" id="seats-${ak}">${renderSeatFlow(fid, aname)}</div>`;
+    });
+    html += seatHtml;
+    html += '</div>';
+  });
+  // 【v1.12.6】底部信息：使用说明 + 近期优化记录 + 致谢 + 免责声明 + 联系小字
+  const lastVer = localStorage.getItem('lastShownVersion');
+  const showContact = lastVer !== APP_VERSION;
+  const optExpanded = localStorage.getItem('footer-opt-expanded') === '1';
+  const thxExpanded = localStorage.getItem('footer-thx-expanded') === '1';
+  html += `<div class="app-footer">`
+    + `<div class="footer-title">使用说明</div>`
+    + `<div class="usage-guide">·座位如有单张图片且当前时段未隐藏，座位显示蓝色；若时段隐藏，则不显示颜色<br>·座位的同一时段有多张图片且未隐藏，座位显示橙色；若时段隐藏，则不显示颜色<br>·隐藏时段内若存在图片，座位按钮左上角显示"闭眼"图标<br>·若区域存在图片，区域按钮显示绿色<br>·通过"时段筛选"选定某一时段后，若该时段有图片，座位按钮右上角显示"图片"图标</div>`
+    + `<div class="footer-collapsible" data-action="toggle-footer-opt">近期优化记录</div>`
+    + `<div class="footer-collapsible-body ${optExpanded ? 'expanded' : 'collapsed'}" data-action="expand-footer-opt">·修复部分安卓机型座位文字被省略显示的问题（06.30更新）<br>·v1.15~v1.20 汇总：完善记录时间与区域统计功能，优化批量下载与清除图片逻辑，修复区域布局与拖动调序问题（06.29更新）<br>·琪同志反馈缩略图"×"按钮误触易删除图片：v1.13.5 新增"删除保护"功能，开启后可以防止误触删除图片。<br>·圳组、乔组建议增设占座倒计时：目前仅增设"记录完成时间"功能来辅助判断（06.25更新），真正的倒计时提醒待馆方自研系统实现。<br>·赖组反馈批量清理原功能易致页面崩溃：已修复功能为"清除图片"（06.21更新）。<br>·圳组建议的纸质登记辅助功能已简单实现：时段筛选设为当前拍照时段后，蓝底且带图标的座位可对应纸质表打"×"（06.18更新）。<br>·环总、馨同志建议数据互通：资金实力不足，待馆方自研系统实现。</div>`
+    + `<div class="footer-collapsible" data-action="toggle-footer-thx">给大佬的情书</div>`
+    + `<div class="footer-collapsible-body ${thxExpanded ? 'expanded' : 'collapsed'}" data-action="expand-footer-thx">感谢以下不愿透露姓名的大佬的建议与使用体验反馈（排名不分先后）：<br>环总、何总、圳组、赖组、州组、乔组、伟同志、垚同志、馨同志、瑜同志、伦同志、元同志、彦同志、灵同志、琪同志……</div>`
+    + `<div class="disclaimer">内部参考工具，功能尚不完善，数据可能丢失，不承担准确性与隐私责任</div><div class="contact${showContact ? '' : ' hidden'}">如有使用建议可联系老范尝试优化。</div></div>`;
+  app.innerHTML = html;
+  // 【v1.2.5】联系小字：版本更新后显示2秒再淡出
+  if (showContact) {
+    localStorage.setItem('lastShownVersion', APP_VERSION);
+    setTimeout(() => {
+      const el = document.querySelector('.app-footer .contact');
+      if (el) el.classList.add('hidden');
+    }, 5000);
+  }
+  // 【修复BUG】串行执行 renderTimeSlots，避免并发 DOM 操作冲突
+  // 【修复Bug3】每次 await 前检查序列号，旧调用自动让路
+  for (const sk of state.expandedSeats) {
+    if (_renderMainSeq !== mySeq) return; // 有更新的 renderMain 调用，当前调用终止
+    await renderTimeSlots(sk);
+  }
+  // 【v1.13.14】楼层卡片中间区域字号自适应：检测溢出并缩字号或分行
+  adjustFloorCompletion();
+  // 【v1.17.0】初始化区域按钮拖动调序
+  initAreaDragReorder();
+}
+
+// 【v1.13.14】楼层卡片中间区域字号自适应
+function adjustFloorCompletion() {
+  const rows = document.querySelectorAll('.fc-row');
+  rows.forEach(row => {
+    const spans = row.querySelectorAll(':scope > span');
+    if (spans.length < 2) return; // 单条记录无需调整
+    // 重置行内样式
+    row.style.fontSize = '';
+    const rowWidth = row.clientWidth;
+    const GAP = 12;
+    // 检测方式：每个 span 在 flex 分配空间内是否溢出
+    // flex:1 1 0% 让两个 span 平分行宽，每个分配宽度 = (rowWidth - GAP) / 2
+    const allocWidth = (rowWidth - GAP) / 2;
+    let hasOverflow = false;
+    Array.from(spans).forEach(s => {
+      if (s.scrollWidth > allocWidth + 1) hasOverflow = true;
+    });
+    if (!hasOverflow) return; // 空间足够
+    // 逐步缩小字号
+    const container = row.closest('.floor-completion');
+    const baseSize = parseFloat(getComputedStyle(container || row).fontSize);
+    const minSize = 10;
+    let fit = false;
+    for (let sz = baseSize - 1; sz >= minSize; sz--) {
+      row.style.fontSize = sz + 'px';
+      const newAlloc = (row.clientWidth - GAP) / 2;
+      let newOk = true;
+      Array.from(spans).forEach(s => {
+        if (s.scrollWidth > newAlloc + 1) newOk = false;
+      });
+      if (newOk) { fit = true; break; }
+    }
+    if (!fit) {
+      // 最小字号仍放不下 → 分行：每个 span 独占一行居左
+      row.style.fontSize = '';
+      const parent = container || row.parentElement;
+      if (parent) {
+        const nextSibling = row.nextSibling;
+        spans.forEach(span => {
+          const newRow = document.createElement('div');
+          newRow.className = 'fc-row';
+          row.removeChild(span);
+          newRow.appendChild(span);
+          parent.insertBefore(newRow, nextSibling);
+        });
+        row.remove();
+      }
+    }
+  });
+}
+
+// 【v1.17.0】区域排列顺序持久化
+function loadAreaOrder(fid) {
+  try { const d = localStorage.getItem(`area_order_${fid}`); return d ? JSON.parse(d) : null; } catch (e) { return null; }
+}
+function saveAreaOrder(fid, names) {
+  try { localStorage.setItem(`area_order_${fid}`, JSON.stringify(names)); } catch (e) {}
+}
+function applyAreaOrder(areas, savedNames) {
+  const map = new Map(areas.map(a => [a.name, a]));
+  const ordered = [];
+  savedNames.forEach(n => { if (map.has(n)) { ordered.push(map.get(n)); map.delete(n); } });
+  map.forEach(a => ordered.push(a));
+  return ordered;
+}
+
+// 【v1.17.2】区域按钮触摸事件处理：短按(<400ms)→点击展开，长按(≥400ms)→拖动调序
+// 互斥逻辑：400ms内移动>8px→取消长按（滚动/误触），400ms内未移动→进入拖动调序
+let _areaTouchHandled = false; // 防止 touch 处理后 click 再次触发
+function initAreaDragReorder() {
+  if (!isFeatureEnabled('feat_area_drag_sort')) return;
+  document.querySelectorAll('.area-container').forEach(container => {
+    const fid = container.id.replace('areas-', '');
+    let dragBtn = null, dragWrap = null, longPressTimer = null, dragActive = false;
+    let startX = 0, startY = 0, offsetX = 0, offsetY = 0;
+    let placeholder = null;
+    let currentTarget = null; // 当前插入目标
+
+    function cleanup() {
+      if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      if (placeholder) { placeholder.remove(); placeholder = null; }
+      if (dragBtn) {
+        dragBtn.classList.remove('_dragging');
+      }
+      if (dragWrap) {
+        dragWrap.style.pointerEvents = '';
+        dragWrap.style.position = '';
+        dragWrap.style.left = '';
+        dragWrap.style.top = '';
+        dragWrap.style.width = '';
+        dragWrap.style.zIndex = '';
+      }
+      if (currentTarget) { currentTarget.classList.remove('_drag-target'); currentTarget = null; }
+      dragBtn = null;
+      dragWrap = null;
+      dragActive = false;
+    }
+
+    container.addEventListener('touchstart', (e) => {
+      const btn = e.target.closest('.area-btn');
+      if (!btn || btn.classList.contains('_drag-placeholder')) return;
+      // 【v1.17.4】已展开的区域按钮不触发拖动调序
+      if (btn.classList.contains('expanded')) return;
+      // 【v1.20.7】不再在touchstart中preventDefault，避免阻止页面垂直滚动
+      // 文字选择和长按菜单已由全局CSS user-select:none; -webkit-touch-callout:none 禁止
+      cleanup();
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      const rect = btn.getBoundingClientRect();
+      offsetX = e.touches[0].clientX - rect.left;
+      offsetY = e.touches[0].clientY - rect.top;
+      dragBtn = btn;
+      dragWrap = btn.closest('.area-btn-wrap');
+      dragActive = false;
+      currentTarget = null;
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        dragActive = true;
+        btn.classList.add('_dragging');
+        // 清除可能已产生的文本选择
+        try { window.getSelection().removeAllRanges(); } catch(e2) {}
+        // 创建占位符并插入原位置（在 wrapper 层级）
+        placeholder = document.createElement('div');
+        placeholder.className = 'area-btn-wrap _drag-placeholder-wrap';
+        placeholder.style.height = rect.height + 'px';
+        dragWrap.parentNode.insertBefore(placeholder, dragWrap);
+        // 将拖动 wrapper 设为 fixed，脱离流
+        dragWrap.style.position = 'fixed';
+        dragWrap.style.left = rect.left + 'px';
+        dragWrap.style.top = rect.top + 'px';
+        dragWrap.style.width = rect.width + 'px';
+        dragWrap.style.zIndex = '1000';
+        dragWrap.style.pointerEvents = 'none'; // 让 elementFromPoint 穿过它
+      }, 500);
+    }, { passive: true });
+
+    container.addEventListener('touchmove', (e) => {
+      if (!dragBtn) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      const absDx = Math.abs(dx), absDy = Math.abs(dy);
+
+      if (!dragActive) {
+        // 【v1.20.4】手势意图识别：垂直滑动优先让页面滚动
+        if (absDy > 10 && absDy >= absDx) {
+          // 判定为页面滚动，取消长按计时器，放弃交互
+          if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+          dragBtn = null;
+          dragWrap = null;
+          return;
+        }
+        // 小范围移动不取消计时器（手指微抖正常），大范围水平移动取消
+        if ((absDx > 10 || absDy > 10) && absDx > absDy) {
+          if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+          dragBtn = null;
+          dragWrap = null;
+        }
+        return;
+      }
+      e.preventDefault(); // 仅在拖动调序激活时阻止滚动
+      const touch = e.touches[0];
+      // 移动拖动 wrapper
+      dragWrap.style.left = (touch.clientX - offsetX) + 'px';
+      dragWrap.style.top = (touch.clientY - offsetY) + 'px';
+
+      // 检测手指下方的区域按钮（拖动 wrapper 已设 pointerEvents:none，可穿透）
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      if (!el) return;
+      const target = el.closest('.area-btn');
+      if (!target || target === dragBtn || target.classList.contains('_drag-placeholder')) {
+        if (currentTarget) { currentTarget.classList.remove('_drag-target'); currentTarget = null; }
+        return;
+      }
+
+      // 更新视觉目标指示
+      if (currentTarget && currentTarget !== target) currentTarget.classList.remove('_drag-target');
+      target.classList.add('_drag-target');
+      currentTarget = target;
+
+      // 将占位符移到目标 wrapper 位置附近
+      const targetWrap = target.closest('.area-btn-wrap');
+      if (!targetWrap) return;
+
+      const targetRect = target.getBoundingClientRect();
+      const midX = targetRect.left + targetRect.width / 2;
+      if (touch.clientX < midX) {
+        if (placeholder.nextSibling !== targetWrap) container.insertBefore(placeholder, targetWrap);
+      } else {
+        if (placeholder !== targetWrap.nextSibling) container.insertBefore(placeholder, targetWrap.nextSibling);
+      }
+    }, { passive: false });
+
+    container.addEventListener('touchend', (e) => {
+      if (!dragBtn) { cleanup(); return; }
+
+      if (!dragActive) {
+        // 短按：视为点击，触发区域展开/收起
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+        const fidStr = dragBtn.dataset.floor;
+        const aname = dragBtn.dataset.area;
+        dragBtn = null;
+        dragWrap = null;
+        if (fidStr && aname) {
+          toggleAreaExpand(parseInt(fidStr), aname);
+        }
+        e.preventDefault();
+        _areaTouchHandled = true;
+        setTimeout(() => { _areaTouchHandled = false; }, 300);
+        return;
+      }
+
+      // 拖动完成：将拖动 wrapper 插入到占位符位置
+      if (placeholder && placeholder.parentNode) {
+        container.insertBefore(dragWrap, placeholder);
+        placeholder.remove();
+      }
+      dragBtn.classList.remove('_dragging');
+      dragWrap.style.pointerEvents = '';
+      dragWrap.style.position = '';
+      dragWrap.style.left = '';
+      dragWrap.style.top = '';
+      dragWrap.style.width = '';
+      dragWrap.style.zIndex = '';
+      if (currentTarget) { currentTarget.classList.remove('_drag-target'); currentTarget = null; }
+
+      // 保存新的区域顺序
+      const names = [...container.querySelectorAll('.area-btn:not(.record-time-btn)')].map(b => b.dataset.area).filter(Boolean);
+      if (names.length > 0) saveAreaOrder(fid, names);
+
+      placeholder = null;
+      dragBtn = null;
+      dragWrap = null;
+      dragActive = false;
+      longPressTimer = null;
+      e.preventDefault();
+    }, { passive: false });
+
+    container.addEventListener('touchcancel', () => {
+      cleanup();
+    }, { passive: true });
+  });
+}
+
+// 【v1.17.1】区域展开/收起切换（供触摸事件调用）
+function toggleAreaExpand(fid, aname) {
+  const ak = areaKey(fid, aname);
+  if (state.expandedAreas.has(ak)) {
+    state.expandedAreas.delete(ak);
+  } else {
+    state.expandedAreas.add(ak);
+    // 【v1.17.3】手风琴规则：同楼层只允许展开一个区域
+    for (const k of [...state.expandedAreas]) {
+      if (k !== ak && k.startsWith(fid + '-')) state.expandedAreas.delete(k);
+    }
+  }
+  try { localStorage.setItem('expandedAreas', JSON.stringify([...state.expandedAreas])); } catch (e) {}
+  renderMain();
+}
+
+// 【修复Bug3】确保"功能"按钮文字始终显示，防止异步竞态或页面恢复时文字消失
+function ensureFuncBtnText() {
+  const btn = document.getElementById('func-btn');
+  if (btn && !btn.textContent.trim()) {
+    btn.textContent = '设置';
+  }
+  // 【v1.3.4】标题旁显示版本号
+  const verEl = document.getElementById('header-version');
+  if (verEl && !verEl.textContent) verEl.textContent = APP_VERSION;
+}
+
+// 【修复Bug3】MutationObserver 持续监控功能按钮，文字被清空时立即恢复
+let _funcBtnObserver = null;
+function startFuncBtnObserver() {
+  if (_funcBtnObserver) _funcBtnObserver.disconnect();
+  const btn = document.getElementById('func-btn');
+  if (!btn) return;
+  _funcBtnObserver = new MutationObserver(() => {
+    if (!btn.textContent.trim()) btn.textContent = '设置';
+  });
+  _funcBtnObserver.observe(btn, { childList: true, characterData: true, subtree: true });
+}
+
+// 【修复Bug3】页面从后台恢复时，校验并恢复"功能"按钮文字
+// 【v1.3.18 深度修复】同时从 localStorage 恢复筛选状态，防止内存状态被浏览器意外清空
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    // 【v1.3.18】从 localStorage 恢复筛选状态
+    const restored = restoreFilterStateFromStorage();
+    if (restored) {
+      // 状态被恢复，需要刷新 UI
+      try { renderFilterBody(); refreshExpandedSeats(); } catch(e) {}
+    }
+    requestAnimationFrame(() => { ensureFuncBtnText(); startFuncBtnObserver(); });
+  }
+});
+
+// 【v1.3.18 深度修复】页面关闭/刷新前强制保存筛选状态
+window.addEventListener('beforeunload', () => {
+  try { saveFilterState(); } catch(e) {}
+});
+// 【v1.3.18 深度修复】pagehide 作为 beforeunload 的补充（移动端更可靠）
+window.addEventListener('pagehide', () => {
+  try { saveFilterState(); } catch(e) {}
+});
+// 【v1.6.0 修复】页面从后台恢复时，从 localStorage 重新读取筛选状态，防止偶发重置
+// 【v1.10.10】改用 restoreFilterStateFromStorage，仅在内存与存储不一致时才恢复
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    try {
+      if (restoreFilterStateFromStorage()) {
+        refreshExpandedSeats();
+      }
+    } catch (e) { console.warn('[筛选恢复] visibilitychange 恢复失败', e); }
+  }
+});
+
+function renderSeatFlow(fid, aname) {
+  const count = getAreaSeatCount(fid, aname);
+  // 【v1.3.10】判断筛选是否非全选
+  const isFilterActive = !(state.visibleTimeSlots.size === 0 && !state._filterNone);
+  let html = '<div class="seat-flow">';
+  for (let i = 0; i < count; i++) {
+    const sk = seatKey(fid, aname, i);
+    if (state.deletedSeats.has(sk)) continue;
+    const sName = getSeatNameSync(fid, aname, i), sExp = state.expandedSeats.has(sk);
+    // 【v1.3.14 修复】移除 seatHasImages 兜底，蓝色/橙色严格基于可见时段统计
+    const stat = seatImageStats.get(sk);
+    let imgClass = '';
+    if (stat && stat.visibleTotalCount >= 2 && stat.visibleHasSlotWithMulti) imgClass = 'has-images-2';
+    else if (stat && stat.visibleTotalCount >= 1) imgClass = 'has-images-1';
+    const longNameClass = (fid >= 2 && aname === '东区临时') ? ' long-name' : '';
+    // 【v1.4.1 修改】左上角闭眼图标：隐藏时段有图（展开时不显示）
+    const hiddenIcon = (stat && stat.hiddenHasImages && !sExp) ? '<span class="icon-hidden"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg></span>' : '';
+    // 【v1.3.10】右上角筛选命中图标：筛选非全选 + 可见时段有图
+    const filterHitIcon = (isFilterActive && stat && stat.visibleHasImages) ? '<span class="icon-filter-hit"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg></span>' : '';
+    html += `<button class="seat-btn ${sExp ? 'expanded' : ''} ${imgClass}${longNameClass}" data-action="toggle-seat" data-floor="${fid}" data-area="${aname}" data-seat="${i}">${hiddenIcon}${filterHitIcon}<span class="seat-btn-text">${sName}</span></button>`;
+    html += `<div class="timeslot-container ${sExp ? 'show' : ''}" id="timeslots-${sk}"></div>`;
+  }
+  html += isFeatureEnabled('feat_add_seat') ? `<button class="add-seat-btn" data-action="add-seat" data-floor="${fid}" data-area="${aname}">+</button>` : '';
+  html += '</div>';
+  return html;
+}
+
+// 【修复问题2】座位时段 DOM 缓存：缓存最近展开的座位渲染结果，避免重复从 IndexedDB 读取
+// 收起座位后再展开时，如果数据未变，直接复用缓存的 DOM，避免从上往下重新渲染
+const timeslotDOMCache = new Map(); // Map<seatKey, { html: string, imageCounts: string }>
+const TIMESLOT_DOM_CACHE_MAX = 3; // 最多缓存 3 个座位的 DOM
+
+/** 清除某个座位的 DOM 缓存（数据变化时调用） */
+function invalidateTimeslotCache(sk) {
+  timeslotDOMCache.delete(sk);
+}
+
+/** 清除所有 DOM 缓存 */
+function invalidateAllTimeslotCache() {
+  timeslotDOMCache.clear();
+}
+
+async function renderTimeSlots(sk) {
+  const container = document.getElementById('timeslots-' + sk);
+  if (!container) return;
+  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  const sName = getSeatNameSync(fid, aname, sidx);
+
+  // 【修复Bug1】构建图片计数指纹：用所有时段的计数 + 筛选状态 + 删除开关状态
+  // 筛选状态变化会导致隐藏时段提示文字变化，必须使缓存失效
+  let countFingerprint = '';
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    const ck = cellKey(fid, aname, sidx, t);
+    countFingerprint += `${ck}:${imageCountCache.get(ck) || 0},`;
+  }
+  // 指纹包含筛选状态（哪些时段可见），确保筛选变化时缓存失效
+  const visibleFingerprint = TIME_SLOTS.map((_, t) => isTimeSlotVisible(t) ? '1' : '0').join('');
+  countFingerprint += `|vis:${visibleFingerprint}`;
+  // 指纹包含删除座位开关状态
+  countFingerprint += `|del:${state.allowDeleteSeat ? '1' : '0'}`;
+
+  // 【修复问题2】检查 DOM 缓存：如果数据未变，直接复用缓存的 HTML
+  const cached = timeslotDOMCache.get(sk);
+  if (cached && cached.countFingerprint === countFingerprint) {
+    container.innerHTML = cached.html;
+    container.querySelectorAll('img[data-thumb-src]').forEach(img => thumbObserver.observe(img));
+    // 【修复Bug1】复用缓存时也要应用筛选显隐
+    applyTimeslotFilter(container);
+    // 【v1.9.27】复用缓存时同步勾选状态：缓存 HTML 是快照，不含最新的选中状态
+    container.querySelectorAll('.ts-checkbox').forEach(cb => {
+      const ck = cb.dataset.cellKey;
+      if (state.selectedCells.includes(ck)) cb.classList.add('checked');
+      else cb.classList.remove('checked');
+    });
+    return;
+  }
+
+  // 【修改1】删除座位按钮受开关控制，且仅对该楼层有写权限时显示；全局设置关闭时强制隐藏
+  const delBtnClass = (isFeatureEnabled('feat_delete_seat') && state.allowDeleteSeat && canEditFloor(parseInt(parts[0]))) ? 'btn-delete-seat visible' : 'btn-delete-seat';
+  // 【新增】计算隐藏且有图片的时段名称列表
+  const hiddenTsNames = [];
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    if (!isTimeSlotVisible(t)) {
+      const ck = cellKey(fid, aname, sidx, t);
+      if ((imageCountCache.get(ck) || 0) > 0) hiddenTsNames.push(TIME_SLOTS[t]);
+    }
+  }
+  const hiddenHintHtml = hiddenTsNames.length > 0
+    ? `<span class="hidden-ts-hint">以下时段照片被隐藏：${hiddenTsNames.join('、')}</span>`
+    : '';
+  const renameEnabled = isFeatureEnabled('feat_rename_seat') && canEditFloor(parseInt(parts[0]));
+  const nameHtml = renameEnabled
+    ? `<span class="seat-name-text" data-action="edit-seat-name" data-seat-key="${sk}">${sName}</span><span class="seat-name-hint">（点击修改）</span>`
+    : `<span class="seat-name-text" data-seat-key="${sk}">${sName}</span>`;
+  let html = `<div class="seat-header"><span class="seat-header-label">座位编号：</span>${nameHtml}${hiddenHintHtml}<button class="${delBtnClass}" data-action="delete-seat" data-seat-key="${sk}">删除座位</button></div>`;
+  // 【修复Bug1】批量读取该座位所有时段的数据（不只是可见的），渲染所有时段卡片
+  const allKeys = [];
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    allKeys.push(cellKey(fid, aname, sidx, t));
+  }
+  const cellDataMap = await getCellDataBatch(allKeys);
+  let needThumbGen = false;
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    const ck = cellKey(fid, aname, sidx, t);
+    const visible = isTimeSlotVisible(t);
+    // 【修复Bug1】渲染所有时段，不可见的用 data-tidx + display:none 标记
+    const displayStyle = visible ? '' : 'display:none;';
+    const cellData = cellDataMap[ck] || null;
+    const images = (cellData && cellData.images) ? cellData.images : [];
+    const hasImages = images.length > 0, isFull = images.length >= MAX_IMAGES, isSel = state.selectedCells.includes(ck);
+    const cbClass = hasImages ? `ts-checkbox ${isSel ? 'checked' : ''}` : 'ts-checkbox disabled';
+    const isReader = currentUser.role === 'reader';
+    const canEditThisFloor = canEditFloor(parseInt(parts[0]));
+    const tsBtnsHtml = canEditThisFloor ? `<div class="ts-btns"><button class="ts-btn ts-btn-capture" ${isFull ? 'disabled' : ''} data-action="capture" data-cell-key="${ck}">拍照</button><button class="ts-btn ts-btn-upload" ${isFull ? 'disabled' : ''} data-action="upload" data-cell-key="${ck}">上传</button></div>` : '';
+    html += `<div class="timeslot-card" data-tidx="${t}" style="${displayStyle}" data-action="toggle-card" data-cell-key="${ck}" data-has-images="${hasImages ? '1' : '0'}"><div class="ts-top"><div class="${cbClass}" data-action="toggle-select" data-cell-key="${ck}"></div><span class="ts-time">${TIME_SLOTS[t]}</span>${tsBtnsHtml}</div>`;
+    if (images.length > 0) {
+      html += '<div class="ts-thumbs">';
+      images.forEach((img, idx) => {
+        // 【共享版】优先使用云端 URL，回退到 Blob URL / Base64
+        let thumbSrc = '';
+        // 1. 云端缩略图 URL（追加防缓存参数）
+        if (img.thumbnail_url || img.url) {
+          thumbSrc = img.thumbnail_url || img.url;
+          if (thumbSrc.startsWith('http') && img.photo_id) thumbSrc += '?id=' + img.photo_id;
+        }
+        // 2. 刚拍照的 Blob URL（上传前临时使用）
+        if (!thumbSrc) thumbSrc = img._thumbBlobURL || img._fullBlobURL || '';
+        // 3. Base64 缩略图
+        if (!thumbSrc) thumbSrc = img.thumbnail || img.thumb || '';
+        // 4. 原图 base64
+        if (!thumbSrc && img.data) thumbSrc = img.data;
+
+        if (thumbSrc && (thumbSrc.startsWith('http') || thumbSrc.startsWith('blob:') || thumbSrc.startsWith('data:'))) {
+          const isHttp = thumbSrc.startsWith('http');
+          const isBlob = thumbSrc.startsWith('blob:');
+          if (isHttp || isBlob) {
+            // URL 直接显示
+            html += `<div class="thumb-wrap"><img src="${thumbSrc}" data-action="preview" data-cell-key="${ck}" data-img-idx="${idx}" loading="lazy" />${canEditThisFloor ? `<div class="thumb-del" data-action="delete-img" data-cell-key="${ck}" data-img-idx="${idx}">&times;</div>` : ''}</div>`;
+          } else {
+            // Base64 走懒加载
+            html += `<div class="thumb-wrap"><img data-thumb-src="${thumbSrc}" data-action="preview" data-cell-key="${ck}" data-img-idx="${idx}" />${canEditThisFloor ? `<div class="thumb-del" data-action="delete-img" data-cell-key="${ck}" data-img-idx="${idx}">&times;</div>` : ''}</div>`;
+          }
+        } else {
+          html += `<div class="thumb-wrap" style="background:#e6f7ff;display:flex;align-items:center;justify-content:center;font-size:10px;color:#1890ff">处理中</div>`;
+        }
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  container.innerHTML = html;
+  container.querySelectorAll('img[data-thumb-src]').forEach(img => thumbObserver.observe(img));
+  if (needThumbGen) generateMissingThumbnails(fid, aname, sidx);
+  // 【修复问题2】更新 DOM 缓存：保存渲染结果，下次展开时直接复用
+  if (timeslotDOMCache.size >= TIMESLOT_DOM_CACHE_MAX) {
+    const firstKey = timeslotDOMCache.keys().next().value;
+    timeslotDOMCache.delete(firstKey);
+  }
+  timeslotDOMCache.set(sk, { html, countFingerprint });
+}
+
+/** 【修复Bug1】轻量级筛选切换：切换时段卡片 CSS 显隐 + 更新隐藏时段提示文字 */
+function applyTimeslotFilter(container) {
+  if (!container) return;
+  // 切换时段卡片显隐
+  container.querySelectorAll('.timeslot-card[data-tidx]').forEach(card => {
+    const tidx = parseInt(card.dataset.tidx);
+    card.style.display = isTimeSlotVisible(tidx) ? '' : 'none';
+  });
+  // 【新增】更新隐藏时段提示文字
+  const seatHeader = container.querySelector('.seat-header');
+  if (!seatHeader) return;
+  // 从 seat-header 的子元素中提取 seatKey
+  const nameEl = seatHeader.querySelector('.seat-name-text');
+  if (!nameEl) return;
+  const sk = nameEl.dataset.seatKey;
+  if (!sk) return;
+  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  const hiddenTsNames = [];
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    if (!isTimeSlotVisible(t)) {
+      const ck = cellKey(fid, aname, sidx, t);
+      if ((imageCountCache.get(ck) || 0) > 0) hiddenTsNames.push(TIME_SLOTS[t]);
+    }
+  }
+  // 移除旧提示，插入新提示
+  const oldHint = seatHeader.querySelector('.hidden-ts-hint');
+  if (oldHint) oldHint.remove();
+  if (hiddenTsNames.length > 0) {
+    const hint = document.createElement('span');
+    hint.className = 'hidden-ts-hint';
+    hint.textContent = `以下时段照片被隐藏：${hiddenTsNames.join('、')}`;
+    // 插入到删除按钮之前
+    const delBtn = seatHeader.querySelector('.btn-delete-seat');
+    if (delBtn) seatHeader.insertBefore(hint, delBtn);
+    else seatHeader.appendChild(hint);
+  }
+}
+
+/** 【v1.3.10 重构】更新座位按钮视觉：颜色基于全时段总数 + 闭眼图标 + 筛选命中图标 */
+function updateSeatVisual(sk) {
+  // 先刷新该座位的统计（同步，仅读内存缓存）
+  refreshSingleSeatStats(sk);
+  // 【v1.3.10】判断筛选是否非全选
+  const isFilterActive = !(state.visibleTimeSlots.size === 0 && !state._filterNone);
+  document.querySelectorAll('.seat-btn').forEach(btn => {
+    const k = seatKey(parseInt(btn.dataset.floor), btn.dataset.area, parseInt(btn.dataset.seat));
+    if (k !== sk) return;
+    // 移除旧类
+    btn.classList.remove('has-images', 'has-images-1', 'has-images-2');
+    // 移除旧图标
+    btn.querySelectorAll('.icon-hidden, .icon-filter-hit').forEach(el => el.remove());
+    // 【v1.3.13 微调】颜色基于可见时段：可见总数≥2且某可见时段≥2张→橙色，可见总数≥1→蓝色
+    const stat = seatImageStats.get(sk);
+    if (stat && stat.visibleTotalCount >= 2 && stat.visibleHasSlotWithMulti) {
+      btn.classList.add('has-images-2');
+    } else if (stat && stat.visibleTotalCount >= 1) {
+      btn.classList.add('has-images-1');
+    }
+    // 【v1.3.14 修复】移除 seatHasImages 兜底，隐藏时段有图不再触发蓝色
+    // 【v1.4.1 修改】左上角闭眼图标：隐藏时段有图
+    if (stat && stat.hiddenHasImages) {
+      const icon = document.createElement('span');
+      icon.className = 'icon-hidden';
+      icon.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>';
+      btn.appendChild(icon);
+    }
+    // 【v1.3.10】右上角筛选命中图标：筛选非全选 + 可见时段有图
+    if (isFilterActive && stat && stat.visibleHasImages) {
+      const icon = document.createElement('span');
+      icon.className = 'icon-filter-hit';
+      icon.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
+      btn.appendChild(icon);
+    }
+  });
+  // 同步更新区域按钮视觉
+  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+  updateAreaVisual(fid, aname);
+}
+/** 更新区域按钮的 has-images 状态 */
+function updateAreaVisual(fid, aname) {
+  let areaHasImages = false;
+  for (let si = 0; si < getAreaSeatCount(fid, aname); si++) {
+    if (state.seatHasImages.has(seatKey(fid, aname, si))) { areaHasImages = true; break; }
+  }
+  document.querySelectorAll(`.area-btn[data-floor="${fid}"][data-area="${aname}"]`).forEach(btn => {
+    btn.classList.toggle('has-images', areaHasImages);
+  });
+}
+
+// ============================================================
+// 五、图片压缩与水印
+// ============================================================
+
+/** 【性能优化-深度】将图片重新编码为 JPEG Blob，保持原分辨率
+ *  返回 Blob 而非 Base64 DataURL，减少编解码开销
+ *  仅在需要存入 IndexedDB 时才通过 blobToDataURL 转换 */
+function compressImageBlob(imageData, quality = 0.95) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('图片压缩失败：toBlob 返回 null'));
+        }, 'image/jpeg', quality);
+      } catch (err) { reject(new Error('图片压缩失败: ' + err.message)); }
+    };
+    img.onerror = () => reject(new Error('图片压缩失败'));
+    img.src = imageData;
+  });
+}
+
+/** 【兼容】将图片重新编码为 JPEG DataURL，保持原分辨率 */
+function compressImage(imageData, quality = 0.95) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      } catch (err) { reject(new Error('图片压缩失败: ' + err.message)); }
+    };
+    img.onerror = () => reject(new Error('图片压缩失败'));
+    img.src = imageData;
+  });
+}
+
+/** 【兼容】addWatermark：返回 Base64 DataURL，供 getProcessedData / pvLoadFullImage / regenerateWatermarks 使用 */
+async function addWatermark(imageData, seatName, beijingTime) {
+  const { fullBlob } = await addWatermarkBlob(imageData, seatName, beijingTime);
+  return blobToDataURL(fullBlob);
+}
+
+// 【性能优化】Blob URL 管理器：跟踪临时 Blob URL，关闭预览时统一回收
+const pvBlobURLs = new Map(); // Map<urlString, true>
+
+/** 安全创建 Blob URL 并注册到管理器 */
+function createTrackedBlobURL(blob) {
+  const url = URL.createObjectURL(blob);
+  pvBlobURLs.set(url, true);
+  return url;
+}
+
+/** 回收所有已注册的 Blob URL */
+function revokeAllBlobURLs() {
+  pvBlobURLs.forEach((_, url) => { try { URL.revokeObjectURL(url); } catch (e) {} });
+  pvBlobURLs.clear();
+}
+
+// 【性能优化-深度】内存 Blob 缓存：拍照/处理后缓存 fullBlob 和 thumbBlob 的 Blob URL
+// 避免预览时重新从 IndexedDB 读取或重新生成水印
+const memoryBlobCache = new Map(); // Map<cellKey, Array<{fullBlobURL, thumbBlobURL, fullBlob, thumbBlob}>>
+const MEMORY_BLOB_CACHE_MAX = 50; // 【性能优化-深度】内存 Blob 缓存上限，防止内存无限增长
+/** 缓存某个单元格的图片 Blob URL 到内存
+ *  【性能优化-深度】Blob URL 不注册到 pvBlobURLs（持久缓存，不受 closePreview 影响）
+ *  超出上限时淘汰最早的条目 */
+function cacheCellBlobs(cellKey, images) {
+  // 先清除旧缓存
+  clearCellBlobCache(cellKey);
+  // 【性能优化-深度】LRU 淘汰：超出上限时删除最早的条目
+  if (memoryBlobCache.size >= MEMORY_BLOB_CACHE_MAX) {
+    const firstKey = memoryBlobCache.keys().next().value;
+    clearCellBlobCache(firstKey);
+  }
+  const arr = [];
+  for (let i = 0; i < images.length; i++) {
+    const item = images[i];
+    if (item._fullBlob) {
+      const fullBlobURL = URL.createObjectURL(item._fullBlob);
+      const thumbBlobURL = item._thumbBlob ? URL.createObjectURL(item._thumbBlob) : '';
+      arr.push({ fullBlobURL, thumbBlobURL, fullBlob: item._fullBlob, thumbBlob: item._thumbBlob || null });
+    } else {
+      arr.push(null);
+    }
+  }
+  memoryBlobCache.set(cellKey, arr);
+}
+
+/** 从内存缓存获取某张图片的 Blob URL（预览时优先使用） */
+function getMemoryBlobURL(cellKey, imgIdx) {
+  const arr = memoryBlobCache.get(cellKey);
+  if (!arr || !arr[imgIdx]) return null;
+  return arr[imgIdx];
+}
+
+/** 清除某单元格的内存 Blob 缓存 */
+function clearCellBlobCache(cellKey) {
+  const arr = memoryBlobCache.get(cellKey);
+  if (arr) {
+    arr.forEach(item => {
+      if (item) {
+        try { if (item.fullBlobURL) URL.revokeObjectURL(item.fullBlobURL); } catch (e) {}
+        try { if (item.thumbBlobURL) URL.revokeObjectURL(item.thumbBlobURL); } catch (e) {}
+      }
+    });
+    memoryBlobCache.delete(cellKey);
+  }
+}
+/** 添加水印并返回 { fullBlob, thumbBlob }，避免重复 Canvas 操作
+ *  水印三行：第一行年月日（小号细体），第二行时分秒（大号粗体），第三行座位编号（中号常规）
+ *  基准字号：短边×10%，限制在36~200px
+ *  【v1.3.2 新功能3】支持在文字水印上方绘制深业运营 LOGO（仅拍照水印） */
+// 【v1.3.3】LOGO 水印：从同目录文件异步加载，首次加载后缓存内存
+let _logoImg = null;
+let _logoLoaded = false;
+let _logoLoading = false;
+function getLogoImage() {
+  if (_logoLoaded) return Promise.resolve(_logoImg);
+  if (!state.showLogo) { return Promise.resolve(null); }
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => { _logoImg = img; _logoLoaded = true; resolve(img); };
+    img.onerror = () => { console.warn('LOGO 加载失败，跳过绘制'); resolve(null); };
+    img.src = 'shenyelogo.png';
+  });
+}
+// 【v1.4.2 重写】从 Blob 中读取 EXIF Orientation 值（标签 0x0112）
+// 仅解析 JPEG 的 APP1 段，返回 1~8 的方向值，读取失败返回 1（正常方向）
+async function readExifOrientation(blob) {
+  if (!(blob instanceof Blob)) return 1;
+  try {
+    const buf = await blob.slice(0, 65536).arrayBuffer(); // 只读前 64KB 足够找到 EXIF
+    const view = new DataView(buf);
+    // 检查 JPEG SOI 标记
+    if (view.getUint16(0) !== 0xFFD8) return 1;
+    let offset = 2;
+    while (offset < view.byteLength - 4) {
+      const marker = view.getUint16(offset);
+      // APP1 段（EXIF）
+      if (marker === 0xFFE1) {
+        const segLen = view.getUint16(offset + 2);
+        if (offset + 2 + segLen > view.byteLength) break; // 段超出缓冲区
+        // 检查 "Exif\0\0" 标识
+        if (view.getUint32(offset + 4) === 0x45786966 && view.getUint16(offset + 8) === 0x0000) {
+          const tiffOffset = offset + 10;
+          if (tiffOffset + 8 > view.byteLength) return 1;
+          // 字节序：II = little endian (0x4949), MM = big endian (0x4D4D)
+          const littleEndian = view.getUint16(tiffOffset) === 0x4949;
+          // 验证 TIFF 标识
+          const tiffMagic = view.getUint16(tiffOffset + 2, littleEndian);
+          if (tiffMagic !== 0x002A) return 1; // 不是有效 TIFF
+          const ifdOffset = view.getUint32(tiffOffset + 4, littleEndian);
+          if (tiffOffset + ifdOffset + 2 > view.byteLength) return 1;
+          const numEntries = view.getUint16(tiffOffset + ifdOffset, littleEndian);
+          for (let i = 0; i < numEntries; i++) {
+            const entryOffset = tiffOffset + ifdOffset + 2 + i * 12;
+            if (entryOffset + 12 > view.byteLength) break;
+            const tag = view.getUint16(entryOffset, littleEndian);
+            if (tag === 0x0112) { // Orientation
+              const value = view.getUint16(entryOffset + 8, littleEndian);
+              if (value >= 1 && value <= 8) return value;
+              return 1; // 无效值，视为正常
+            }
+          }
+        }
+        offset += 2 + segLen;
+      } else if ((marker & 0xFF00) === 0xFF00 && marker !== 0xFFD9) {
+        // 其他 APPn/DQT/DHT/SOS 等段，跳过（排除 EOI 标记）
+        if (offset + 4 > view.byteLength) break;
+        const segLen = view.getUint16(offset + 2);
+        offset += 2 + segLen;
+      } else {
+        break; // 未知标记或 EOI，停止
+      }
+    }
+  } catch (e) { /* EXIF 读取失败，忽略 */ }
+  return 1;
+}
+
+// 【v1.4.2 重写】根据 EXIF Orientation 在 Canvas 上旋转/翻转图片
+// 完整处理所有 8 种方向值，确保任何 iOS 设备/拍摄姿态都能正确纠正
+//   1 = 正常（不旋转）
+//   2 = 水平镜像
+//   3 = 旋转 180°
+//   4 = 垂直镜像
+//   5 = 水平镜像 + 顺时针 90°
+//   6 = 顺时针 90°（iOS 竖拍最常见）
+//   7 = 水平镜像 + 逆时针 90°
+//   8 = 逆时针 90°
+function applyExifOrientation(ctx, origW, origH, orientation) {
+  switch (orientation) {
+    case 2: ctx.transform(-1, 0, 0, 1, origW, 0); break;
+    case 3: ctx.transform(-1, 0, 0, -1, origW, origH); break;
+    case 4: ctx.transform(1, 0, 0, -1, 0, origH); break;
+    case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+    case 6: ctx.transform(0, 1, -1, 0, origH, 0); break;
+    case 7: ctx.transform(0, -1, -1, 0, origH, origW); break;
+    case 8: ctx.transform(0, -1, 1, 0, 0, origW); break;
+    default: break; // 1 或未知，不变换
+  }
+}
+
+// 【v1.5.1 重写】addWatermarkBlob 支持两种输入 + EXIF 方向参数：
+//   - Blob 对象：createImageBitmap + imageOrientation:'none'（禁止自动旋转）
+//     若不支持则降级，并通过 bitmap 尺寸检测是否已被浏览器自动旋转
+//   - DataURL 字符串：new Image() 加载（Canvas 转换已应用 EXIF，无需旋转）
+//   - orientation 参数：1~8 的 EXIF 方向值，由调用方提前读取
+function addWatermarkBlob(imageSource, seatName, beijingTime, orientation) {
+  return new Promise((resolve, reject) => {
+    const isBlob = (imageSource instanceof Blob);
+    let decodePromise;
+    if (isBlob) {
+      // 【v1.5.1】先尝试 imageOrientation:'none' 禁止自动旋转
+      decodePromise = createImageBitmap(imageSource, { imageOrientation: 'none' })
+        .catch(() => createImageBitmap(imageSource)); // 降级：选项不支持时忽略
+    } else {
+      decodePromise = new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => res(img);
+        img.onerror = () => rej(new Error('图片加载失败'));
+        img.src = imageSource;
+      });
+    }
+
+    decodePromise.then(async (img) => {
+      try {
+        // 保存原始尺寸（ImageBitmap close 后 width/height 归零，需提前保存）
+        const origW = img.naturalWidth || img.width;
+        const origH = img.naturalHeight || img.height;
+        // 【v1.5.1 关键修复】EXIF 方向纠正 + bitmap 尺寸检测
+        //   imageOrientation:'none' 在旧 iOS 上不支持，降级后 createImageBitmap
+        //   可能自动旋转 bitmap。通过比较 EXIF 值和 bitmap 实际尺寸来检测：
+        //   - EXIF 5~8 需要 90° 旋转（宽高互换）
+        //   - 如果 bitmap 已经是纵向（H>W），说明浏览器已旋转，跳过手动旋转
+        //   - 如果 bitmap 仍是横向（W>H），说明浏览器未旋转，需手动旋转
+        let orient = 1;
+        try {
+          if (typeof orientation === 'number' && orientation >= 2 && orientation <= 8) {
+            if (orientation >= 5 && orientation <= 8 && isBlob && origH > origW) {
+              // bitmap 已是纵向，浏览器已自动旋转，跳过
+              orient = 1;
+            } else {
+              // bitmap 仍是横向（或非 Blob 输入），需手动旋转
+              orient = orientation;
+            }
+          }
+        } catch (e) {
+          console.warn('[EXIF] 方向检测异常，跳过旋转:', e);
+          orient = 1;
+        }
+        // 方向 5~8 需要 90° 旋转，Canvas 宽高互换
+        const needSwap = orient >= 5 && orient <= 8;
+        const canvasW = needSwap ? origH : origW;
+        const canvasH = needSwap ? origW : origH;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvasW; canvas.height = canvasH;
+        const ctx = canvas.getContext('2d');
+        if (orient > 1) {
+          applyExifOrientation(ctx, origW, origH, orient);
+        }
+        // bitmap 是原始像素方向，drawImage 按原始尺寸绘制，transform 负责旋转
+        ctx.drawImage(img, 0, 0);
+        // createImageBitmap 产生的 ImageBitmap 绘制后立即关闭释放
+        if (img.close) img.close();
+        // 基准字号：短边×10%，限制在36~200px
+        const shortSide = Math.min(canvas.width, canvas.height);
+        const fs = Math.max(36, Math.min(200, Math.round(shortSide * 0.10)));
+        const scaleFactor = fs / 52;
+        // 【修复Bug2】三行字号：日期小号、时间大号、座位中号
+        const fs_date = Math.max(14, Math.round(18 * scaleFactor));  // 第一行：年月日（小号，细体）
+        const fs_time = fs;                                           // 第二行：时分秒（大号，粗体）
+        const fs_seat = Math.max(20, Math.round(36 * scaleFactor));   // 第三行：座位编号（中号，常规）
+        const lineGap = Math.round(fs_time * 0.12);
+        const pad = Math.round(fs_time * 0.3);   // 左右内边距
+        const vpad = Math.round(fs_time * 0.2);  // 上下内边距
+        // 【v1.9.0】"像素"主题水印：像素字体 + 泥土色背景 + 深棕文字 + 直角
+        const isNormalTheme = document.body.classList.contains('theme-normal');
+        const isYibanTheme = document.body.classList.contains('theme-yiban');
+        const isPixelTheme = document.body.classList.contains('theme-pixel');
+        const fontFam = isPixelTheme ? "'Courier New',monospace" : (isYibanTheme ? "'Segoe UI','Helvetica Neue',sans-serif" : (isNormalTheme ? "Georgia,'KaiTi','STKaiti',serif" : '-apple-system, sans-serif'));
+        const wmBgColor = isPixelTheme ? 'rgba(200,169,110,0.6)' : (isYibanTheme ? 'rgba(50,50,60,0.7)' : (isNormalTheme ? 'rgba(255,248,240,0.4)' : 'rgba(0,0,0,0.55)'));
+        const wmTextColor = isPixelTheme ? '#2e1f0e' : (isYibanTheme ? '#00ffff' : (isNormalTheme ? '#4A3728' : '#ffffff'));
+        const wmShadowColor = isPixelTheme ? 'rgba(255,255,255,0.9)' : null; // 【v1.9.12】像素主题水印白色阴影
+        const r = isPixelTheme ? 0 : 8; // 像素主题直角，其他圆角
+        // 【v1.9.18】像素主题：第一行字号加大、阴影偏移拉远
+        const fs_date_draw = isPixelTheme ? Math.round(24 * scaleFactor) : fs_date;
+        const wmShadowOff = isPixelTheme ? 4 : 0;
+        // 拆分北京时间
+        const datePart = beijingTime.split(' ')[0];
+        const timePart = beijingTime.split(' ')[1] || beijingTime;
+        // 【v1.5.12 新增】计算星期几
+        const weekDays = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+        const weekDay = weekDays[new Date(datePart).getDay()] || '';
+        // 逐行测量宽度
+        ctx.font = `300 ${fs_date}px ${fontFam}`;
+        const tw1 = ctx.measureText(datePart).width;
+        const twWeek = weekDay ? ctx.measureText(weekDay).width : 0;
+        ctx.font = `700 ${fs_time}px ${fontFam}`;
+        const tw2 = ctx.measureText(timePart).width;
+        ctx.font = `400 ${fs_seat}px ${fontFam}`;
+        const tw3 = ctx.measureText(seatName).width;
+        // 【v1.5.12】背景宽度：取三行最大值，但第一行（日期+星期几）宽度不超过第二行
+        const tw1Full = tw1 + (twWeek > 0 ? Math.round(fs_date * 0.6) + twWeek : 0); // 日期+间距+星期几
+        const maxTW = Math.max(tw1Full, tw2, tw3);
+        const totalH = fs_date + fs_time + fs_seat + lineGap * 2;
+        const bgX = 24, bgW = maxTW + pad * 2, bgH = totalH + vpad * 2;
+        // 【v1.3.4 Bug2修复】文字水印位置固定：距下边缘 24px，不受 LOGO 影响
+        const bgY = canvas.height - totalH - vpad * 2 - 24;
+        // 半透明圆角背景
+        ctx.fillStyle = wmBgColor;
+        ctx.beginPath();
+        ctx.moveTo(bgX + r, bgY); ctx.lineTo(bgX + bgW - r, bgY);
+        ctx.quadraticCurveTo(bgX + bgW, bgY, bgX + bgW, bgY + r);
+        ctx.lineTo(bgX + bgW, bgY + bgH - r);
+        ctx.quadraticCurveTo(bgX + bgW, bgY + bgH, bgX + bgW - r, bgY + bgH);
+        ctx.lineTo(bgX + r, bgY + bgH);
+        ctx.quadraticCurveTo(bgX, bgY + bgH, bgX, bgY + bgH - r);
+        ctx.lineTo(bgX, bgY + r);
+        ctx.quadraticCurveTo(bgX, bgY, bgX + r, bgY);
+        ctx.closePath(); ctx.fill();
+        // 绘制三行文本：年月日+星期几（细体）、时分秒（粗体）、座位编号（常规）
+        ctx.textBaseline = 'top'; ctx.fillStyle = wmTextColor;
+        const textX = bgX + pad;
+        let curY = bgY + vpad;
+        ctx.font = `300 ${fs_date_draw}px ${fontFam}`;
+        if (wmShadowColor) { ctx.fillStyle = wmShadowColor; ctx.fillText(datePart, textX + wmShadowOff, curY + wmShadowOff); }
+        ctx.fillStyle = wmTextColor; ctx.fillText(datePart, textX, curY);
+        // 【v1.5.12 新增】第一行右侧绘制星期几，右对齐且不超第二行右边缘
+        if (weekDay) {
+          // 【v1.9.19】像素主题用 fs_date_draw 重新测量星期几宽度，确保右对齐精确
+          const _fsDateForWeek = isPixelTheme ? fs_date_draw : fs_date;
+          ctx.font = `300 ${_fsDateForWeek}px ${fontFam}`;
+          const _twWeek = ctx.measureText(weekDay).width;
+          const line2Right = textX + tw2; // 第二行文字右边缘
+          const weekX = line2Right - _twWeek;
+          if (weekX > textX + tw1 + Math.round(fs_date * 0.3)) {
+            if (wmShadowColor) { ctx.fillStyle = wmShadowColor; ctx.fillText(weekDay, weekX + wmShadowOff, curY + wmShadowOff); }
+            ctx.fillStyle = wmTextColor; ctx.fillText(weekDay, weekX, curY);
+          }
+        }
+        curY += fs_date_draw + lineGap;
+        ctx.font = `700 ${fs_time}px ${fontFam}`;
+        if (wmShadowColor) { ctx.fillStyle = wmShadowColor; ctx.fillText(timePart, textX + wmShadowOff, curY + wmShadowOff); }
+        ctx.fillStyle = wmTextColor; ctx.fillText(timePart, textX, curY);
+        curY += fs_time + lineGap;
+        ctx.font = `400 ${fs_seat}px ${fontFam}`;
+        if (wmShadowColor) { ctx.fillStyle = wmShadowColor; ctx.fillText(seatName, textX + wmShadowOff, curY + wmShadowOff); }
+        ctx.fillStyle = wmTextColor; ctx.fillText(seatName, textX, curY);
+        // 【v1.10.17】LOGO 紧贴文字水印正上方，左边缘对齐，宽度为水印背景的80%
+        if (state.showLogo) {
+          const logoAspect = 913 / 2662; // LOGO 原始宽高比
+          const logoW = Math.round(bgW * 0.8);
+          const logoH = Math.round(logoW * logoAspect);
+          const logoGap = Math.round(fs_time * 0.15);
+          const logoImg = await getLogoImage();
+          if (logoImg) {
+            ctx.globalAlpha = 1;
+            ctx.drawImage(logoImg, bgX + (bgW - logoW) / 2, bgY - logoH - logoGap, logoW, logoH);
+          }
+        }
+        // 一次 Canvas 绘制，同时导出原图 Blob 和缩略图 Blob
+        const fullPromise = new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
+        // 【v1.4.4 紧急修复】缩略图基于当前 Canvas 尺寸（已旋转后的 canvasW/canvasH），而非已删除的 imgW/imgH
+        const thumbCanvas = document.createElement('canvas');
+        const scale = Math.min(200 / canvasW, 1);
+        thumbCanvas.width = Math.round(canvasW * scale);
+        thumbCanvas.height = Math.round(canvasH * scale);
+        const tCtx = thumbCanvas.getContext('2d');
+        tCtx.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+        const thumbPromise = new Promise(r => thumbCanvas.toBlob(r, 'image/jpeg', 0.8));
+        Promise.all([fullPromise, thumbPromise]).then(([fullBlob, thumbBlob]) => {
+          // 【内存优化】Canvas 使用完立即释放
+          canvas.width = 0; canvas.height = 0;
+          thumbCanvas.width = 0; thumbCanvas.height = 0;
+          resolve({ fullBlob, thumbBlob });
+        });
+      } catch (err) { reject(new Error('水印生成失败: ' + err.message)); }
+    }).catch(err => { reject(new Error('图片加载失败: ' + (err.message || ''))); });
+  });
+}
+
+// ============================================================
+// 五-B、缩略图生成与懒加载
+// ============================================================
+
+/** 【性能优化-深度】生成缩略图 Blob：宽度 200px，等比缩放，返回 Blob
+ *  比 generateThumbnail 更快，因为跳过了 Base64 编码步骤 */
+function generateThumbnailBlob(imageSource, targetWidth = 200) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const scale = Math.min(targetWidth / img.naturalWidth, 1);
+        canvas.width = Math.round(img.naturalWidth * scale);
+        canvas.height = Math.round(img.naturalHeight * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else resolve(null); // 降级返回 null
+        }, 'image/jpeg', 0.8);
+      } catch (err) {
+        console.error('缩略图 Blob 生成失败:', err);
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = imageSource;
+  });
+}
+
+/** 生成缩略图：宽度 200px，等比缩放，JPEG 质量 0.8（返回 DataURL，兼容旧逻辑） */
+function generateThumbnail(imageData, targetWidth = 200) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const scale = Math.min(targetWidth / img.naturalWidth, 1);
+        canvas.width = Math.round(img.naturalWidth * scale);
+        canvas.height = Math.round(img.naturalHeight * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      } catch (err) {
+        console.error('缩略图生成失败:', err);
+        resolve(imageData); // 降级返回原图
+      }
+    };
+    img.onerror = () => resolve(imageData);
+    img.src = imageData;
+  });
+}
+
+const thumbObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const img = entry.target;
+      if (img.dataset.thumbSrc) {
+        img.src = img.dataset.thumbSrc;
+        delete img.dataset.thumbSrc;
+      }
+      thumbObserver.unobserve(img);
+    }
+  });
+}, { rootMargin: '300px' });
+
+/** 【性能优化】拍照后直接追加缩略图到 DOM，不重建整个座位（从 ~1s 降到 <50ms）
+ *  同时更新时段卡片状态（checkbox、按钮 disabled 等） */
+function appendThumbnailToDOM(ck, newImg, imgIdx) {
+  const card = document.querySelector(`.timeslot-card[data-cell-key="${ck}"]`);
+  if (!card) return; // 卡片不在 DOM 中，后续 renderTimeSlots 会处理
+
+  // 1. 追加缩略图
+  let thumbsDiv = card.querySelector('.ts-thumbs');
+  if (!thumbsDiv) {
+    thumbsDiv = document.createElement('div');
+    thumbsDiv.className = 'ts-thumbs';
+    card.appendChild(thumbsDiv);
+  }
+  // 优先云端 URL（追加防缓存参数），回退 Blob URL / Base64 缩略图
+  let thumbSrc = '';
+  if (newImg.url && newImg.url.startsWith('http')) {
+    thumbSrc = newImg.url;
+    if (newImg.photo_id) thumbSrc += '?id=' + newImg.photo_id;
+  }
+  if (!thumbSrc) thumbSrc = newImg._thumbBlobURL || newImg._fullBlobURL || newImg.thumbnail || newImg.thumb || '';
+  if (thumbSrc) {
+    const wrap = document.createElement('div');
+    wrap.className = 'thumb-wrap';
+    wrap.innerHTML = `<img src="${thumbSrc}" data-action="preview" data-cell-key="${ck}" data-img-idx="${imgIdx}" />${canEditFloor(parseInt(ck.split('-')[0])) ? `<div class="thumb-del" data-action="delete-img" data-cell-key="${ck}" data-img-idx="${imgIdx}">&times;</div>` : ''}`;
+    thumbsDiv.appendChild(wrap);
+  }
+
+  // 2. 更新卡片状态
+  const imgCount = imageCountCache.get(ck) || 0;
+  card.dataset.hasImages = imgCount > 0 ? '1' : '0';
+  // 更新 checkbox
+  const cb = card.querySelector('.ts-checkbox');
+  if (cb) cb.className = imgCount > 0 ? `ts-checkbox ${state.selectedCells.includes(ck) ? 'checked' : ''}` : 'ts-checkbox disabled';
+  // 图片满时禁用按钮
+  if (imgCount >= MAX_IMAGES) {
+    card.querySelectorAll('.ts-btn-capture, .ts-btn-upload').forEach(btn => btn.disabled = true);
+  }
+}
+
+// 【优化】批量读取后生成缺失缩略图，避免逐条异步读取
+async function generateMissingThumbnails(fid, aname, sidx) {
+  const keys = [];
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    keys.push(cellKey(fid, aname, sidx, t));
+  }
+  const cellDataMap = await getCellDataBatch(keys);
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    const ck = cellKey(fid, aname, sidx, t);
+    const cd = cellDataMap[ck];
+    if (!cd || !cd.images) continue;
+    let changed = false;
+    for (let i = 0; i < cd.images.length; i++) {
+      if (!cd.images[i].thumbnail && cd.images[i].data) {
+        cd.images[i].thumbnail = await generateThumbnail(cd.images[i].data);
+        changed = true;
+      }
+    }
+    if (changed) await saveCellData(ck, cd.images);
+  }
+}
+
+// ============================================================
+// 六、文件输入
+// ============================================================
+const captureInput = document.createElement('input');
+captureInput.type = 'file'; captureInput.setAttribute('accept', 'image/*'); captureInput.setAttribute('capture', 'environment'); captureInput.style.display = 'none';
+document.body.appendChild(captureInput);
+// 【v1.13.17】上传按钮：规范 accept 为 image/*，确保不含 capture 属性以兼容小米等设备
+const uploadInput = document.createElement('input');
+uploadInput.type = 'file'; uploadInput.setAttribute('accept', 'image/*'); uploadInput.removeAttribute('capture'); uploadInput.style.display = 'none';
+document.body.appendChild(uploadInput);
+let currentCaptureCellKey = null, currentUploadCellKey = null;
+function readFileAsDataURL(file) { return new Promise((r, j) => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.onerror = () => j(rd.error); rd.readAsDataURL(file); }); }
+// 【v1.2.0 iOS兼容】将文件通过 Canvas 转换为 JPEG DataURL，处理 HEIC 等非标准格式
+function convertToJPEGDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const dataURL = canvas.toDataURL('image/jpeg', 0.95);
+        URL.revokeObjectURL(url);
+        canvas.width = 0; canvas.height = 0;
+        resolve(dataURL);
+      } catch (err) {
+        URL.revokeObjectURL(url);
+        reject(new Error('图片格式转换失败: ' + err.message));
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片加载失败')); };
+    img.src = url;
+  });
+}
+// 【v1.2.1 安卓修复】智能读取图片：JPEG 直接读 DataURL（快），HEIC/其他走 Canvas 转换
+function readImageAsDataURL(file) {
+  const type = (file.type || '').toLowerCase();
+  // JPEG/PNG/GIF/WebP 等浏览器原生支持的格式，直接读取，无需 Canvas 转换
+  if (type === 'image/jpeg' || type === 'image/png' || type === 'image/gif' || type === 'image/webp' || type === 'image/bmp') {
+    return readFileAsDataURL(file);
+  }
+  // HEIC/HEIF 或未知格式（iOS 拍照可能返回），走 Canvas 转 JPEG
+  return convertToJPEGDataURL(file);
+}
+
+captureInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentCaptureCellKey) { captureInput.value = ''; return; }
+  const ck = currentCaptureCellKey; currentCaptureCellKey = null;
+  // 权限检查（二次防线）
+  const capFid = parseInt(ck.split('-')[0]);
+  if (!canEditFloor(capFid)) { showToast('无该楼层操作权限'); captureInput.value = ''; return; }
+  try {
+    const cellData = await getCellData(ck);
+    const images = (cellData && cellData.images) ? [...cellData.images] : [];
+    if (images.length >= MAX_IMAGES) { showToast('该时段图片已满'); captureInput.value = ''; return; }
+    const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+    // 【v1.19.0】区域图片总数上限检查
+    if (getAreaImageTotal(fid, aname) >= MAX_AREA_IMAGES) { showToast('该区域图片已达上限（999张），请清理后再添加'); captureInput.value = ''; return; }
+    const sName = getSeatNameSync(fid, aname, sidx);
+    const bTime = getBeijingTime();
+    const sk = cellToSeatKey(ck);
+
+    // 【v1.5.2 重写】iOS 拍照 EXIF 处理：先用临时 Canvas 清除 EXIF，再加水印
+    //   方案：iOS 上 new Image() 加载 Blob 时浏览器自动应用 EXIF 旋转，
+    //   通过临时 Canvas 绘制一次，得到视觉正确、无 EXIF 的图片，
+    //   再传给 addWatermarkBlob，不再需要 EXIF 方向参数。
+    //   安卓完全跳过此步骤，直接传原始 Blob。
+    const fileType = (file.type || '').toLowerCase();
+    const isNativeImage = fileType === 'image/jpeg' || fileType === 'image/png' || fileType === 'image/gif' || fileType === 'image/webp' || fileType === 'image/bmp';
+    // 安卓需要读取 EXIF 方向值
+    let captureOrientation = 1;
+    try { captureOrientation = await readExifOrientation(file); } catch (e) { captureOrientation = 1; }
+    let watermarkSource;
+    let watermarkOrientation = 1; // 传给 addWatermarkBlob 的方向值
+    if (isIOS) {
+      // 【v1.5.2 关键修复】iOS：临时 Canvas 清除 EXIF
+      try {
+        const tempImg = await new Promise((res, rej) => {
+          const img = new Image();
+          img.onload = () => res(img);
+          img.onerror = () => rej(new Error('临时图片加载失败'));
+          img.src = URL.createObjectURL(file);
+        });
+        // 浏览器已自动应用 EXIF 旋转，img.width/height 是视觉正确尺寸
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = tempImg.width;
+        tempCanvas.height = tempImg.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(tempImg, 0, 0);
+        URL.revokeObjectURL(tempImg.src);
+        // 从临时 Canvas 导出无 EXIF 的 Blob
+        watermarkSource = await new Promise(r => tempCanvas.toBlob(r, 'image/jpeg', 0.95));
+        // 此时图片已视觉正确且无 EXIF，不需要方向纠正
+        watermarkOrientation = 1;
+      } catch (iosErr) {
+        console.warn('[iOS EXIF清除] 失败，回退到原始图片:', iosErr);
+        watermarkSource = file;
+        watermarkOrientation = 1;
+      }
+    } else {
+      // 安卓：直接传原始 Blob，EXIF 方向值由 addWatermarkBlob 处理
+      watermarkSource = isNativeImage ? file : await readImageAsDataURL(file);
+      watermarkOrientation = isNativeImage ? captureOrientation : 1;
+    }
+    // 2. 同步绘制水印 + 导出 fullBlob 和 thumbBlob（一次 Canvas 绘制）
+    const { fullBlob, thumbBlob } = await addWatermarkBlob(watermarkSource, getCleanSeatName(sName), bTime, watermarkOrientation);
+    // 3. 生成 Blob URL 用于即时显示和预览
+    const fullBlobURL = URL.createObjectURL(fullBlob);
+    const thumbBlobURL = URL.createObjectURL(thumbBlob);
+    // 4. 构建图片数据：缩略图用 Blob URL 显示，预览用 fullBlobURL
+    const newImg = {
+      data: '',              // Base64 高清图（后台异步填充）
+      original: undefined,   // 【v1.4.0】不再存储无水印原图，节省空间
+      thumbnail: '',         // Base64 缩略图（后台异步填充）
+      type: 'capture',
+      createdAt: Date.now(),
+      seatName: sName,
+      beijingTime: bTime,
+      isHighResReady: true,  // 【v1.9.37】拍照同步生成高清 Blob，立即可用
+      processingState: 'processing', // 【v1.9.39】后台存储进行中
+      // 【关键】Blob 缓存，预览和拼接直接使用，不依赖 IndexedDB
+      _fullBlob: fullBlob,
+      _thumbBlob: thumbBlob,
+      _fullBlobURL: fullBlobURL,
+      _thumbBlobURL: thumbBlobURL
+    };
+    images.push(newImg);
+    // 5. 更新内存 Blob 缓存（预览时直接使用）
+    cacheCellBlobs(ck, images);
+    // 5.5 同步更新 _cellDataCache，确保拼接等操作能立即读取到新图片
+    _cellDataCache.set(ck, images);
+    // 6. 立即显示缩略图（用 Blob URL 临时显示）
+    imageCountCache.set(ck, images.length);
+    state.seatHasImages.add(sk);
+    invalidateTimeslotCache(sk);
+    updateSeatVisual(sk);
+    appendThumbnailToDOM(ck, newImg, images.length - 1);
+    updateBottomBar();
+    // 7. 上传到 Storage + 写入 DB（串行化，等待完成）
+    const uploadPromise = (async () => {
+      // 禁用该座位的操作按钮
+      disableSeatButtons(ck, true);
+      try {
+        await saveCellData(ck, images);
+      } catch (err) {
+        if (err.name === 'QuotaExceededError') showToast('存储空间不足！');
+        else console.error('DB写入出错:', err);
+      }
+      // 上传完成，刷新 DOM 缓存和缩略图（使用云端 URL 替代 Blob URL）
+      invalidateTimeslotCache(sk);
+      requestAnimationFrame(() => { renderTimeSlots(sk); updateSeatVisual(sk); });
+      disableSeatButtons(ck, false);
+    })();
+    setUploadLock(ck, uploadPromise);
+
+    // 7. 后台异步：将 Blob 转 Base64 存入 IndexedDB（不阻塞预览）
+    const doStore = async () => {
+      try {
+        // 【v1.4.0】拍照仅存储水印图+缩略图，不再存储无水印原图
+        const [watermarked, thumbnail] = await Promise.all([
+          blobToDataURL(fullBlob),
+          blobToDataURL(thumbBlob)
+        ]);
+        const cd = await getCellData(ck);
+        if (cd && cd.images && cd.images.length > 0) {
+          const lastIdx = cd.images.length - 1;
+          cd.images[lastIdx].data = watermarked;
+          cd.images[lastIdx].thumbnail = thumbnail;
+          cd.images[lastIdx].processingState = 'done'; // 【v1.9.39】后台存储完成
+          await saveCellData(ck, cd.images);
+          // 数据已持久化，刷新 DOM 缓存
+          invalidateTimeslotCache(sk);
+          await renderTimeSlots(sk);
+          // 【v1.5.5】通知预览组件高清源已就绪
+          notifyPreviewDataReady(ck);
+        }
+        // 【v1.3.0】拍照后自动下载（替换原 Web Share API 分享）
+        if (state.autoShare) {
+          const safeSName = getCleanSeatName(sName).replace(/[^\w\u4e00-\u9fff.-]/g, '_');
+          const dlName = `${safeSName}_${bTime.replace(/[: ]/g, '-')}.jpg`;
+          try {
+            downloadBlob(fullBlob, dlName);
+          } catch (e) {
+            console.warn('自动下载失败:', e);
+          }
+        }
+      } catch (err) {
+        console.error('后台存储出错:', err);
+        // 【v1.9.39】标记失败并自动重试
+        try {
+          const cd = await getCellData(ck);
+          if (cd && cd.images && cd.images.length > 0) {
+            const lastIdx = cd.images.length - 1;
+            cd.images[lastIdx].processingState = 'failed';
+            await saveCellData(ck, cd.images);
+            retryFailedProcessing(ck, lastIdx);
+          }
+        } catch (e2) { console.error('标记失败状态出错:', e2); }
+      }
+    };
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => { doStore(); }, { timeout: 2000 });
+    } else {
+      setTimeout(doStore, 100);
+    }
+  } catch (err) {
+    if (err.name === 'QuotaExceededError') showToast('存储空间不足！');
+    else { console.error('拍照处理出错:', err); showToast('拍照处理出错'); }
+  }
+  captureInput.value = '';
+});
+
+uploadInput.addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file || !currentUploadCellKey) { uploadInput.value = ''; return; }
+  const ck = currentUploadCellKey; currentUploadCellKey = null;
+  const upFid = parseInt(ck.split('-')[0]);
+  if (!canEditFloor(upFid)) { showToast('无该楼层操作权限'); uploadInput.value = ''; return; }
+  if (isUploading(ck)) { showToast('请等待当前上传完成'); uploadInput.value = ''; return; }
+
+  const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  if (getAreaImageTotal(fid, aname) >= MAX_AREA_IMAGES) { showToast('该区域图片已达上限（999张），请清理后再添加'); uploadInput.value = ''; return; }
+  const sName = getSeatNameSync(fid, aname, sidx);
+  const bTime = getBeijingTime();
+  const sk = cellToSeatKey(ck);
+
+  const uploadPromise = (async () => {
+    disableSeatButtons(ck, true);
+    try {
+      // 1. 读取并处理图片（完整处理，不使用占位）
+      let uploadOrientation = 1;
+      try { uploadOrientation = await readExifOrientation(file); } catch (exifErr) { /* 容错 */ }
+
+      let fullBlob, thumbnail;
+      const rawOriginal = await readImageAsDataURL(file);
+
+      if (state.uploadWatermark) {
+        let wmSource = rawOriginal, wmOrient = uploadOrientation;
+        if (isIOS) {
+          try {
+            const tempImg = await new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = URL.createObjectURL(file); });
+            const tc = document.createElement('canvas'); tc.width = tempImg.width; tc.height = tempImg.height; tc.getContext('2d').drawImage(tempImg, 0, 0); URL.revokeObjectURL(tempImg.src);
+            wmSource = await new Promise(r => tc.toBlob(r, 'image/jpeg', 0.95));
+            wmOrient = 1;
+          } catch (iosErr) { console.warn('[iOS EXIF清除-上传] 失败:', iosErr); }
+        }
+        const r = await addWatermarkBlob(wmSource, getCleanSeatName(sName), bTime, wmOrient);
+        fullBlob = r.fullBlob; thumbnail = await blobToDataURL(r.thumbBlob);
+      } else {
+        const compressed = await compressImage(rawOriginal, 0.92);
+        thumbnail = await generateThumbnail(compressed);
+        fullBlob = dataURLtoBlob(compressed);
+      }
+
+      // 2. 构造图片对象（不使用占位，直接有完整数据）
+      const newImg = {
+        data: thumbnail,
+        thumbnail: thumbnail,
+        type: 'upload',
+        createdAt: Date.now(),
+        seatName: sName,
+        beijingTime: bTime,
+        status: 'occupied',
+        _fullBlob: fullBlob,
+        _fullBlobURL: URL.createObjectURL(fullBlob),
+        _thumbBlobURL: thumbnail.startsWith('blob:') ? thumbnail : null
+      };
+
+      // 3. 加入 images 数组并缓存
+      const cellData = await getCellData(ck);
+      const images = (cellData && cellData.images) ? [...cellData.images] : [];
+      if (images.length >= MAX_IMAGES) { showToast('该时段图片已满'); return; }
+      images.push(newImg);
+      cacheCellBlobs(ck, images);
+      // 同步更新 _cellDataCache，确保拼接等操作能立即读取到新图片
+      _cellDataCache.set(ck, images);
+
+      // 4. 先用 Blob URL 立即显示缩略图
+      imageCountCache.set(ck, images.length);
+      state.seatHasImages.add(sk);
+      invalidateTimeslotCache(sk);
+      updateSeatVisual(sk);
+      appendThumbnailToDOM(ck, newImg, images.length - 1);
+      updateBottomBar();
+
+      // 5. 上传到 Storage + 写入 DB
+      try { await saveCellData(ck, images); } catch (err) { console.error('DB写入出错:', err); }
+
+      // 6. 刷新 DOM（云端 URL 替代 Blob URL）
+      invalidateTimeslotCache(sk);
+      requestAnimationFrame(() => { renderTimeSlots(sk); updateSeatVisual(sk); });
+    } catch (err) {
+      console.error('上传处理出错:', err);
+      showToast('上传处理出错');
+    } finally {
+      disableSeatButtons(ck, false);
+    }
+  })();
+  setUploadLock(ck, uploadPromise);
+  uploadInput.value = '';
+});
+
+// 【v1.9.40】失败自动恢复：清理损坏数据 + 重新生成高清水印图
+async function retryFailedProcessing(cellKey, imgIdx) {
+  // 延迟 2 秒后重试，避免立即重试导致连续失败
+  await new Promise(r => setTimeout(r, 2000));
+  try {
+    const cd = await getCellData(cellKey);
+    if (!cd || !cd.images || !cd.images[imgIdx]) return;
+    const img = cd.images[imgIdx];
+    if (img.processingState !== 'failed') return; // 已被其他流程处理
+    img.processingState = 'processing';
+    await saveCellData(cellKey, cd.images);
+
+    // 第一步：清理损坏的缩略图/数据
+    const sk = cellToSeatKey(cellKey);
+
+    // 第二步：尝试从内存 Blob 缓存重新生成
+    const memBlob = getMemoryBlobURL(cellKey, imgIdx);
+    if (memBlob && memBlob.fullBlobURL) {
+      try {
+        // 从内存 Blob 重新转 Base64 存入 IndexedDB
+        const resp = await fetch(memBlob.fullBlobURL);
+        const blob = await resp.blob();
+        const watermarked = await blobToDataURL(blob);
+        img.data = watermarked;
+        img.processingState = 'done';
+        await saveCellData(cellKey, cd.images);
+        invalidateTimeslotCache(sk);
+        await renderTimeSlots(sk);
+        notifyPreviewDataReady(cellKey);
+        return;
+      } catch (e) { console.warn('从内存Blob重试失败:', e); }
+    }
+
+    // 第三步：内存缓存不可用，尝试从现有 data 字段重新生成缩略图
+    if (img.data && img.data.length > 100) {
+      // data 字段有有效数据，只需重新生成缩略图
+      try {
+        const thumbnail = await generateThumbnail(img.data);
+        img.thumbnail = thumbnail;
+        img.processingState = 'done';
+        await saveCellData(cellKey, cd.images);
+        invalidateTimeslotCache(sk);
+        await renderTimeSlots(sk);
+        notifyPreviewDataReady(cellKey);
+        return;
+      } catch (e) { console.warn('重新生成缩略图失败:', e); }
+    }
+
+    // 第四步：数据不完整，无法恢复，标记为 done 避免无限重试
+    img.processingState = 'done';
+    await saveCellData(cellKey, cd.images);
+  } catch (err) {
+    console.error('重试失败:', err);
+    // 重试也失败，标记为 done 避免无限重试
+    try {
+      const cd2 = await getCellData(cellKey);
+      if (cd2 && cd2.images && cd2.images[imgIdx]) {
+        cd2.images[imgIdx].processingState = 'done';
+        await saveCellData(cellKey, cd2.images);
+      }
+    } catch (e3) { /* 放弃 */ }
+  }
+}
+
+// ============================================================
+// 七、下载
+// ============================================================
+function dataURLtoBlob(dataurl) {
+  const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]);
+  const u8arr = new Uint8Array(bstr.length);
+  for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
+  return new Blob([u8arr], { type: mime });
+}
+/** 【修复预览渐进渲染】将 Base64 data URL 转为 Blob URL
+ *  浏览器对 data: URL 的 JPEG 会逐行解码（从上往下逐渐显示），
+ *  而 blob: URL 可以一次性完整渲染
+ *  创建的 Blob URL 注册到管理器，关闭预览时统一回收 */
+function dataURLtoBlobURL(dataurl) {
+  try {
+    const blob = dataURLtoBlob(dataurl);
+    return createTrackedBlobURL(blob);
+  } catch (e) {
+    return dataurl; // 转换失败时回退到原始 data URL
+  }
+}
+/** 【性能优化】Blob → Base64 DataURL（仅在需要存入 IndexedDB 时才转换） */
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Blob 转 DataURL 失败'));
+    reader.readAsDataURL(blob);
+  });
+}
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  // 不主动 revokeObjectURL：手机浏览器下载大文件可能需要数秒，
+  // 过早回收会导致下载不完整/文件损坏。页面关闭时浏览器会自动回收。
+}
+
+async function getProcessedData(imgObj, fid, aname, sidx) {
+  // 【v1.4.0】不再有 original 字段，直接返回 data
+  return imgObj.data;
+}
+
+// 【v1.3.0 统一下载逻辑】替换原 Web Share API 分享，统一为下载/打包下载
+// 【v1.10.8】下载事件驱动+固定间隔兜底：visibilitychange检测下载开始，2秒兜底
+const ZIP_BATCH_MAX_COUNT = 20;
+const ZIP_BATCH_MAX_SIZE = 60 * 1024 * 1024; // 60MB
+const ZIP_BATCH_FALLBACK_WAIT = 2000; // 兜底固定等待2秒
+let _dlTimer = null;   // 当前下载定时器
+let _dlBlobURLs = [];  // 当前下载的 Blob URL 列表
+let _dlVisHandler = null; // visibilitychange 事件处理器
+
+// 【v1.10.8】清除旧下载状态：定时器、事件监听、Blob URL、提示
+function _clearDlState() {
+  if (_dlTimer) { clearTimeout(_dlTimer); _dlTimer = null; }
+  if (_dlVisHandler) { document.removeEventListener('visibilitychange', _dlVisHandler); _dlVisHandler = null; }
+  if (_dlBlobURLs.length > 0) {
+    _dlBlobURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch(e) {} });
+    _dlBlobURLs = [];
+  }
+  removePersistentToast();
+}
+
+// 【v1.10.8】触发单个下载
+function _triggerDownload(blob, filename) {
+  try {
+    const url = URL.createObjectURL(blob);
+    _dlBlobURLs.push(url);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    return true;
+  } catch (err) {
+    console.error('下载触发失败:', err);
+    return false;
+  }
+}
+
+// 【v1.10.8】等待下载开始或超时：visibilitychange 检测 + 2秒兜底
+function _waitForDownloadStart() {
+  return new Promise(resolve => {
+    let resolved = false;
+    const done = () => {
+      if (resolved) return;
+      resolved = true;
+      if (_dlTimer) { clearTimeout(_dlTimer); _dlTimer = null; }
+      if (_dlVisHandler) { document.removeEventListener('visibilitychange', _dlVisHandler); _dlVisHandler = null; }
+      resolve();
+    };
+    // 优先方案：监听 visibilitychange（浏览器处理下载时可能切换可见性）
+    _dlVisHandler = () => { if (document.hidden) done(); };
+    document.addEventListener('visibilitychange', _dlVisHandler);
+    // 兜底方案：2秒后无论如何都推进
+    _dlTimer = setTimeout(done, ZIP_BATCH_FALLBACK_WAIT);
+  });
+}
+
+async function downloadSelectedImages() {
+  if (state.selectedCells.length === 0) return;
+
+  // 【v1.10.8】每次点击从头开始：清除所有旧状态
+  _clearDlState();
+
+  const cellDataMap = await getCellDataBatch(state.selectedCells);
+
+  const allImgs = [];
+  for (const ck of state.selectedCells) {
+    const cellData = cellDataMap[ck];
+    if (cellData && cellData.images) allImgs.push(...cellData.images);
+  }
+  if (allImgs.some(img => !img._fullBlob && !img._fullBlobURL && (!img.data || !img.data.startsWith('data:') || img.data.split(',')[1].length <= 10))) { showToast('图片处理中，请稍后重试'); return; }
+
+  const items = [];
+  for (const ck of state.selectedCells) {
+    const cellData = cellDataMap[ck];
+    if (!cellData || !cellData.images || cellData.images.length === 0) continue;
+    const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]), tidx = parseInt(parts[3]);
+    const sName = getSeatNameSync(fid, aname, sidx), timeSlot = TIME_SLOTS[tidx];
+    for (let i = 0; i < cellData.images.length; i++) {
+      let blob = cellData.images[i]._fullBlob || null;
+      if (!blob) {
+        const memBlob = getMemoryBlobURL(ck, i);
+        if (memBlob && memBlob.fullBlob) blob = memBlob.fullBlob;
+      }
+      if (!blob && cellData.images[i].data) {
+        try { blob = dataURLtoBlob(cellData.images[i].data); } catch (e) { blob = null; }
+      }
+      if (!blob || blob.size === 0) continue;
+      const safeTimeSlot = timeSlot.replace(/:/g, '');
+      const safeName = getCleanSeatName(sName).replace(/[^\w]/g, '_');
+      const filename = `${safeName}_${safeTimeSlot}_${i + 1}.jpg`;
+      items.push({ blob, filename });
+    }
+  }
+  if (items.length === 0) { showToast('无图片可下载'); return; }
+
+  // 单张直接下载
+  if (items.length === 1) {
+    _triggerDownload(items[0].blob, items[0].filename);
+    showToast('下载已提交');
+    return;
+  }
+
+  // 分批打包：按数量和大小拆分
+  const batches = [];
+  let currentBatch = [];
+  let currentSize = 0;
+  for (const item of items) {
+    const itemSize = item.blob.size || 0;
+    if ((currentBatch.length >= ZIP_BATCH_MAX_COUNT || currentSize + itemSize > ZIP_BATCH_MAX_SIZE) && currentBatch.length > 0) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentSize = 0;
+    }
+    currentBatch.push(item);
+    currentSize += itemSize;
+  }
+  if (currentBatch.length > 0) batches.push(currentBatch);
+
+  const totalBatches = batches.length;
+  const ts = Date.now();
+  let successCount = 0;
+  let failCount = 0;
+
+  // 【v1.10.8】事件驱动串行：逐批打包→触发下载→等待下载开始或2秒兜底→下一批
+  for (let b = 0; b < totalBatches; b++) {
+    showPersistentToast(`正在处理第 ${b + 1}/${totalBatches} 批（共 ${totalBatches} 批），请在下载框中确认...`);
+    try {
+      const zip = new JSZip();
+      const fileDate = new Date('2024-01-01T12:00:00');
+      batches[b].forEach(it => { zip.file(it.filename, it.blob, { date: fileDate }); });
+      const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+      const batchName = totalBatches === 1 ? `图片导出_${ts}.zip` : `图片导出_第${b + 1}批_${ts}.zip`;
+      if (_triggerDownload(zipBlob, batchName)) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+    } catch (err) {
+      console.error(`第 ${b + 1} 批打包出错:`, err);
+      failCount++;
+    }
+    // 等待下载开始或2秒兜底，最后一批不等
+    if (b < totalBatches - 1) {
+      await _waitForDownloadStart();
+    }
+  }
+
+  // 清除提示
+  removePersistentToast();
+
+  // 60秒后统一回收 Blob URL
+  const urlsToRevoke = [..._dlBlobURLs];
+  _dlBlobURLs = [];
+  if (urlsToRevoke.length > 0) {
+    setTimeout(() => { urlsToRevoke.forEach(u => { try { URL.revokeObjectURL(u); } catch(e) {} }); }, 60000);
+  }
+
+  // 完成提示
+  if (failCount === 0) {
+    showToast(`下载完成，成功 ${successCount} 批`);
+  } else {
+    showToast(`下载完成，成功 ${successCount} 批，失败 ${failCount} 批`);
+  }
+}
+
+// 【v1.10.0】持续显示的提示（不自动消失）
+let _persistentToastEl = null;
+function showPersistentToast(msg) {
+  if (!_persistentToastEl) {
+    _persistentToastEl = document.createElement('div');
+    _persistentToastEl.className = 'toast';
+    _persistentToastEl.style.animation = 'none';
+    _persistentToastEl.style.opacity = '1';
+    document.body.appendChild(_persistentToastEl);
+  }
+  _persistentToastEl.textContent = msg;
+}
+function removePersistentToast() {
+  if (_persistentToastEl) { _persistentToastEl.remove(); _persistentToastEl = null; }
+}
+
+
+// 【v1.1.1 改造】拼接选择改为底部滑出面板，点击外部关闭
+const concatOverlay = document.getElementById('concat-overlay');
+const concatSheet = document.getElementById('concat-sheet');
+const concatSheetTitle = document.getElementById('concat-sheet-title');
+const concatGrid = document.getElementById('concat-grid');
+const concatBtnsSimple = document.getElementById('concat-btns-simple');
+const concatBtnsGrid = document.getElementById('concat-btns-grid');
+const concatHBtn = document.getElementById('concat-h-btn');
+const concatVBtn = document.getElementById('concat-v-btn');
+const concatHBtn2 = document.getElementById('concat-h-btn2');
+const concatVBtn2 = document.getElementById('concat-v-btn2');
+const concatBtn = document.getElementById('btn-download-concat');
+
+// 拼接面板状态
+let concatImageData = [];   // 当前可选的全部图片对象
+let concatSelected = [];    // 当前选中的索引（按勾选顺序）
+let concatMaxSelect = 3;    // 最多可选张数
+let concatMode = 'simple';  // 'simple'=2~3张直接选横/竖拼, 'select'=4~6张需选图片
+// 【v1.9.26】拼接选择记忆：记住同一批次的勾选状态，切换时段后重置
+let concatSelectedKey = '';  // 当前批次的标识（selectedCells 排序拼接）
+
+// 【v1.1.1】打开拼接面板
+function openConcatSheet() {
+  concatOverlay.classList.add('show');
+  concatSheet.classList.add('show');
+}
+// 【v1.1.1】关闭拼接面板
+function closeConcatSheet() {
+  concatOverlay.classList.remove('show');
+  concatSheet.classList.remove('show');
+}
+// 点击外部（overlay）关闭面板
+concatOverlay.addEventListener('click', closeConcatSheet);
+
+// 【v1.1.0 新增】根据选中时段图片总数，更新拼接按钮状态
+// 拼接预览按钮显示条件：仅根据图片数量规则，不检查用户角色或写权限
+// 注意：imageCountCache 的 key 可能不含时段（seatKey 格式），所以优先从 _cellDataCache 或云端查询
+async function updateConcatBtnState() {
+  const oldHint = document.querySelector('.concat-hint');
+  if (oldHint) oldHint.remove();
+  const dlConcatBtn = document.getElementById('btn-download-concat');
+  if (state.selectedCells.length === 0) {
+    concatBtn.disabled = false;
+    if (dlConcatBtn) dlConcatBtn.style.visibility = 'hidden';
+    return;
+  }
+  let totalImgs = 0;
+  for (const ck of state.selectedCells) {
+    // 优先从 _cellDataCache 获取（含时段的 cellKey）
+    const cached = _cellDataCache.get(ck);
+    if (cached && cached.length > 0) {
+      totalImgs += cached.length;
+    } else {
+      // 本地缓存无数据，从云端按 cell_key 查询实际图片数
+      try {
+        const { count, error } = await _sb.from('seat_photos')
+          .select('*', { count: 'exact', head: true })
+          .eq('cell_key', ck);
+        const actual = count || 0;
+        totalImgs += actual;
+      } catch (e) {
+        console.warn('拼接条件-云端查询失败', ck, e);
+      }
+    }
+  }
+  if (totalImgs >= 2) {
+    concatBtn.disabled = false;
+    if (dlConcatBtn) dlConcatBtn.style.visibility = 'visible';
+  } else {
+    concatBtn.disabled = true;
+    // 拼接按钮仍可见但 disabled，保留占位避免布局跳动
+    if (dlConcatBtn) dlConcatBtn.style.visibility = 'visible';
+  }
+}
+
+// 【v1.1.0 新增】获取选中时段的所有图片数据
+async function getSelectedImagesData() {
+  const cellDataMap = await getCellDataBatch(state.selectedCells);
+  const allImageData = [];
+  for (const ck of state.selectedCells) {
+    const cellData = cellDataMap[ck];
+    if (!cellData || !cellData.images || cellData.images.length === 0) continue;
+    for (const imgObj of cellData.images) allImageData.push(imgObj);
+  }
+  return allImageData;
+}
+
+// 【v1.1.0 新增】获取图片源 URL
+function getImgSrc(imgObj) {
+  if (imgObj._fullBlobURL) return imgObj._fullBlobURL;
+  if (imgObj._fullBlob) return URL.createObjectURL(imgObj._fullBlob);
+  if (imgObj.url && imgObj.url.startsWith('http')) return imgObj.url;
+  if (imgObj.data) return imgObj.data;
+  return null;
+}
+
+// 【v1.1.0 新增】获取缩略图源 URL
+function getThumbSrc(imgObj) {
+  // 云端公开 URL 最高优先级（从数据库查出的 url 字段）
+  if (imgObj.url && imgObj.url.startsWith('http')) return imgObj.url;
+  if (imgObj._thumbBlobURL) return imgObj._thumbBlobURL;
+  if (imgObj.thumbnail) return imgObj.thumbnail;
+  if (imgObj.thumb) return imgObj.thumb;
+  return getImgSrc(imgObj);
+}
+
+// 【v1.3.7 性能优化】拼接函数重构：
+//   - 原图尺寸超过 2500px 时，先同步等比缩放至 2500px 以内再拼接，大幅降低内存和绘制时间
+//   - 拼接 Canvas 导出质量仍为 JPEG 0.95
+//   - iOS 端：总尺寸 > 4096px 时等比缩放至 4096px（安全限制）
+//   - 安卓端：单图预缩放至 2500px + 拼接，避免超大 Canvas 被浏览器静默降分辨率
+//   - 移除 v1.3.6 的分块拼接（预缩放后 Canvas 不会过大，无需分块）
+
+// 【v1.3.7 新增】拼接预缩放阈值：单图最长边超过此值时等比缩放
+const STITCH_MAX_SIDE = 2500;
+
+// 【v1.3.7 新增】将 Image/ImageBitmap 预缩放至 STITCH_MAX_SIDE 以内，返回 { canvas, w, h }
+// 同步执行，不引入异步延迟
+function preScaleImage(img) {
+  const nw = img.naturalWidth || img.width;
+  const nh = img.naturalHeight || img.height;
+  const maxSide = Math.max(nw, nh);
+  if (maxSide <= STITCH_MAX_SIDE) {
+    // 无需缩放，直接返回原始尺寸信息
+    return { img, w: nw, h: nh };
+  }
+  const scale = STITCH_MAX_SIDE / maxSide;
+  const sw = Math.round(nw * scale);
+  const sh = Math.round(nh * scale);
+  const c = document.createElement('canvas');
+  c.width = sw; c.height = sh;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, sw, sh);
+  return { img: c, w: sw, h: sh };
+}
+
+// 【v1.1.0 新增】竖拼绘制：宽度取最大宽度，高度按比例缩放后累加
+// 【v1.3.7】原图超 2500px 先预缩放再拼接，降低内存压力和绘制时间
+async function stitchVertical(imgObjs) {
+  // 拼接图片源：使用 getImgSrc 获取原图（非缩略图）
+  const imgSrcs = imgObjs.map(getImgSrc);
+  if (imgSrcs.some(s => !s)) throw new Error('部分图片尚未就绪');
+
+  // 将 data URL 转为 Blob URL 再加载，减少内存压力
+  const blobURLs = [];
+  const srcToUse = imgSrcs.map(src => {
+    if (src.startsWith('data:')) {
+      try {
+        const blob = dataURLtoBlob(src);
+        const blobURL = URL.createObjectURL(blob);
+        blobURLs.push(blobURL);
+        return blobURL;
+      } catch (e) { return src; }
+    }
+    return src;
+  });
+
+  const rawImgs = await Promise.all(srcToUse.map(src => new Promise((r, j) => { const img = new Image(); img.crossOrigin = 'anonymous'; img.onload = () => r(img); img.onerror = () => j(new Error('图片加载失败')); img.src = src; })));
+
+  // 加载完成后立即释放 Blob URL
+  blobURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
+
+  // 【v1.3.7】同步预缩放：原图最长边超过 2500px 时等比缩放，降低内存和绘制时间
+  const scaled = rawImgs.map(preScaleImage);
+
+  const maxW = Math.max(...scaled.map(s => s.w));
+  const drawH = scaled.map(s => Math.round(s.h * maxW / s.w));
+  const totalH = drawH.reduce((a, b) => a + b, 0);
+
+  // 拼接尺寸参数：
+  // - iOS 端：总高度 > 4096px 时等比缩放至 4096px（安全限制）
+  // - 安卓端：预缩放后直接拼接，Canvas 尺寸 = 预缩放后实际拼接尺寸
+  let drawW, finalDrawH;
+  if (isIOS && totalH > 4096) {
+    const globalScale = 4096 / totalH;
+    drawW = Math.round(maxW * globalScale);
+    finalDrawH = drawH.map(h => Math.round(h * globalScale));
+  } else {
+    drawW = maxW;
+    finalDrawH = drawH;
+  }
+  const canvasH = finalDrawH.reduce((a, b) => a + b, 0);
+  const canvas = document.createElement('canvas'); canvas.width = drawW; canvas.height = canvasH;
+  const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  let y = 0;
+  for (let i = 0; i < scaled.length; i++) { ctx.drawImage(scaled[i].img, 0, y, drawW, finalDrawH[i]); y += finalDrawH[i]; }
+
+  // Canvas 导出质量：JPEG 0.95
+  return await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+}
+
+// 【v1.1.0 新增】横拼绘制：高度取最大高度，宽度按比例缩放后累加，顶部对齐
+// 【v1.3.7】原图超 2500px 先预缩放再拼接，降低内存压力和绘制时间
+async function stitchHorizontal(imgObjs) {
+  // 拼接图片源：使用 getImgSrc 获取原图（非缩略图）
+  const imgSrcs = imgObjs.map(getImgSrc);
+  if (imgSrcs.some(s => !s)) throw new Error('部分图片尚未就绪');
+
+  // 将 data URL 转为 Blob URL 再加载，减少内存压力
+  const blobURLs = [];
+  const srcToUse = imgSrcs.map(src => {
+    if (src.startsWith('data:')) {
+      try {
+        const blob = dataURLtoBlob(src);
+        const blobURL = URL.createObjectURL(blob);
+        blobURLs.push(blobURL);
+        return blobURL;
+      } catch (e) { return src; }
+    }
+    return src;
+  });
+
+  const rawImgs = await Promise.all(srcToUse.map(src => new Promise((r, j) => { const img = new Image(); img.crossOrigin = 'anonymous'; img.onload = () => r(img); img.onerror = () => j(new Error('图片加载失败')); img.src = src; })));
+
+  // 加载完成后立即释放 Blob URL
+  blobURLs.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
+
+  // 【v1.3.7】同步预缩放：原图最长边超过 2500px 时等比缩放
+  const scaled = rawImgs.map(preScaleImage);
+
+  const maxH = Math.max(...scaled.map(s => s.h));
+  const drawW = scaled.map(s => Math.round(s.w * maxH / s.h));
+  const totalW = drawW.reduce((a, b) => a + b, 0);
+
+  // 拼接尺寸参数：
+  // - iOS 端：总宽度 > 4096px 时等比缩放至 4096px（安全限制）
+  // - 安卓端：预缩放后直接拼接
+  let drawH, finalDrawW;
+  if (isIOS && totalW > 4096) {
+    const globalScale = 4096 / totalW;
+    drawH = Math.round(maxH * globalScale);
+    finalDrawW = drawW.map(w => Math.round(w * globalScale));
+  } else {
+    drawH = maxH;
+    finalDrawW = drawW;
+  }
+  const canvasW = finalDrawW.reduce((a, b) => a + b, 0);
+  const canvas = document.createElement('canvas'); canvas.width = canvasW; canvas.height = drawH;
+  const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  let x = 0;
+  for (let i = 0; i < scaled.length; i++) { ctx.drawImage(scaled[i].img, x, 0, finalDrawW[i], drawH); x += finalDrawW[i]; }
+
+  // Canvas 导出质量：JPEG 0.95
+  return await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+}
+
+// 【v1.1.0 新增】执行拼接并预览
+// 【v1.2.6 iOS修复】增加 try-catch，失败时提示重试
+async function doStitch(imgObjs, direction) {
+  try {
+    showToast('正在拼接...');
+    const blob = direction === 'horizontal' ? await stitchHorizontal(imgObjs) : await stitchVertical(imgObjs);
+    if (!blob) { showToast('拼接失败，请重试'); return; }
+    const blobURL = URL.createObjectURL(blob);
+    showPreviewFromBlobURL(blobURL, blob, '拼接结果');
+  } catch (err) {
+    console.error('拼接预览出错:', err);
+    showToast('拼接失败，请重试');
+  }
+}
+
+// 【v1.1.1】全屏图标 SVG
+const EXPAND_SVG = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 3h6v2H5v4H3V3zm12 0h6v6h-2V5h-4V3zM3 15h2v4h4v2H3v-6zm16 4h-4v2h6v-6h-2v4z"/></svg>';
+
+// 【v1.1.1 改造】渲染拼接选择面板（4~6张图片时显示缩略图网格）
+// 【v1.9.26】同一批次（selectedCells 不变）记住勾选状态，切换时段后重置为默认
+function showConcatSelectModal(allImgs) {
+  concatImageData = allImgs;
+  // 计算当前批次标识
+  const currentKey = [...state.selectedCells].sort().join(',');
+  const sameBatch = (currentKey === concatSelectedKey && concatSelected.length > 0);
+  concatSelectedKey = currentKey;
+
+  if (sameBatch) {
+    // 同一批次：恢复上次勾选（过滤越界索引）
+    concatSelected = concatSelected.filter(i => i < allImgs.length);
+    if (concatSelected.length === 0) {
+      const defaultCount = Math.min(3, allImgs.length);
+      concatSelected = [];
+      for (let i = 0; i < defaultCount; i++) concatSelected.push(i);
+    }
+  } else {
+    // 新批次：重置为默认前三张
+    concatSelected = [];
+    const defaultCount = Math.min(3, allImgs.length);
+    for (let i = 0; i < defaultCount; i++) concatSelected.push(i);
+  }
+
+  concatSheetTitle.textContent = '选择拼接图片（最多3张）';
+  concatBtnsSimple.style.display = 'none';
+  concatBtnsGrid.style.display = 'flex';
+  concatGrid.style.display = 'grid';
+  concatGrid.innerHTML = '';
+  allImgs.forEach((imgObj, idx) => {
+    const thumbSrc = getThumbSrc(imgObj);
+    const div = document.createElement('div');
+    div.className = 'concat-thumb' + (concatSelected.includes(idx) ? ' selected' : '');
+    div.dataset.idx = idx;
+    div.innerHTML = `<img src="${thumbSrc || ''}" /><span class="thumb-expand">${EXPAND_SVG}</span><span class="thumb-check">✓</span>`;
+    concatGrid.appendChild(div);
+  });
+  updateConcatThumbStates();
+  openConcatSheet();
+}
+
+// 【v1.1.1 改造】更新缩略图选中/禁用状态，同时更新按钮可用性
+function updateConcatThumbStates() {
+  const thumbs = concatGrid.querySelectorAll('.concat-thumb');
+  thumbs.forEach(thumb => {
+    const idx = parseInt(thumb.dataset.idx);
+    const isSelected = concatSelected.includes(idx);
+    thumb.classList.toggle('selected', isSelected);
+    if (concatSelected.length >= concatMaxSelect && !isSelected) {
+      thumb.classList.add('disabled');
+    } else {
+      thumb.classList.remove('disabled');
+    }
+  });
+  // 拼接按钮仅当勾选张数 >= 2 且 <= 3 时可用
+  const canStitch = concatSelected.length >= 2 && concatSelected.length <= concatMaxSelect;
+  concatHBtn2.disabled = !canStitch;
+  concatVBtn2.disabled = !canStitch;
+}
+
+// 【v1.1.1 改造】缩略图网格点击事件
+concatGrid.addEventListener('click', (e) => {
+  // 点击全屏图标 → 预览大图（【v1.3.0 iOS修复】阻止事件冒泡，防止被父容器手势拦截）
+  const expandBtn = e.target.closest('.thumb-expand');
+  if (expandBtn) {
+    e.stopPropagation();
+    e.preventDefault();
+    const thumb = expandBtn.closest('.concat-thumb');
+    const idx = parseInt(thumb.dataset.idx);
+    const imgObj = concatImageData[idx];
+    const src = getImgSrc(imgObj);
+    if (src) {
+      const blob = imgObj._fullBlob || null;
+      showPreviewFromBlobURL(src, blob, '图片预览');
+    }
+    return;
+  }
+  // 点击图片 → 勾选/取消勾选
+  const thumb = e.target.closest('.concat-thumb');
+  if (!thumb || thumb.classList.contains('disabled')) return;
+  const idx = parseInt(thumb.dataset.idx);
+  const selIdx = concatSelected.indexOf(idx);
+  if (selIdx >= 0) {
+    concatSelected.splice(selIdx, 1);
+  } else {
+    if (concatSelected.length >= concatMaxSelect) return;
+    concatSelected.push(idx);
+  }
+  updateConcatThumbStates();
+});
+
+// 【v1.3.0 iOS修复】为展开按钮添加独立的触摸事件监听，防止 iOS 手势拦截
+concatGrid.addEventListener('touchend', (e) => {
+  const expandBtn = e.target.closest('.thumb-expand');
+  if (expandBtn) {
+    e.stopPropagation();
+    e.preventDefault();
+    const thumb = expandBtn.closest('.concat-thumb');
+    const idx = parseInt(thumb.dataset.idx);
+    const imgObj = concatImageData[idx];
+    const src = getImgSrc(imgObj);
+    if (src) {
+      const blob = imgObj._fullBlob || null;
+      showPreviewFromBlobURL(src, blob, '图片预览');
+    }
+  }
+}, { passive: false });
+
+// 【v1.1.1 改造】横拼/竖拼按钮事件
+// 情况2（2~3张）的按钮
+concatHBtn.addEventListener('click', async () => {
+  closeConcatSheet();
+  await doStitch(concatImageData, 'horizontal');
+});
+concatVBtn.addEventListener('click', async () => {
+  closeConcatSheet();
+  await doStitch(concatImageData, 'vertical');
+});
+// 情况3（4~6张）的按钮
+concatHBtn2.addEventListener('click', async () => {
+  const selectedImgs = concatSelected.map(i => concatImageData[i]);
+  if (selectedImgs.length < 2) { showToast('需选择2张及以上图片'); return; }
+  closeConcatSheet();
+  await doStitch(selectedImgs, 'horizontal');
+});
+concatVBtn2.addEventListener('click', async () => {
+  const selectedImgs = concatSelected.map(i => concatImageData[i]);
+  if (selectedImgs.length < 2) { showToast('需选择2张及以上图片'); return; }
+  closeConcatSheet();
+  await doStitch(selectedImgs, 'vertical');
+});
+
+// 【v1.1.1 改造】拼接预览主入口：根据图片总数分三种交互
+async function downloadConcatenated() {
+  if (state.selectedCells.length === 0) return;
+  const uniqueTimeSlots = new Set(state.selectedCells.map(ck => ck.split('-')[3]));
+  if (uniqueTimeSlots.size > 2) { showToast('拼接功能只能选择 2 个时段'); return; }
+  try {
+  const allImageData = await getSelectedImagesData();
+  if (allImageData.length === 0) { showToast('无图片可拼接'); return; }
+  // 【v1.9.39 修复】判断图片是否可用于拼接：有可用的图片源即可
+  const hasUnusable = allImageData.some(img => !getImgSrc(img));
+  if (hasUnusable) { showToast('部分图片尚未就绪，请稍后再试'); return; }
+
+  if (allImageData.length === 1) {
+    showToast('需选择2张及以上图片才能拼接');
+    return;
+  } else if (allImageData.length <= 3) {
+    // 情况2：2~3张 → 底部面板只显示横拼/竖拼按钮
+    concatMode = 'simple';
+    concatImageData = allImageData;
+    concatSheetTitle.textContent = '选择拼接方式';
+    concatBtnsSimple.style.display = 'flex';
+    concatBtnsGrid.style.display = 'none';
+    concatGrid.style.display = 'none';
+    concatHBtn.disabled = false;
+    concatVBtn.disabled = false;
+    openConcatSheet();
+  } else {
+    // 情况3：4~6张 → 底部面板显示缩略图网格+按钮
+    concatMode = 'select';
+    showConcatSelectModal(allImageData);
+  }
+  } catch (err) {
+    console.error('拼接预览出错:', err);
+    showToast('拼接出错: ' + (err.message || '未知错误'));
+  }
+}
+
+// ============================================================
+// 八、批量下载
+// ============================================================
+const batchModal = document.getElementById('batch-modal');
+const batchAreasDiv = document.getElementById('batch-areas');
+const batchTimesDiv = document.getElementById('batch-times');
+const batchProgress = document.getElementById('batch-progress');
+let batchSelectedAreas = new Set(), batchSelectedTimes = new Set();
+let batchPacking = false; // 【v1.14.0】打包进行中标志
+
+// 【v1.15.0】选择状态持久化
+function saveBatchSelection() {
+  try { localStorage.setItem('batch_download_selection', JSON.stringify({ areas: [...batchSelectedAreas], times: [...batchSelectedTimes] })); } catch (e) {}
+}
+function loadBatchSelection() {
+  try {
+    const data = JSON.parse(localStorage.getItem('batch_download_selection'));
+    if (data) { batchSelectedAreas = new Set(data.areas || []); batchSelectedTimes = new Set(data.times || []); }
+  } catch (e) {}
+}
+function applyBatchSelectionToUI() {
+  batchAreasDiv.querySelectorAll('.batch-chip').forEach(c => {
+    if (c.dataset.ak) c.classList.toggle('checked', batchSelectedAreas.has(c.dataset.ak));
+  });
+  batchTimesDiv.querySelectorAll('.batch-chip').forEach(c => {
+    if (c.dataset.tidx !== undefined) c.classList.toggle('checked', batchSelectedTimes.has(c.dataset.tidx));
+  });
+}
+
+async function initBatchModal() {
+  let ahtml = '';
+  FLOORS.forEach(floor => {
+    floor.areas.forEach(area => {
+      const ak = areaKey(floor.id, area.name);
+      ahtml += `<div class="batch-chip" data-ak="${ak}">${floor.name}${area.name}</div>`;
+    });
+  });
+  batchAreasDiv.innerHTML = ahtml;
+  let thtml = '';
+  TIME_SLOTS.forEach((ts, idx) => {
+    thtml += `<div class="batch-chip" data-tidx="${idx}">${ts}</div>`;
+  });
+  batchTimesDiv.innerHTML = thtml;
+  // 【v1.15.0】恢复上次的选中状态
+  loadBatchSelection();
+  applyBatchSelectionToUI();
+}
+
+batchModal.addEventListener('click', (e) => {
+  // 【v1.15.4】打包进行中禁止所有操作
+  if (batchPacking) return;
+  // 【v1.17.1】touch 已处理则跳过，防止双触发
+  if (_chipTouchHandled) return;
+  const chip = e.target.closest('.batch-chip');
+  if (chip) {
+    chip.classList.toggle('checked');
+    if (chip.dataset.ak) { chip.classList.contains('checked') ? batchSelectedAreas.add(chip.dataset.ak) : batchSelectedAreas.delete(chip.dataset.ak); }
+    if (chip.dataset.tidx !== undefined) { const ti = chip.dataset.tidx; chip.classList.contains('checked') ? batchSelectedTimes.add(ti) : batchSelectedTimes.delete(ti); }
+    saveBatchSelection();
+    return;
+  }
+  const selAll = e.target.closest('.batch-select-all');
+  if (selAll) {
+    const target = selAll.dataset.target;
+    const container = target === 'area' ? batchAreasDiv : batchTimesDiv;
+    const chips = container.querySelectorAll('.batch-chip');
+    const allChecked = [...chips].every(c => c.classList.contains('checked'));
+    chips.forEach(c => {
+      if (allChecked) { c.classList.remove('checked'); if (c.dataset.ak) batchSelectedAreas.delete(c.dataset.ak); if (c.dataset.tidx !== undefined) batchSelectedTimes.delete(c.dataset.tidx); }
+      else { c.classList.add('checked'); if (c.dataset.ak) batchSelectedAreas.add(c.dataset.ak); if (c.dataset.tidx !== undefined) batchSelectedTimes.add(c.dataset.tidx); }
+    });
+    saveBatchSelection();
+  }
+});
+
+document.getElementById('batch-cancel').addEventListener('click', () => {
+  if (batchPacking) return; // 【v1.15.4】打包中按钮已禁用
+  batchModal.classList.remove('show');
+});
+
+// 【v1.17.1】短按拖动多选（批量下载 + 清除图片共用）
+// 移动>8px进入拖动选择模式；≤8px视为点击，用preventDefault阻止合成click
+let _chipTouchHandled = false; // 防止 touch 处理后 click 再次触发
+function setupChipDragSelect(gridEl, onToggle, onClick) {
+  let dragMode = null; // 'select' | 'deselect'
+  let dragActive = false;
+  let startChip = null;
+  let startX = 0, startY = 0;
+  const touchedChips = new Set();
+  const DRAG_THRESHOLD = 8;
+
+  gridEl.addEventListener('touchstart', (e) => {
+    const chip = e.target.closest('.batch-chip');
+    if (!chip || chip.classList.contains('disabled')) return;
+    startChip = chip;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    dragMode = null;
+    dragActive = false;
+    touchedChips.clear();
+    touchedChips.add(chip);
+  }, { passive: true });
+
+  gridEl.addEventListener('touchmove', (e) => {
+    if (!startChip) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (!dragActive) {
+      if (Math.sqrt(dx * dx + dy * dy) < DRAG_THRESHOLD) return;
+      dragActive = true;
+      dragMode = startChip.classList.contains('checked') ? 'deselect' : 'select';
+      startChip.classList.toggle('checked');
+      onToggle(startChip, dragMode === 'select');
+      e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    const touch = e.touches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!el) return;
+    const chip = el.closest('.batch-chip');
+    if (!chip || chip.classList.contains('disabled') || touchedChips.has(chip)) return;
+    touchedChips.add(chip);
+    const shouldCheck = dragMode === 'select';
+    if (shouldCheck !== chip.classList.contains('checked')) {
+      chip.classList.toggle('checked');
+      onToggle(chip, shouldCheck);
+    }
+  }, { passive: false });
+
+  gridEl.addEventListener('touchend', (e) => {
+    if (startChip && !dragActive && onClick) {
+      onClick(startChip);
+      e.preventDefault(); // 阻止合成 click 事件，防止双触发
+      _chipTouchHandled = true;
+      setTimeout(() => { _chipTouchHandled = false; }, 300);
+    }
+    startChip = null;
+    dragActive = false;
+    dragMode = null;
+    touchedChips.clear();
+  }, { passive: false });
+
+  gridEl.addEventListener('touchcancel', () => {
+    startChip = null;
+    dragActive = false;
+    dragMode = null;
+    touchedChips.clear();
+  }, { passive: true });
+}
+
+// 批量下载拖动多选
+function batchChipToggle(chip, isChecked) {
+  if (chip.dataset.ak) { isChecked ? batchSelectedAreas.add(chip.dataset.ak) : batchSelectedAreas.delete(chip.dataset.ak); }
+  if (chip.dataset.tidx !== undefined) { const ti = chip.dataset.tidx; isChecked ? batchSelectedTimes.add(ti) : batchSelectedTimes.delete(ti); }
+  saveBatchSelection();
+}
+function batchChipClick(chip) {
+  chip.classList.toggle('checked');
+  batchChipToggle(chip, chip.classList.contains('checked'));
+}
+setupChipDragSelect(batchAreasDiv, batchChipToggle, batchChipClick);
+setupChipDragSelect(batchTimesDiv, batchChipToggle, batchChipClick);
+
+// 【v1.15.4】设置/恢复打包中的 UI 状态
+function setBatchPackingUI(packing) {
+  const cancelBtn = document.getElementById('batch-cancel');
+  const execBtn = document.getElementById('batch-exec');
+  const chips = batchModal.querySelectorAll('.batch-chip');
+  const selAllBtns = batchModal.querySelectorAll('.batch-select-all');
+  if (packing) {
+    cancelBtn.textContent = '打包进行中';
+    cancelBtn.classList.add('disabled');
+    execBtn.style.display = 'none';
+    chips.forEach(c => c.classList.add('disabled'));
+    selAllBtns.forEach(b => b.classList.add('disabled'));
+  } else {
+    cancelBtn.textContent = '取消';
+    cancelBtn.classList.remove('disabled');
+    execBtn.style.display = '';
+    chips.forEach(c => c.classList.remove('disabled'));
+    selAllBtns.forEach(b => b.classList.remove('disabled'));
+    batchProgress.textContent = '';
+  }
+}
+
+// 【v1.15.0】收集指定区域中指定座位的图片 Blob（seatIndices 为空则收集全部座位）
+async function collectAreaBlobs(ak, seatIndices) {
+  const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+  const seatCount = getAreaSeatCount(fid, aname);
+  const targetSeats = seatIndices || Array.from({length: seatCount}, (_, i) => i);
+  const neededKeys = [];
+  for (const sidx of targetSeats) {
+    if (sidx >= seatCount) continue;
+    const sk = seatKey(fid, aname, sidx);
+    if (state.deletedSeats.has(sk)) continue;
+    for (const tidx of batchSelectedTimes) {
+      const tIdx = parseInt(tidx);
+      neededKeys.push(cellKey(fid, aname, sidx, tIdx));
+    }
+  }
+  const cellDataMap = await getCellDataBatch(neededKeys);
+  const blobs = []; // [{ blob, filename, date }]
+  for (const sidx of targetSeats) {
+    if (sidx >= seatCount) continue;
+    const sk = seatKey(fid, aname, sidx);
+    if (state.deletedSeats.has(sk)) continue;
+    const sName = getSeatNameSync(fid, aname, sidx);
+    for (const tidx of batchSelectedTimes) {
+      const tIdx = parseInt(tidx);
+      const ck = cellKey(fid, aname, sidx, tIdx);
+      const cellData = cellDataMap[ck];
+      if (!cellData) continue;
+      for (let i = 0; i < cellData.images.length; i++) {
+        const img = cellData.images[i];
+        let blob = null;
+        if (img._fullBlob) blob = img._fullBlob;
+        if (!blob) { const memBlob = getMemoryBlobURL(ck, i); if (memBlob && memBlob.fullBlob) blob = memBlob.fullBlob; }
+        if (!blob && img.data && img.data.startsWith('data:') && img.data.indexOf(',') > 0 && img.data.split(',')[1].length > 10) {
+          try { blob = dataURLtoBlob(img.data); } catch (e) { blob = null; }
+        }
+        if (!blob && img.original && img.original.startsWith('data:')) {
+          try { blob = dataURLtoBlob(img.original); } catch (e) { blob = null; }
+        }
+        if (!blob || blob.size === 0) continue;
+        const safeTimeSlot = TIME_SLOTS[tIdx].replace(/:/g, '');
+        const safeSName = getCleanSeatName(sName).replace(/[^\w]/g, '_');
+        const fileDate = new Date('2024-01-01T12:00:00');
+        blobs.push({ blob, filename: `${safeSName}_${safeTimeSlot}_${i + 1}.jpg`, date: fileDate });
+      }
+    }
+  }
+  return blobs;
+}
+
+// 【v1.15.1】将 Blob 列表打包为 ZIP 并触发下载
+async function packAndDownload(blobs, zipName) {
+  const zip = new JSZip();
+  blobs.forEach(b => zip.file(b.path, b.blob, { date: b.date }));
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+  _triggerDownload(zipBlob, zipName);
+}
+
+document.getElementById('batch-exec').addEventListener('click', async () => {
+  if (batchSelectedAreas.size === 0 || batchSelectedTimes.size === 0) { showToast('请选择区域和时段'); return; }
+  if (batchSelectedAreas.size > 4) { showToast('最多选择4个区域'); return; }
+
+  // 【v1.15.4】强制清除上一次下载的所有残留状态
+  _clearDlState();
+  batchPacking = false;
+  setBatchPackingUI(false);
+
+  // 第一步：统计每个区域的图片数量
+  const areaCounts = new Map();
+  for (const ak of batchSelectedAreas) {
+    const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+    const seatCount = getAreaSeatCount(fid, aname);
+    let cnt = 0;
+    for (const tidx of batchSelectedTimes) {
+      const tIdx = parseInt(tidx);
+      for (let sidx = 0; sidx < seatCount; sidx++) {
+        const sk = seatKey(fid, aname, sidx);
+        if (state.deletedSeats.has(sk)) continue;
+        cnt += imageCountCache.get(cellKey(fid, aname, sidx, tIdx)) || 0;
+      }
+    }
+    areaCounts.set(ak, cnt);
+  }
+
+  // 【v1.15.4】记录超标区域但不取消勾选
+  const overLimitAreas = [];
+  const overLimitNames = [];
+  for (const [ak, cnt] of areaCounts) {
+    if (cnt > 999) { overLimitAreas.push(ak); overLimitNames.push(ak.split('-')[1]); }
+  }
+  overLimitAreas.forEach(ak => areaCounts.delete(ak));
+  if (areaCounts.size === 0) {
+    showToast(`${overLimitNames.join('、')}超999张请减选，无可下载区域`, 3000);
+    return;
+  }
+
+  // 确定区域顺序（按FLOORS排列，保证一致性）
+  const orderedAreas = [];
+  FLOORS.forEach(floor => {
+    floor.areas.forEach(area => {
+      const ak = areaKey(floor.id, area.name);
+      if (areaCounts.has(ak)) orderedAreas.push(ak);
+    });
+  });
+
+  // 进入打包模式
+  batchPacking = true;
+  setBatchPackingUI(true);
+
+  try {
+    // 第二步：按区域顺序、座位编号从小到大收集所有图片
+    const allBlobs = []; // [{ blob, path, date, ak }]
+    for (const ak of orderedAreas) {
+      if (!batchPacking) break;
+      const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+      const floorObj = FLOORS.find(f => f.id === fid);
+      const folder = `${floorObj.name}_${aname}`;
+      const blobs = await collectAreaBlobs(ak);
+      blobs.forEach(b => {
+        allBlobs.push({ blob: b.blob, path: `${folder}/${b.filename}`, date: b.date, ak });
+      });
+    }
+
+    if (!batchPacking) {
+      _clearDlState(); batchPacking = false; setBatchPackingUI(false);
+      return;
+    }
+    if (allBlobs.length === 0) {
+      _clearDlState(); batchPacking = false; setBatchPackingUI(false);
+      showToast('无图片可下载');
+      return;
+    }
+
+    // 第三步：按顺序分成最多2批，每批最多120张（严格按编号顺序紧密排列）
+    const MAX = 120;
+    const batches = [];
+    batches.push(allBlobs.slice(0, MAX));
+    if (allBlobs.length > MAX) batches.push(allBlobs.slice(MAX, MAX * 2));
+
+    // 确定每个区域跨几个批次（用于文件夹批次后缀）
+    const areaBatchMap = new Map();
+    batches.forEach((batchItems, bi) => {
+      new Set(batchItems.map(b => b.ak)).forEach(ak => {
+        if (!areaBatchMap.has(ak)) areaBatchMap.set(ak, new Set());
+        areaBatchMap.get(ak).add(bi);
+      });
+    });
+    const areaBatchLabelMap = new Map();
+    areaBatchMap.forEach((bis, ak) => {
+      if (bis.size > 1) {
+        [...bis].sort((a, b) => a - b).forEach((bi, num) => {
+          areaBatchLabelMap.set(`${ak}_${bi}`, num === 0 ? '第一批' : '第二批');
+        });
+      }
+    });
+
+    // 第四步：逐批打包下载
+    const downloadedAreas = new Set();
+    for (let bi = 0; bi < batches.length; bi++) {
+      if (!batchPacking) break;
+      const batchItems = batches[bi];
+      const globalLabel = bi === 0 ? '第一批' : '第二批';
+      batchProgress.textContent = `正在打包${globalLabel}（${bi + 1}/${batches.length}），请稍候…`;
+
+      // 为跨批次区域的文件夹添加批次后缀
+      const finalBlobs = batchItems.map(item => {
+        let path = item.path;
+        if (areaBatchMap.get(item.ak).size > 1) {
+          const label = areaBatchLabelMap.get(`${item.ak}_${bi}`);
+          const si = path.indexOf('/');
+          path = path.substring(0, si) + `_${label}` + path.substring(si);
+        }
+        return { blob: item.blob, path, date: item.date };
+      });
+
+      // 压缩包文件名以区域命名
+      const batchAreaNames = [...new Set(batchItems.map(item => item.ak.split('-')[1]))];
+      const zipName = `${batchAreaNames.join('_')}_${globalLabel}_${finalBlobs.length}张.zip`;
+      await packAndDownload(finalBlobs, zipName);
+      batchItems.forEach(item => downloadedAreas.add(item.ak));
+
+      // 等待4秒后开始下一批
+      if (bi < batches.length - 1 && batchPacking) {
+        await new Promise(resolve => setTimeout(resolve, 4000));
+      }
+    }
+
+    // 打包完成后，清除所有下载状态锁
+    _clearDlState();
+    batchPacking = false;
+    setBatchPackingUI(false);
+
+    // 已下载的区域：仅当该区域所有图片都在批次内时才取消勾选
+    const allAreaKeys = [...new Set(allBlobs.map(b => b.ak))];
+    for (const ak of allAreaKeys) {
+      const totalInAll = allBlobs.filter(b => b.ak === ak).length;
+      const totalInBatches = batches.flat().filter(b => b.ak === ak).length;
+      if (totalInAll === totalInBatches) {
+        batchSelectedAreas.delete(ak);
+        const chip = batchAreasDiv.querySelector(`.batch-chip[data-ak="${ak}"]`);
+        if (chip) chip.classList.remove('checked');
+      }
+    }
+    saveBatchSelection();
+
+    // 【v1.15.4】合并提示：超标+下载完成合为一条，3秒显示
+    const dlNames = [...downloadedAreas].map(ak => ak.split('-')[1]);
+    const pendingAreas = [...batchSelectedAreas];
+
+    if (overLimitNames.length > 0 && dlNames.length > 0) {
+      showToast(`${overLimitNames.join('、')}超999张请减选，已提交下载：${dlNames.join('、')}`, 3000);
+    } else if (overLimitNames.length === 0 && dlNames.length > 0 && pendingAreas.length > 0) {
+      showToast(`已提交下载：${dlNames.join('、')}，其余待下次打包`, 3000);
+    } else if (overLimitNames.length === 0 && dlNames.length > 0 && pendingAreas.length === 0) {
+      showToast(`已提交下载：${dlNames.join('、')}`, 3000);
+    } else if (dlNames.length === 0) {
+      showToast('图片数量超出，请重新下载剩余区域', 3000);
+    }
+
+  } catch (err) {
+    console.error('批量下载出错:', err);
+    showToast('打包失败，请重试', 3000);
+    _clearDlState();
+    batchPacking = false;
+    setBatchPackingUI(false);
+  }
+});
+
+// ============================================================
+// 九、全屏预览（自定义手势管理器，类 iOS 相册体验）
+// ============================================================
+const previewModal = document.getElementById('preview-modal');
+const previewScroller = document.getElementById('preview-scroller');
+const previewClose = document.getElementById('preview-close');
+const previewIndicator = document.getElementById('preview-indicator');
+const previewSaveBtn = document.getElementById('preview-save-btn');
+
+// ---- 预览状态 ----
+let pvImages = [], pvIndex = 0;
+const pvCache = new Map();
+const PV_CACHE_MAX = 20; // 【性能优化】预览缓存最大条目数，防止内存无限增长
+const pvStates = []; // 每张图片独立的变换状态 { scale, tx, ty }
+// 【v1.9.38】解码代际：touchstart 时递增，使正在进行的解码失效
+let pvDecodeGen = 0;
+let pvDecodeResumeTimer = null;
+
+// 【v1.5.5】高清源就绪通知：后台存储完成后，若预览弹窗正在显示且对应图片处于 loading 状态，触发重新加载
+function notifyPreviewDataReady(cellKey) {
+  if (!previewModal.classList.contains('show')) return;
+  for (let i = 0; i < pvImages.length; i++) {
+    if (pvImages[i]._cellKey !== cellKey) continue;
+    const slide = previewScroller.children[i];
+    if (slide && slide.dataset.loaded === '0') {
+      // 更新 pvImages 中的数据引用（从 IndexedDB 重新读取最新数据）
+      getCellData(cellKey).then(cd => {
+        if (!cd || !cd.images || !cd.images[i]) return;
+        pvImages[i] = { ...cd.images[i], _cellKey: cellKey };
+        pvLoadFullImage(i);
+      });
+    }
+  }
+}
+
+// 手势状态
+let pvGesture = 'idle'; // 'idle' | 'pinch' | 'pan' | 'swipe-down' | 'slide'
+let pvStartX = 0, pvStartY = 0;
+let pvLastX = 0, pvLastY = 0;
+let pvLastDist = 0;
+let pvSlideOffset = 0; // 容器水平偏移量（px）
+let pvSlideVelocity = 0;
+let pvLastSlideTime = 0;
+let pvDownStartY = 0, pvDownOffset = 0;
+// 边缘溢出累积：放大平移到边缘后，继续拖动的距离累积，超过阈值才触发切换
+let pvEdgeOverflow = 0;
+const PV_EDGE_THRESHOLD = 20; // 边缘触发切换的阈值（px）
+let pvSaveBtnTimer = null; // 【修改4】保存按钮淡出计时器
+
+// 【修改4】保存按钮淡出控制
+function pvShowSaveBtn() {
+  previewSaveBtn.classList.remove('faded');
+  clearTimeout(pvSaveBtnTimer);
+  pvSaveBtnTimer = setTimeout(() => { previewSaveBtn.classList.add('faded'); }, 1000);
+}
+function pvHideSaveBtnNow() {
+  previewSaveBtn.classList.add('faded');
+}
+
+// 双击检测
+let pvLastTapTime = 0, pvLastTapX = 0, pvLastTapY = 0;
+
+// 动画
+let pvAnimId = null;
+
+// ---- 工具函数 ----
+
+function pvCurState() { return pvStates[pvIndex] || { scale: 1, tx: 0, ty: 0 }; }
+function pvCurrentSlide() { return previewScroller.children[pvIndex] || null; }
+function pvCurrentImg() { const s = pvCurrentSlide(); return s ? s.querySelector('img') : null; }
+
+/** 获取图片在屏幕上的显示尺寸（受 max-width:100vw max-height:100vh 约束） */
+function pvImgDisplaySize(imgEl) {
+  if (!imgEl || !imgEl.naturalWidth) return { w: 0, h: 0 };
+  const nw = imgEl.naturalWidth, nh = imgEl.naturalHeight;
+  const maxW = window.innerWidth, maxH = window.innerHeight;
+  const ratio = Math.min(maxW / nw, maxH / nh, 1);
+  return { w: nw * ratio, h: nh * ratio };
+}
+
+/**
+ * 计算平移边界。
+ * 【修复Bug1】transform-origin:center center 时，tx=0 即图片居中。
+ * 当 scale>1 且图片超出屏幕时，允许平移直到图片边缘对齐屏幕边缘。
+ * @param {boolean} withOverDrag 是否包含过界余量（拖动时用 true，边缘检测用 false）
+ */
+function pvPanBounds(st, withOverDrag) {
+  const imgEl = pvCurrentImg();
+  if (!imgEl) return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+  const { w, h } = pvImgDisplaySize(imgEl);
+  const sw = window.innerWidth, sh = window.innerHeight;
+  const scaledW = w * st.scale, scaledH = h * st.scale;
+  const over = withOverDrag ? 50 : 0;
+
+  // 水平边界
+  let minX, maxX;
+  if (scaledW <= sw) {
+    // 缩放后仍比屏幕窄，居中不可平移
+    // 但边缘检测时，tx=0 即可视为同时到达左右边缘
+    minX = 0; maxX = 0;
+  } else {
+    // 缩放后比屏幕宽，可平移查看
+    minX = -(scaledW - sw) / 2 - over;
+    maxX = (scaledW - sw) / 2 + over;
+  }
+
+  // 垂直边界
+  let minY, maxY;
+  if (scaledH <= sh) {
+    minY = 0; maxY = 0;
+  } else {
+    minY = -(scaledH - sh) / 2 - over;
+    maxY = (scaledH - sh) / 2 + over;
+  }
+
+  return { minX, maxX, minY, maxY };
+}
+
+/**
+ * 判断图片在水平方向是否到达真实边缘（不含 overDrag）
+ * 当 scaledW <= sw 时，图片比屏幕窄，tx=0 即视为同时到达两侧边缘
+ */
+function pvAtRealEdge(st, direction) {
+  const imgEl = pvCurrentImg();
+  if (!imgEl) return false;
+  const { w } = pvImgDisplaySize(imgEl);
+  const sw = window.innerWidth;
+  const scaledW = w * st.scale;
+  // 图片比屏幕窄，任何水平拖动都应触发切换
+  if (scaledW <= sw) return true;
+  // 图片比屏幕宽，检查是否到达指定方向边缘
+  const bounds = pvPanBounds(st, false);
+  if (direction > 0) return st.tx >= bounds.maxX - 1;
+  if (direction < 0) return st.tx <= bounds.minX + 1;
+  return false;
+}
+
+function pvClampPan(st) {
+  const bounds = pvPanBounds(st, true);
+  st.tx = Math.max(bounds.minX, Math.min(bounds.maxX, st.tx));
+  st.ty = Math.max(bounds.minY, Math.min(bounds.maxY, st.ty));
+}
+
+/** 应用变换到指定图片 */
+function pvApplyImg(idx) {
+  if (idx === undefined) idx = pvIndex;
+  const slide = previewScroller.children[idx];
+  if (!slide) return;
+  const imgEl = slide.querySelector('img');
+  if (!imgEl) return;
+  const st = pvStates[idx];
+  if (!st) return;
+  imgEl.style.transform = `translate(${st.tx}px, ${st.ty}px) scale(${st.scale})`;
+  imgEl.style.transition = 'none';
+}
+
+/** 重置指定图片为原始尺寸居中（tx=0, ty=0，CSS flex 负责居中） */
+function pvResetImg(idx) {
+  if (idx === undefined) idx = pvIndex;
+  pvStates[idx] = { scale: 1, tx: 0, ty: 0 };
+  pvApplyImg(idx);
+}
+
+function pvUpdateIndicator() {
+  previewIndicator.textContent = pvImages.length > 1 ? `${pvIndex + 1} / ${pvImages.length}` : '';
+}
+
+function pvApplySlideOffset() {
+  previewScroller.style.transform = `translateX(${-pvIndex * window.innerWidth + pvSlideOffset}px)`;
+  previewScroller.style.transition = 'none';
+}
+
+// ---- 异步加载完整水印图 ----
+// 【终极方案】优先使用 _fullBlobURL（拍照后同步生成），避免重新 Canvas 水印绘制
+async function pvLoadFullImage(idx) {
+  if (idx < 0 || idx >= pvImages.length) return;
+  const gen = pvDecodeGen; // 【v1.9.38】捕获当前代际，异步回调中检查是否过期
+  const slide = previewScroller.children[idx];
+  if (!slide || slide.dataset.loaded === '1') return;
+  const imgEl = slide ? slide.querySelector('img') : null;
+  if (!imgEl) return;
+  try {
+    // 【v1.5.5】加载完成后移除 loading spinner 并淡入图片
+    const finishLoad = (src) => {
+      // 【v1.9.38】代际已变，丢弃过期结果
+      if (pvDecodeGen !== gen) return;
+      // 移除 loading spinner
+      const spinner = slide.querySelector('.pv-loading');
+      if (spinner) spinner.remove();
+      // 设置 src 并淡入（跨域图片需设置 crossOrigin 避免画布污染）
+      imgEl.dataset.decoding = '1';
+      imgEl.onload = () => { delete imgEl.dataset.decoding; };
+      imgEl.onerror = () => { delete imgEl.dataset.decoding; };
+      if (src.startsWith('http')) imgEl.crossOrigin = 'anonymous';
+      imgEl.src = src;
+      slide.dataset.loaded = '1';
+    };
+    // 优先级1：_fullBlobURL（拍照后同步生成，0ms）
+    if (pvImages[idx]._fullBlobURL) {
+      finishLoad(pvImages[idx]._fullBlobURL);
+      slide.dataset.srcType = 'blob-url';
+      return;
+    }
+    // 优先级2：内存 Blob 缓存
+    const cellKey = pvImages[idx]._cellKey;
+    const memBlob = getMemoryBlobURL(cellKey, idx);
+    if (memBlob && memBlob.fullBlobURL) {
+      finishLoad(memBlob.fullBlobURL);
+      slide.dataset.srcType = 'memory-blob';
+      return;
+    }
+
+    let data = null;
+    const cacheKey = `${cellKey}_${idx}`;
+
+    // 优先级3：pvCache
+    if (pvCache.has(cacheKey)) {
+      data = pvCache.get(cacheKey);
+    }
+    // 优先级4：data 字段
+    else if (pvImages[idx].data) {
+      data = pvImages[idx].data;
+    }
+    // 优先级5：【v1.4.0】兼容旧数据 original 字段，直接用作图片（不再重新生成水印）
+    else if (pvImages[idx].original) {
+      data = pvImages[idx].original;
+      if (pvCache.size >= PV_CACHE_MAX) { const firstKey = pvCache.keys().next().value; pvCache.delete(firstKey); }
+      pvCache.set(cacheKey, data);
+    }
+    // 优先级6：thumbnail（高清源未就绪时的兜底）
+    else if (pvImages[idx].thumbnail && !pvImages[idx].thumbnail.startsWith('blob:')) {
+      data = pvImages[idx].thumbnail;
+    }
+
+    if (data) {
+      // 【v1.5.3 修复闪烁】Base64 data URL → Blob URL，预加载完成后再替换 src
+      const blobURL = data.startsWith('data:') ? dataURLtoBlobURL(data) : data;
+      // 先预加载图片，避免替换 src 时闪烁
+      const preloadImg = new Image();
+      preloadImg.onload = () => {
+        finishLoad(blobURL);
+        slide.dataset.srcType = 'generated';
+      };
+      preloadImg.onerror = () => {
+        finishLoad(blobURL);
+        slide.dataset.srcType = 'generated';
+      };
+      preloadImg.src = blobURL;
+    }
+  } catch (err) { console.error('预览图片加载失败:', err); }
+}
+
+/** 【性能优化】释放远离当前视口的图片 src，减少内存占用
+ *  【性能优化-深度】不释放内存 Blob URL（持久缓存），只释放 data URL
+ *  【v1.9.36】范围从 >2 收紧到 >1，只保留当前+左右各1张 */
+function pvReleaseDistantImages() {
+  for (let i = 0; i < pvImages.length; i++) {
+    if (Math.abs(i - pvIndex) > 1) {
+      const slide = previewScroller.children[i];
+      if (!slide) continue;
+      const imgEl = slide.querySelector('img');
+      if (imgEl && imgEl.src) {
+        // 不释放 Blob URL（来自 memoryBlobCache 的持久缓存）
+        if (!imgEl.src.startsWith('blob:')) {
+          imgEl.src = '';
+          slide.dataset.loaded = '0';
+        }
+      }
+    }
+  }
+}
+
+// 【v1.9.38】恢复解码：触摸结束后延迟解码当前+左右各1张
+function pvResumeDecoding() {
+  clearTimeout(pvDecodeResumeTimer);
+  pvDecodeResumeTimer = setTimeout(() => {
+    // 只解码当前+左右各1张
+    for (let i = Math.max(0, pvIndex - 1); i <= Math.min(pvImages.length - 1, pvIndex + 1); i++) {
+      pvLoadFullImage(i);
+    }
+    pvReleaseDistantImages();
+  }, 50); // 50ms 延迟，让手势动画先完成
+}
+
+// ---- 动画 ----
+
+function pvAnimateTransition(targetSlideOffset, targetIndex, duration, onDone) {
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  const startOffset = pvSlideOffset;
+  const startTime = performance.now();
+  function frame(now) {
+    const elapsed = now - startTime;
+    const t = Math.min(elapsed / duration, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    pvSlideOffset = startOffset + (targetSlideOffset - startOffset) * ease;
+    pvApplySlideOffset();
+    if (t < 1) {
+      pvAnimId = requestAnimationFrame(frame);
+    } else {
+      pvAnimId = null;
+      pvSlideOffset = 0;
+      if (targetIndex !== pvIndex) {
+        pvResetImg(pvIndex);
+        pvIndex = targetIndex;
+        pvResetImg(pvIndex);
+        pvUpdateIndicator();
+        // 【v1.9.38】动画完成后解码相邻图片
+        pvLoadFullImage(pvIndex - 1);
+        pvLoadFullImage(pvIndex + 1);
+        pvReleaseDistantImages();
+      }
+      pvApplySlideOffset();
+      if (onDone) onDone();
+    }
+  }
+  pvAnimId = requestAnimationFrame(frame);
+}
+
+function pvAnimatePanBounce(targetState, duration, idx) {
+  if (idx === undefined) idx = pvIndex;
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  const st = pvStates[idx];
+  if (!st) return;
+  const startScale = st.scale, startTX = st.tx, startTY = st.ty;
+  const startTime = performance.now();
+  function frame(now) {
+    const elapsed = now - startTime;
+    const t = Math.min(elapsed / duration, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    st.scale = startScale + (targetState.scale - startScale) * ease;
+    st.tx = startTX + (targetState.tx - startTX) * ease;
+    st.ty = startTY + (targetState.ty - startTY) * ease;
+    pvApplyImg(idx);
+    if (t < 1) pvAnimId = requestAnimationFrame(frame);
+    else pvAnimId = null;
+  }
+  pvAnimId = requestAnimationFrame(frame);
+}
+
+function pvAnimateDownBounce() {
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  const st = pvStates[pvIndex];
+  if (!st) return;
+  const imgEl = pvCurrentImg();
+  const startTY = st.ty, startOpacity = imgEl ? parseFloat(imgEl.style.opacity || '1') : 1;
+  const startTime = performance.now();
+  function frame(now) {
+    const elapsed = now - startTime;
+    const t = Math.min(elapsed / 300, 1);
+    const ease = 1 - Math.pow(1 - t, 3);
+    st.ty = startTY * (1 - ease);
+    pvApplyImg();
+    if (imgEl) imgEl.style.opacity = startOpacity + (1 - startOpacity) * ease;
+    if (t < 1) pvAnimId = requestAnimationFrame(frame);
+    else pvAnimId = null;
+  }
+  pvAnimId = requestAnimationFrame(frame);
+}
+
+// ---- 打开 / 关闭预览 ----
+
+// 【性能优化-深度】showPreview 瞬开策略：
+// 1. 先用内存中的 Blob URL 或缩略图瞬开（<100ms）
+// 2. 后台异步加载高清图替换
+// 3. 只预加载当前图及相邻1张，远处延迟加载
+async function showPreview(cellKeyStr, imgIdx) {
+  try {
+    const cellData = await getCellData(cellKeyStr);
+    if (!cellData || !cellData.images || !cellData.images[imgIdx]) return;
+
+    pvImages = cellData.images.map((img, i) => ({ ...img, _cellKey: cellKeyStr }));
+    pvIndex = imgIdx;
+
+    pvStates.length = 0;
+    for (let i = 0; i < pvImages.length; i++) pvStates.push({ scale: 1, tx: 0, ty: 0 });
+
+    // 【性能优化-深度】构建 DOM：优先使用内存 Blob URL 瞬开
+    previewScroller.innerHTML = '';
+    for (let i = 0; i < pvImages.length; i++) {
+      const slide = document.createElement('div');
+      slide.className = 'pv-slide';
+      const imgEl = document.createElement('img');
+      const cacheKey = `${pvImages[i]._cellKey}_${i}`;
+
+      if (Math.abs(i - imgIdx) <= 1) {
+        // 当前图及相邻：立即加载
+        // 优先级：_fullBlobURL > 内存 Blob 缓存 > pvCache > data > original > (thumbnail→loading)
+        let src = null;
+        let isThumbnailOnly = false; // 【v1.5.5】标记是否仅有缩略图
+        // 1. 优先用 _fullBlobURL（拍照后同步生成，立即可用）
+        if (pvImages[i]._fullBlobURL) {
+          src = pvImages[i]._fullBlobURL;
+          slide.dataset.loaded = '1';
+          slide.dataset.srcType = 'blob-url';
+        }
+        // 2. 再查内存 Blob 缓存
+        if (!src) {
+          const memBlob = getMemoryBlobURL(cellKeyStr, i);
+          if (memBlob && memBlob.fullBlobURL) {
+            src = memBlob.fullBlobURL;
+            slide.dataset.loaded = '1';
+            slide.dataset.srcType = 'memory-blob';
+          }
+        }
+        // 3. 再查 pvCache（Base64 → Blob URL 避免渐进渲染）
+        if (!src && pvCache.has(cacheKey)) {
+          src = dataURLtoBlobURL(pvCache.get(cacheKey));
+          slide.dataset.loaded = '1';
+          slide.dataset.srcType = 'pv-cache';
+        }
+        // 4. 用 data 字段（Base64 → Blob URL 避免渐进渲染）
+        if (!src && pvImages[i].data) {
+          src = dataURLtoBlobURL(pvImages[i].data);
+          slide.dataset.loaded = '1';
+          slide.dataset.srcType = 'data';
+        }
+        // 5. 【v1.4.0】兼容旧数据 original 字段，直接用作图片
+        if (!src && pvImages[i].original) {
+          src = dataURLtoBlobURL(pvImages[i].original);
+          slide.dataset.loaded = '1';
+          slide.dataset.srcType = 'original-legacy';
+        }
+        // 6. 【v1.5.5】仅有 thumbnail 时不显示模糊缩略图，改为 loading 等待高清源
+        if (!src && pvImages[i].thumbnail && !pvImages[i].thumbnail.startsWith('blob:')) {
+          isThumbnailOnly = true;
+          slide.dataset.loaded = '0';
+        }
+        // 7. 完全无法显示
+        if (!src && !slide.dataset.loaded) {
+          slide.dataset.loaded = '0';
+        }
+
+        if (src) {
+          // 【修复渐进渲染】先隐藏图片，onload 完全解码后再显示
+          imgEl.dataset.decoding = '1';
+          imgEl.onload = () => { delete imgEl.dataset.decoding; };
+          imgEl.onerror = () => { delete imgEl.dataset.decoding; };
+          if (src.startsWith('http')) imgEl.crossOrigin = 'anonymous';
+          imgEl.src = src;
+        } else if (isThumbnailOnly) {
+          // 【v1.5.5】高清源未就绪，显示 loading spinner
+          const spinner = document.createElement('div');
+          spinner.className = 'pv-loading';
+          slide.appendChild(spinner);
+        }
+      } else {
+        // 远处图片：延迟加载
+        slide.dataset.loaded = '0';
+      }
+      slide.appendChild(imgEl);
+      previewScroller.appendChild(slide);
+    }
+
+    pvSlideOffset = 0;
+    pvGesture = 'idle';
+    pvEdgeOverflow = 0;
+
+    // 【v1.5.3 修复闪烁】当前图片预加载完成后再显示弹窗
+    let currentImgLoaded = false;
+    const currentImgEl = previewScroller.children[imgIdx] ? previewScroller.children[imgIdx].querySelector('img') : null;
+    if (currentImgEl && currentImgEl.complete && currentImgEl.naturalWidth > 0) {
+      currentImgLoaded = true;
+    } else if (currentImgEl) {
+      currentImgEl.addEventListener('load', () => { currentImgLoaded = true; }, { once: true });
+      currentImgEl.addEventListener('error', () => { currentImgLoaded = true; }, { once: true });
+    } else {
+      currentImgLoaded = true;
+    }
+
+    // 【v1.5.3 修复闪烁】等待当前图片加载完成（最多 500ms），再显示弹窗
+    const waitForCurrentImg = new Promise(resolve => {
+      const check = () => { if (currentImgLoaded) resolve(); };
+      check();
+      if (!currentImgLoaded) {
+        const interval = setInterval(() => { if (currentImgLoaded) { clearInterval(interval); resolve(); } }, 20);
+        setTimeout(() => { clearInterval(interval); resolve(); }, 500);
+      }
+    });
+    await waitForCurrentImg;
+
+    previewModal.classList.add('show');
+    pvApplySlideOffset();
+    pvUpdateIndicator();
+    pvShowSaveBtn();
+    // 【功能开关】全屏预览保存按钮可见性
+    previewSaveBtn.style.display = isFeatureEnabled('feat_preview_save') ? '' : 'none';
+
+    // 【性能优化-深度】后台异步：对当前图和相邻图，如果不是高清源则异步加载高清替换
+    requestAnimationFrame(() => {
+      for (let i = Math.max(0, imgIdx - 1); i <= Math.min(pvImages.length - 1, imgIdx + 1); i++) {
+        const slide = previewScroller.children[i];
+        if (!slide || slide.dataset.loaded === '1' && slide.dataset.srcType === 'memory-blob') continue;
+        // 需要异步加载高清图
+        pvLoadFullImage(i);
+      }
+    });
+  } catch (err) {
+    console.error('打开预览失败:', err);
+    showToast('预览打开失败');
+  }
+}
+
+/** 用 dataURL 直接打开预览（用于拼接预览等场景，单张图禁用左右切换） */
+function showPreviewFromDataURL(dataURL, title) {
+  pvImages = [{ data: dataURL, _cellKey: '', _concatTitle: title || '图片' }];
+  pvIndex = 0;
+  pvStates.length = 0;
+  pvStates.push({ scale: 1, tx: 0, ty: 0 });
+
+  previewScroller.innerHTML = '';
+  const slide = document.createElement('div');
+  slide.className = 'pv-slide';
+  const imgEl = document.createElement('img');
+  // 【修复预览渐进渲染】Base64 → Blob URL，一次性完整渲染
+  imgEl.src = dataURL.startsWith('data:') ? dataURLtoBlobURL(dataURL) : dataURL;
+  slide.dataset.loaded = '1';
+  slide.appendChild(imgEl);
+  previewScroller.appendChild(slide);
+
+  pvSlideOffset = 0;
+  pvGesture = 'idle';
+  pvEdgeOverflow = 0;
+
+  previewModal.classList.add('show');
+  pvApplySlideOffset();
+  pvUpdateIndicator();
+  pvShowSaveBtn(); // 【修改4】打开预览后启动保存按钮淡出计时
+  // 【功能开关】全屏预览保存按钮可见性
+  previewSaveBtn.style.display = isFeatureEnabled('feat_preview_save') ? '' : 'none';
+}
+
+/** 【修复拼接预览模糊】使用 Blob URL 显示预览，避免超大 dataURL 导致浏览器降质渲染 */
+function showPreviewFromBlobURL(blobURL, blob, title) {
+  pvImages = [{ data: blobURL, _blob: blob, _cellKey: '', _concatTitle: title || '图片' }];
+  pvIndex = 0;
+  pvStates.length = 0;
+  pvStates.push({ scale: 1, tx: 0, ty: 0 });
+
+  previewScroller.innerHTML = '';
+  const slide = document.createElement('div');
+  slide.className = 'pv-slide';
+  const imgEl = document.createElement('img');
+  imgEl.src = blobURL;
+  slide.dataset.loaded = '1';
+  slide.appendChild(imgEl);
+  previewScroller.appendChild(slide);
+
+  pvSlideOffset = 0;
+  pvGesture = 'idle';
+  pvEdgeOverflow = 0;
+
+  previewModal.classList.add('show');
+  pvApplySlideOffset();
+  pvUpdateIndicator();
+  pvShowSaveBtn();
+  // 【功能开关】全屏预览保存按钮可见性
+  previewSaveBtn.style.display = isFeatureEnabled('feat_preview_save') ? '' : 'none';
+}
+
+function closePreview() {
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  clearTimeout(pvSaveBtnTimer);
+  previewModal.classList.remove('show');
+  previewScroller.innerHTML = '';
+  // 【性能优化】释放所有 Blob URL，防止内存泄漏
+  pvImages.forEach(img => { if (img._blob) URL.revokeObjectURL(img.data); });
+  pvImages = [];
+  pvStates.length = 0;
+  pvCache.clear();
+  revokeAllBlobURLs(); // 回收所有跟踪的临时 Blob URL
+  // 【性能优化-深度】注意：不清除 memoryBlobCache，因为它是跨预览会话的持久缓存
+  // memoryBlobCache 在页面生命周期内保持，仅在 clearCellBlobCache 时按需清除
+  pvSlideOffset = 0;
+  pvGesture = 'idle';
+}
+
+previewClose.addEventListener('click', closePreview);
+previewModal.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// ---- 统一触摸手势管理器 ----
+
+previewModal.addEventListener('touchstart', (e) => {
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  // 【v1.9.38】递增解码代际，使所有正在进行的解码失效
+  pvDecodeGen++;
+  clearTimeout(pvDecodeResumeTimer);
+  pvShowSaveBtn(); // 【修改4】触摸时立即显示保存按钮
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    pvGesture = 'pinch';
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const dx = t1.clientX - t0.clientX, dy = t1.clientY - t0.clientY;
+    pvLastDist = Math.sqrt(dx * dx + dy * dy);
+  } else if (e.touches.length === 1) {
+    const t = e.touches[0];
+    pvStartX = t.clientX; pvStartY = t.clientY;
+    pvLastX = t.clientX; pvLastY = t.clientY;
+    pvDownStartY = t.clientY;
+    pvDownOffset = 0;
+    pvSlideVelocity = 0;
+    pvLastSlideTime = Date.now();
+    pvEdgeOverflow = 0;
+    pvGesture = 'idle';
+  }
+}, { passive: false });
+
+previewModal.addEventListener('touchmove', (e) => {
+  // 【修改2】双指缩放期间，忽略单指移动，防止误触发平移/滑动
+  if (pvGesture === 'pinch' && e.touches.length < 2) {
+    e.preventDefault();
+    return;
+  }
+  // ---- 双指缩放 ----
+  if (e.touches.length === 2 && pvGesture === 'pinch') {
+    e.preventDefault();
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const dx = t1.clientX - t0.clientX, dy = t1.clientY - t0.clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (pvLastDist > 0) {
+      const st = pvCurState();
+      const ratio = dist / pvLastDist;
+      const newScale = Math.max(1, Math.min(4, st.scale * ratio));
+      const midX = (t0.clientX + t1.clientX) / 2;
+      const midY = (t0.clientY + t1.clientY) / 2;
+      // 【修复Bug1】transform-origin:center center 时，缩放锚点需相对屏幕中心计算
+      const pcx = midX - window.innerWidth / 2;
+      const pcy = midY - window.innerHeight / 2;
+      st.tx = pcx - (pcx - st.tx) * (newScale / st.scale);
+      st.ty = pcy - (pcy - st.ty) * (newScale / st.scale);
+      st.scale = newScale;
+      pvClampPan(st);
+      pvApplyImg();
+    }
+    pvLastDist = dist;
+    return;
+  }
+
+  if (e.touches.length !== 1 || pvGesture === 'pinch') return;
+  const t = e.touches[0];
+  const curX = t.clientX, curY = t.clientY;
+  const dx = curX - pvStartX, dy = curY - pvStartY;
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+  const st = pvCurState();
+
+  // ---- 手势方向判定（首次移动超过 8px 时判定） ----
+  if (pvGesture === 'idle' && (adx > 8 || ady > 8)) {
+    if (st.scale <= 1.01) {
+      // 未缩放：水平→切换，向下→关闭
+      if (ady > adx && dy > 0) pvGesture = 'swipe-down';
+      else pvGesture = 'slide';
+    } else {
+      // 已缩放：检查图片在水平方向是否可以平移
+      const imgEl = pvCurrentImg();
+      const { w } = pvImgDisplaySize(imgEl);
+      const scaledW = w * st.scale;
+      if (scaledW <= window.innerWidth && adx > ady) {
+        // 放大后水平方向仍比屏幕窄，水平拖动直接切换
+        pvGesture = 'slide';
+      } else {
+        // 放大后水平方向超出屏幕，先平移图片
+        pvGesture = 'pan';
+      }
+    }
+  }
+
+  // ---- 下滑关闭 ----
+  if (pvGesture === 'swipe-down') {
+    e.preventDefault();
+    pvDownOffset = curY - pvDownStartY;
+    const imgEl = pvCurrentImg();
+    if (imgEl) {
+      imgEl.style.transform = `translate(0px, ${pvDownOffset}px) scale(1)`;
+      imgEl.style.transition = 'none';
+      imgEl.style.opacity = Math.max(0.3, 1 - pvDownOffset / 400);
+    }
+    return;
+  }
+
+  // ---- 水平滑动切换（未缩放时） ----
+  if (pvGesture === 'slide') {
+    e.preventDefault();
+    pvSlideOffset = dx;
+    pvApplySlideOffset();
+    const now = Date.now(), dt = now - pvLastSlideTime;
+    if (dt > 0) pvSlideVelocity = (curX - pvLastX) / dt * 1000;
+    pvLastX = curX; pvLastY = curY; pvLastSlideTime = now;
+    return;
+  }
+
+  // ---- 平移图片（已缩放时） ----
+  if (pvGesture === 'pan') {
+    e.preventDefault();
+    const moveX = curX - pvLastX;
+    const moveY = curY - pvLastY;
+
+    // 先应用平移
+    st.tx += moveX;
+    st.ty += moveY;
+    pvClampPan(st);
+    pvApplyImg();
+
+    // 检查是否到达真实边缘，累积溢出距离
+    if (st.scale > 1.01 && adx > ady) {
+      let atEdge = false;
+      let overflowDir = 0;
+      // 使用 pvAtRealEdge 进行精确边缘检测
+      if (moveX > 0 && pvAtRealEdge(st, 1)) {
+        atEdge = true; overflowDir = 1; // 右边缘，想看上一张
+      } else if (moveX < 0 && pvAtRealEdge(st, -1)) {
+        atEdge = true; overflowDir = -1; // 左边缘，想看下一张
+      }
+
+      if (atEdge) {
+        pvEdgeOverflow += Math.abs(moveX);
+        if (pvEdgeOverflow >= PV_EDGE_THRESHOLD) {
+          // 超过阈值，转为切换图片
+          pvGesture = 'slide';
+          pvSlideOffset = overflowDir * (pvEdgeOverflow - PV_EDGE_THRESHOLD);
+          pvStartX = curX;
+          pvApplySlideOffset();
+          pvLastX = curX; pvLastY = curY;
+          pvLastSlideTime = Date.now();
+          pvEdgeOverflow = 0;
+          return;
+        }
+      } else {
+        pvEdgeOverflow = 0;
+      }
+    } else {
+      pvEdgeOverflow = 0;
+    }
+
+    pvLastX = curX; pvLastY = curY;
+  }
+}, { passive: false });
+
+previewModal.addEventListener('touchend', (e) => {
+  // ---- 双指缩放结束 ----
+  if (pvGesture === 'pinch' && e.touches.length < 2) {
+    pvLastDist = 0;
+    const st = pvCurState();
+    if (st.scale < 1.05) {
+      pvAnimatePanBounce({ scale: 1, tx: 0, ty: 0 }, 200);
+    } else {
+      pvClampPan(st);
+      pvApplyImg();
+    }
+    // 【修改2】如果还有手指在屏幕上，保持 pinch 状态防止误触发平移/滑动
+    if (e.touches.length > 0) return;
+    pvGesture = 'idle';
+    return;
+  }
+
+  if (e.touches.length > 0) return;
+  pvShowSaveBtn(); // 【修改4】手指全部抬起后重启3秒淡出计时
+  const st = pvCurState();
+
+  // ---- 下滑关闭结束 ----
+  if (pvGesture === 'swipe-down') {
+    if (pvDownOffset > 80) closePreview();
+    else pvAnimateDownBounce();
+    pvGesture = 'idle';
+    pvResumeDecoding();
+    return;
+  }
+
+  // ---- 水平滑动切换结束 ----
+  if (pvGesture === 'slide') {
+    const sw = window.innerWidth;
+    const velocity = pvSlideVelocity;
+    let targetIndex = pvIndex;
+    if (pvSlideOffset < -sw * 0.3 || (pvSlideOffset < -30 && velocity < -300)) {
+      if (pvIndex < pvImages.length - 1) targetIndex = pvIndex + 1;
+    } else if (pvSlideOffset > sw * 0.3 || (pvSlideOffset > 30 && velocity > 300)) {
+      if (pvIndex > 0) targetIndex = pvIndex - 1;
+    }
+    const targetOffset = -(targetIndex - pvIndex) * sw;
+    pvAnimateTransition(targetOffset, targetIndex, 250);
+    pvGesture = 'idle';
+    pvEdgeOverflow = 0;
+    pvResumeDecoding();
+    return;
+  }
+
+  // ---- 平移结束：回弹到边界 ----
+  if (pvGesture === 'pan') {
+    const bounds = pvPanBounds(st, true);
+    const needsBounce = st.tx < bounds.minX || st.tx > bounds.maxX || st.ty < bounds.minY || st.ty > bounds.maxY;
+    if (needsBounce) {
+      pvClampPan(st);
+      pvAnimatePanBounce(st, 200);
+    }
+    pvGesture = 'idle';
+    pvEdgeOverflow = 0;
+    pvResumeDecoding();
+    return;
+  }
+
+  // ---- 双击缩放 ----
+  if (pvGesture === 'idle') {
+    const now = Date.now();
+    const touch = e.changedTouches[0];
+    if (touch) {
+      const tx = touch.clientX, ty = touch.clientY;
+      if (now - pvLastTapTime < 300 && Math.abs(tx - pvLastTapX) < 30 && Math.abs(ty - pvLastTapY) < 30) {
+        e.preventDefault();
+        // 【修复Bug1】transform-origin:center center 时，缩放锚点需相对屏幕中心计算
+        const pcx = tx - window.innerWidth / 2;
+        const pcy = ty - window.innerHeight / 2;
+        if (st.scale > 1.05) {
+          pvAnimatePanBounce({ scale: 1, tx: 0, ty: 0 }, 250);
+        } else {
+          const newScale = 2.5;
+          const newTX = pcx - (pcx - st.tx) * (newScale / st.scale);
+          const newTY = pcy - (pcy - st.ty) * (newScale / st.scale);
+          const targetSt = { scale: newScale, tx: newTX, ty: newTY };
+          pvClampPan(targetSt);
+          pvAnimatePanBounce(targetSt, 250);
+        }
+        pvLastTapTime = 0;
+      } else {
+        pvLastTapTime = now; pvLastTapX = tx; pvLastTapY = ty;
+      }
+    }
+  }
+  pvGesture = 'idle';
+  pvResumeDecoding();
+}, { passive: false });
+
+// ---- 鼠标滚轮缩放（PC 端） ----
+previewModal.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  const st = pvCurState();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.max(1, Math.min(4, st.scale * factor));
+  // 【修复Bug1】transform-origin:center center 时，缩放锚点需相对屏幕中心计算
+  const pcx = e.clientX - window.innerWidth / 2;
+  const pcy = e.clientY - window.innerHeight / 2;
+  st.tx = pcx - (pcx - st.tx) * (newScale / st.scale);
+  st.ty = pcy - (pcy - st.ty) * (newScale / st.scale);
+  st.scale = newScale;
+  pvClampPan(st);
+  pvApplyImg();
+  if (st.scale < 1.05 && factor < 1) {
+    pvAnimatePanBounce({ scale: 1, tx: 0, ty: 0 }, 200);
+  }
+}, { passive: false });
+
+// ---- 鼠标拖拽（PC 端） ----
+let pvMouseDrag = false;
+previewModal.addEventListener('mousedown', (e) => {
+  if (e.target.closest('#preview-close') || e.target.closest('#preview-save-btn')) return;
+  if (pvAnimId) { cancelAnimationFrame(pvAnimId); pvAnimId = null; }
+  pvShowSaveBtn(); // 【修改4】鼠标操作时显示保存按钮
+  pvMouseDrag = true;
+  pvStartX = e.clientX; pvStartY = e.clientY;
+  pvLastX = e.clientX; pvLastY = e.clientY;
+  pvSlideOffset = 0; pvSlideVelocity = 0; pvEdgeOverflow = 0;
+  pvLastSlideTime = Date.now();
+  const st = pvCurState();
+  pvGesture = st.scale > 1.05 ? 'pan' : 'slide';
+  e.preventDefault();
+});
+window.addEventListener('mousemove', (e) => {
+  if (!pvMouseDrag) return;
+  const curX = e.clientX, curY = e.clientY;
+  const dx = curX - pvStartX, dy = curY - pvStartY;
+  const st = pvCurState();
+
+  if (pvGesture === 'slide') {
+    pvSlideOffset = dx;
+    pvApplySlideOffset();
+    const now = Date.now(), dt = now - pvLastSlideTime;
+    if (dt > 0) pvSlideVelocity = (curX - pvLastX) / dt * 1000;
+    pvLastX = curX; pvLastY = curY; pvLastSlideTime = now;
+  } else if (pvGesture === 'pan') {
+    const moveX = curX - pvLastX, moveY = curY - pvLastY;
+    st.tx += moveX; st.ty += moveY;
+    pvClampPan(st);
+    pvApplyImg();
+
+    // 边缘溢出检测
+    if (st.scale > 1.01 && Math.abs(dx) > Math.abs(dy)) {
+      const realBounds = pvPanBounds(st, false);
+      let atEdge = false;
+      if (moveX > 0 && st.tx >= realBounds.maxX - 1 && pvIndex > 0) atEdge = true;
+      else if (moveX < 0 && st.tx <= realBounds.minX + 1 && pvIndex < pvImages.length - 1) atEdge = true;
+      if (atEdge) {
+        pvEdgeOverflow += Math.abs(moveX);
+        if (pvEdgeOverflow >= PV_EDGE_THRESHOLD) {
+          pvGesture = 'slide';
+          pvSlideOffset = (moveX > 0 ? 1 : -1) * (pvEdgeOverflow - PV_EDGE_THRESHOLD);
+          pvStartX = curX;
+          pvApplySlideOffset();
+          pvLastX = curX; pvLastY = curY; pvLastSlideTime = Date.now();
+          pvEdgeOverflow = 0;
+          return;
+        }
+      } else {
+        pvEdgeOverflow = 0;
+      }
+    }
+    pvLastX = curX; pvLastY = curY;
+  }
+});
+window.addEventListener('mouseup', () => {
+  if (!pvMouseDrag) return;
+  pvMouseDrag = false;
+  pvShowSaveBtn(); // 【修改4】鼠标释放后重启3秒淡出计时
+  const st = pvCurState();
+  if (pvGesture === 'slide') {
+    const sw = window.innerWidth;
+    let targetIndex = pvIndex;
+    if (pvSlideOffset < -sw * 0.3 || (pvSlideOffset < -30 && pvSlideVelocity < -300)) {
+      if (pvIndex < pvImages.length - 1) targetIndex = pvIndex + 1;
+    } else if (pvSlideOffset > sw * 0.3 || (pvSlideOffset > 30 && pvSlideVelocity > 300)) {
+      if (pvIndex > 0) targetIndex = pvIndex - 1;
+    }
+    pvAnimateTransition(-(targetIndex - pvIndex) * sw, targetIndex, 250);
+  } else if (pvGesture === 'pan') {
+    const bounds = pvPanBounds(st, true);
+    if (st.tx < bounds.minX || st.tx > bounds.maxX || st.ty < bounds.minY || st.ty > bounds.maxY) {
+      pvClampPan(st);
+      pvAnimatePanBounce(st, 200);
+    }
+  }
+  pvGesture = 'idle'; pvEdgeOverflow = 0;
+});
+
+// ---- 保存当前预览图片 ----
+previewSaveBtn.addEventListener('click', async (e) => {
+  if (!isFeatureEnabled('feat_preview_save')) return;
+  e.stopPropagation();
+  pvShowSaveBtn(); // 【修改4】点击保存后重新显示按钮
+  if (pvImages.length === 0) return;
+  // 【v1.5.9】点击保存立即提示"准备下载"，失败时提示"保存失败"
+  showToast('准备下载');
+  const img = pvImages[pvIndex];
+  // 【修复拼接预览模糊】拼接预览优先使用 _blob 直接下载，避免 Blob URL 无法转 dataURL
+  if (img._concatTitle) {
+    try {
+      const saveBlob = img._blob || dataURLtoBlob(img.data || '');
+      downloadBlob(saveBlob, `${img._concatTitle}_${Date.now()}.jpg`);
+    } catch (ex) {
+      showToast('保存失败');
+    }
+    return;
+  }
+  const ck = img._cellKey;
+  let sName = '', bTime = '';
+  if (ck) {
+    const parts = ck.split('-');
+    sName = getSeatNameSync(parseInt(parts[0]), parts[1], parseInt(parts[2]));
+  }
+  bTime = img.beijingTime || getBeijingTime();
+  const filename = `${getCleanSeatName(sName) || '图片'}_${bTime.replace(/[: ]/g, '-')}.jpg`;
+  // 【修复保存图片失败】优先使用内存 Blob 缓存或 data 字段下载，不依赖 imgEl.src
+  // imgEl.src 可能是 blob: URL，dataURLtoBlob 无法处理
+  let saveBlob = null;
+  // 1. 优先用 _fullBlob（Blob 对象，最可靠）
+  if (img._fullBlob) {
+    saveBlob = img._fullBlob;
+  }
+  // 2. 再查 memoryBlobCache
+  if (!saveBlob && ck) {
+    const memBlob = getMemoryBlobURL(ck, pvIndex);
+    if (memBlob && memBlob.fullBlob) saveBlob = memBlob.fullBlob;
+  }
+  // 3. 用 data 字段（Base64）
+  if (!saveBlob && img.data) {
+    try { saveBlob = dataURLtoBlob(img.data); } catch (ex) {}
+  }
+  // 4. 尝试从 imgEl.src 获取（data URL）
+  if (!saveBlob) {
+    const imgEl = pvCurrentImg();
+    if (imgEl && imgEl.src && imgEl.src.startsWith('data:')) {
+      try { saveBlob = dataURLtoBlob(imgEl.src); } catch (ex) {}
+    }
+  }
+  // 5. 云端 URL：通过 fetch 下载获取 Blob（避免 Canvas 跨域污染）
+  if (!saveBlob && img.url && img.url.startsWith('http')) {
+    try {
+      const resp = await fetch(img.url);
+      if (resp.ok) saveBlob = await resp.blob();
+    } catch (ex) {
+      console.warn('保存图片-fetch失败:', ex);
+    }
+  }
+  // 6. 兜底：从 imgEl.src（可能是 https URL）fetch 下载
+  if (!saveBlob) {
+    const imgEl = pvCurrentImg();
+    if (imgEl && imgEl.src && imgEl.src.startsWith('http')) {
+      try {
+        const resp = await fetch(imgEl.src);
+        if (resp.ok) saveBlob = await resp.blob();
+      } catch (ex) {
+        console.warn('保存图片-fetch兜底失败:', ex);
+      }
+    }
+  }
+  if (saveBlob) {
+    downloadBlob(saveBlob, filename);
+  } else {
+    showToast('保存失败');
+  }
+});
+
+// ============================================================
+// 十、清除图片（v1.10.4 改造：复用批量下载的modal+batch-chip样式，区域+时段选择）
+// ============================================================
+const cleanupModal = document.getElementById('cleanup-modal');
+const cleanupAreasDiv = document.getElementById('cleanup-areas');
+const cleanupTimesDiv = document.getElementById('cleanup-times');
+const cleanupExecBtn = document.getElementById('cleanup-exec');
+const cleanupConfirmModal = document.getElementById('cleanup-confirm-modal');
+const cleanupLoadingModal = document.getElementById('cleanup-loading-modal');
+const cleanupLoadingText = document.getElementById('cleanup-loading-text');
+let cleanupSelectedAreas = new Set(), cleanupSelectedTimes = new Set();
+
+// 【v1.10.4】初始化清除图片弹窗（与批量下载initBatchModal结构一致）
+function initCleanupModal() {
+  cleanupSelectedAreas = new Set(); cleanupSelectedTimes = new Set();
+  cleanupExecBtn.disabled = true;
+  // 从计数缓存扫描有图片的区域和时段
+  const areasWithImages = new Set();
+  const timesWithImages = new Set();
+  imageCountCache.forEach((cnt, key) => {
+    if (cnt > 0) {
+      const p = key.split('-');
+      areasWithImages.add(`${p[0]}-${p[1]}`);
+      timesWithImages.add(parseInt(p[3]));
+    }
+  });
+  let ahtml = '';
+  FLOORS.forEach(floor => {
+    floor.areas.forEach(area => {
+      if (!canEditFloor(floor.id)) return; // 仅显示有权限的区域
+      const ak = areaKey(floor.id, area.name);
+      ahtml += `<div class="batch-chip" data-ak="${ak}">${floor.name}${area.name}</div>`;
+    });
+  });
+  cleanupAreasDiv.innerHTML = ahtml;
+  let thtml = '';
+  TIME_SLOTS.forEach((ts, idx) => {
+    thtml += `<div class="batch-chip" data-tidx="${idx}">${ts}</div>`;
+  });
+  cleanupTimesDiv.innerHTML = thtml;
+}
+
+// 【v1.10.4】清除弹窗内chip点击+全选/取消（与批量下载逻辑一致）
+cleanupModal.addEventListener('click', (e) => {
+  // 【v1.17.1】touch 已处理则跳过，防止双触发
+  if (_chipTouchHandled) return;
+  const chip = e.target.closest('.batch-chip');
+  if (chip) {
+    chip.classList.toggle('checked');
+    if (chip.dataset.ak) { chip.classList.contains('checked') ? cleanupSelectedAreas.add(chip.dataset.ak) : cleanupSelectedAreas.delete(chip.dataset.ak); }
+    if (chip.dataset.tidx !== undefined) { const ti = chip.dataset.tidx; chip.classList.contains('checked') ? cleanupSelectedTimes.add(ti) : cleanupSelectedTimes.delete(ti); }
+    // 更新按钮状态
+    const hasSelection = cleanupSelectedAreas.size > 0 && cleanupSelectedTimes.size > 0;
+    cleanupExecBtn.disabled = !hasSelection;
+    return;
+  }
+  const selAll = e.target.closest('.batch-select-all');
+  if (selAll) {
+    const target = selAll.dataset.target;
+    const container = target === 'cleanup-area' ? cleanupAreasDiv : cleanupTimesDiv;
+    const chips = container.querySelectorAll('.batch-chip');
+    const allChecked = [...chips].every(c => c.classList.contains('checked'));
+    chips.forEach(c => {
+      if (allChecked) { c.classList.remove('checked'); if (c.dataset.ak) cleanupSelectedAreas.delete(c.dataset.ak); if (c.dataset.tidx !== undefined) cleanupSelectedTimes.delete(c.dataset.tidx); }
+      else { c.classList.add('checked'); if (c.dataset.ak) cleanupSelectedAreas.add(c.dataset.ak); if (c.dataset.tidx !== undefined) cleanupSelectedTimes.add(c.dataset.tidx); }
+    });
+    const hasSelection = cleanupSelectedAreas.size > 0 && cleanupSelectedTimes.size > 0;
+    cleanupExecBtn.disabled = !hasSelection;
+  }
+});
+
+// 取消按钮
+document.getElementById('cleanup-cancel').addEventListener('click', () => cleanupModal.classList.remove('show'));
+
+// 【v1.17.0】清除图片拖动多选
+function cleanupUpdateBtnState() {
+  const hasSelection = cleanupSelectedAreas.size > 0 && cleanupSelectedTimes.size > 0;
+  cleanupExecBtn.disabled = !hasSelection;
+}
+function cleanupChipToggle(chip, isChecked) {
+  if (chip.dataset.ak) { isChecked ? cleanupSelectedAreas.add(chip.dataset.ak) : cleanupSelectedAreas.delete(chip.dataset.ak); }
+  if (chip.dataset.tidx !== undefined) { const ti = chip.dataset.tidx; isChecked ? cleanupSelectedTimes.add(ti) : cleanupSelectedTimes.delete(ti); }
+  cleanupUpdateBtnState();
+}
+function cleanupChipClick(chip) {
+  chip.classList.toggle('checked');
+  cleanupChipToggle(chip, chip.classList.contains('checked'));
+}
+setupChipDragSelect(cleanupAreasDiv, cleanupChipToggle, cleanupChipClick);
+setupChipDragSelect(cleanupTimesDiv, cleanupChipToggle, cleanupChipClick);
+
+// 清除图片按钮 → 弹出二次确认
+cleanupExecBtn.addEventListener('click', () => {
+  if (cleanupSelectedAreas.size === 0 || cleanupSelectedTimes.size === 0) return;
+  cleanupConfirmModal.classList.add('show');
+});
+
+// 二次确认弹窗
+document.getElementById('cleanup-confirm-cancel').addEventListener('click', () => cleanupConfirmModal.classList.remove('show'));
+document.getElementById('cleanup-confirm-exec').addEventListener('click', async () => {
+  cleanupConfirmModal.classList.remove('show');
+  cleanupModal.classList.remove('show');
+
+  // 显示不可关闭的 loading 弹窗
+  cleanupLoadingText.textContent = '正在清理图片...';
+  cleanupLoadingModal.classList.add('show');
+
+  // 收集需要删除的 cellKey（仅限有权限的楼层区域）
+  const cellsToDelete = [];
+  for (const ak of cleanupSelectedAreas) {
+    const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+    if (!canEditFloor(fid)) continue; // 跳过无权限的楼层
+    const seatCount = getAreaSeatCount(fid, aname);
+    for (const tidx of cleanupSelectedTimes) {
+      const tIdx = parseInt(tidx);
+      for (let sidx = 0; sidx < seatCount; sidx++) {
+        const sk = seatKey(fid, aname, sidx);
+        if (state.deletedSeats.has(sk)) continue;
+        cellsToDelete.push(cellKey(fid, aname, sidx, tIdx));
+      }
+    }
+  }
+
+  let totalDeleted = 0;
+  let hasError = false;
+
+  try {
+    // 【Supabase版】按 seat_id 批量删除 seat_photos 记录 + Storage 文件
+    // 1. 收集选中区域+时段对应的所有 seat_id
+    const seatIdsForCleanup = [];
+    for (const ak of cleanupSelectedAreas) {
+      const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+      if (!canEditFloor(fid)) continue;
+      const cfg = getAreaConfig(fid, aname);
+      if (!cfg) continue;
+      const extra = _extraSeatsCache[ak] || 0;
+      for (let si = 0; si < cfg.count + extra; si++) {
+        seatIdsForCleanup.push(defaultSeatName(String(fid), aname, si));
+      }
+    }
+
+    // 2. 一次性查询所有相关照片（有 cell_key 的 + 无 cell_key 的）
+    cleanupLoadingText.textContent = '正在查询图片...';
+    const allPhotos = [];
+    // 按 seat_id 分批查询（Supabase .in() 上限约 1000）
+    for (let i = 0; i < seatIdsForCleanup.length; i += 500) {
+      const batchIds = seatIdsForCleanup.slice(i, i + 500);
+      const { data, error } = await _sb.from('seat_photos')
+        .select('id, url, cell_key, time_slot, seat_id')
+        .in('seat_id', batchIds);
+      if (error) { console.error('查询照片出错:', error); hasError = true; }
+      else if (data) allPhotos.push(...data);
+    }
+
+    // 3. 筛选出选中时段的照片
+    const tidxSet = new Set([...cleanupSelectedTimes].map(t => parseInt(t)));
+    const selectedTimeSlotNames = tidxSet.size > 0 ? new Set([...tidxSet].map(t => TIME_SLOTS[t])) : null;
+    const photosToDelete = selectedTimeSlotNames
+      ? allPhotos.filter(p => !p.time_slot || selectedTimeSlotNames.has(p.time_slot) || !p.cell_key)
+      : allPhotos;
+
+    totalDeleted = photosToDelete.length;
+    if (totalDeleted === 0) {
+      cleanupLoadingModal.classList.remove('show');
+      showToast('该区域该时段没有图片');
+      return;
+    }
+
+    // 4. 删除 Storage 文件（批量）
+    cleanupLoadingText.textContent = `正在删除文件... 0/${totalDeleted}`;
+    const paths = photosToDelete.map(p => extractStoragePath(p.url)).filter(Boolean);
+    if (paths.length) {
+      for (let j = 0; j < paths.length; j += 1000) {
+        await _sb.storage.from(STORAGE_BUCKET).remove(paths.slice(j, j + 1000)).catch(() => {});
+        const pct = Math.min(Math.round((j + 1000) / paths.length * 50), 50);
+        cleanupLoadingText.textContent = `正在删除文件... ${pct}%`;
+      }
+    }
+
+    // 5. 删除数据库记录（批量）
+    const ids = photosToDelete.map(p => p.id);
+    for (let j = 0; j < ids.length; j += 500) {
+      const { error: delErr } = await _sb.from('seat_photos').delete().in('id', ids.slice(j, j + 500));
+      if (delErr) { console.error('删除照片记录出错:', delErr); hasError = true; }
+      const pct = 50 + Math.min(Math.round((j + 500) / ids.length * 50), 50);
+      cleanupLoadingText.textContent = `正在删除记录... ${pct}%`;
+    }
+
+    // 6. 清除内存缓存
+    photosToDelete.forEach(p => {
+      if (p.cell_key) { _cellDataCache.delete(p.cell_key); _imageCountCache.delete(p.cell_key); imageCountCache.set(p.cell_key, 0); }
+    });
+    cellsToDelete.forEach(ck => {
+      imageCountCache.set(ck, 0);
+      clearCellBlobCache(ck);
+      const sk = ck.split('-').slice(0, 3).join('-');
+      invalidateTimeslotCache(sk);
+    });
+
+    // 清理完毕：刷新界面
+    await buildSeatHasImages();
+    invalidateAllTimeslotCache();
+    state.selectedCells = state.selectedCells.filter(ck => !cellsToDelete.includes(ck));
+    await renderMain();
+    updateBottomBar();
+  } catch (err) {
+    console.error('清除出错:', err);
+    hasError = true;
+  } finally {
+    cleanupLoadingModal.classList.remove('show');
+    if (hasError) {
+      showToast(`已清除 ${totalDeleted} 张图片（部分失败）`);
+    } else {
+      showToast(`已清除 ${totalDeleted} 张图片`);
+    }
+    cleanupSelectedAreas.clear();
+    cleanupSelectedTimes.clear();
+  }
+});
+
+// ============================================================
+// 十一、提示与底部栏
+// ============================================================
+// 【v1.16.0】轻提示：全局同一时间只显示一个 toast，新的会替换旧的
+let _activeToastEl = null;
+let _activeToastTimer = null;
+function showToast(msg, duration) {
+  const d = duration || 2100;
+  // 清除已有的 toast
+  if (_activeToastEl) { _activeToastEl.remove(); clearTimeout(_activeToastTimer); }
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.style.animationDuration = (d / 1000) + 's';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  _activeToastEl = t;
+  _activeToastTimer = setTimeout(() => { t.remove(); if (_activeToastEl === t) _activeToastEl = null; }, d + 100);
+}
+const bottomBar = document.getElementById('bottom-bar'), selectedCount = document.getElementById('selected-count');
+function updateBottomBar() {
+  if (state.selectedCells.length > 0) {
+    bottomBar.classList.add('show');
+    selectedCount.textContent = `已选 ${state.selectedCells.length} 个时段`;
+  } else {
+    bottomBar.classList.remove('show');
+  }
+  // 【功能开关】底部下载按钮和拼接预览按钮（各自独立显示/隐藏）
+  const dlSeparateBtn = document.getElementById('btn-download-separate');
+  // 下载按钮：功能开关控制，用 visibility 保留占位
+  if (dlSeparateBtn) dlSeparateBtn.style.visibility = isFeatureEnabled('feat_bottom_download') ? 'visible' : 'hidden';
+  // 拼接预览按钮：由 updateConcatBtnState 根据图片数量规则控制
+  updateConcatBtnState();
+  // 【v1.3.0 统一下载逻辑】根据图片总数更新按钮文字
+  updateDownloadBtnText();
+}
+// 【v1.3.0】更新下载按钮文字：1张→下载，>1张→打包下载（ZIP）
+function updateDownloadBtnText() {
+  const dlBtn = document.getElementById('btn-download-separate');
+  if (!dlBtn) return;
+  if (state.selectedCells.length === 0) { dlBtn.textContent = '下载'; return; }
+  let totalImgs = 0;
+  for (const ck of state.selectedCells) {
+    // 优先从 _cellDataCache 获取（含时段的 cellKey）
+    const cached = _cellDataCache.get(ck);
+    if (cached && cached.length > 0) {
+      totalImgs += cached.length;
+    } else {
+      totalImgs += imageCountCache.get(ck) || 0;
+    }
+  }
+  dlBtn.textContent = totalImgs <= 1 ? '下载' : '打包下载（ZIP）';
+}
+// 【v1.3.0】事件绑定：下载按钮替换原分享按钮
+document.getElementById('btn-download-separate').addEventListener('click', downloadSelectedImages);
+document.getElementById('btn-download-concat').addEventListener('click', downloadConcatenated);
+document.getElementById('btn-clear-select').addEventListener('click', () => { state.selectedCells = []; concatSelectedKey = ''; document.querySelectorAll('.ts-checkbox.checked').forEach(cb => cb.classList.remove('checked')); updateBottomBar(); });
+
+// ============================================================
+// 十二、事件委托
+// ============================================================
+// 【修复文字消失】事件委托改为 document，因为 page-header 已移出 app
+document.addEventListener('click', async (e) => {
+  // 【v1.17.1】touch 已处理则跳过区域按钮点击，防止双触发
+  if (_areaTouchHandled) { _areaTouchHandled = false; return; }
+  const target = e.target;
+  // 【v1.13.0】底部折叠区域：标题切换展开/收起，内容区只展开不收起
+  const footerOpt = target.closest('[data-action="toggle-footer-opt"]');
+  if (footerOpt) { const key = 'footer-opt-expanded', cur = localStorage.getItem(key) === '1'; localStorage.setItem(key, cur ? '0' : '1'); renderMain(); return; }
+  const footerOptBody = target.closest('[data-action="expand-footer-opt"]');
+  if (footerOptBody && !footerOptBody.classList.contains('expanded')) { localStorage.setItem('footer-opt-expanded', '1'); renderMain(); return; }
+  const footerThx = target.closest('[data-action="toggle-footer-thx"]');
+  if (footerThx) { const key = 'footer-thx-expanded', cur = localStorage.getItem(key) === '1'; localStorage.setItem(key, cur ? '0' : '1'); renderMain(); return; }
+  const footerThxBody = target.closest('[data-action="expand-footer-thx"]');
+  if (footerThxBody && !footerThxBody.classList.contains('expanded')) { localStorage.setItem('footer-thx-expanded', '1'); renderMain(); return; }
+  const floorBtn = target.closest('[data-action="toggle-floor"]');
+  if (floorBtn) { const fid = parseInt(floorBtn.dataset.floor); state.expandedFloors.has(fid) ? state.expandedFloors.delete(fid) : state.expandedFloors.add(fid); saveUIState(); renderMain(); return; }
+  const areaBtn = target.closest('[data-action="toggle-area"]');
+  // 【v1.9.21】手风琴模式：同楼层只能展开一个区域，展开新区域时自动收起同楼层其他区域
+  if (areaBtn) { const fid = parseInt(areaBtn.dataset.floor), aname = areaBtn.dataset.area, ak = areaKey(fid, aname); if (state.expandedAreas.has(ak)) { state.expandedAreas.delete(ak); } else { state.expandedAreas.add(ak); for (const k of [...state.expandedAreas]) { if (k !== ak && k.startsWith(fid + '-')) state.expandedAreas.delete(k); } } saveUIState(); renderMain(); return; }
+  // 【v1.12.0】记录完成时间按钮：二次确认弹窗
+  const recordBtn = target.closest('[data-action="record-time"]');
+  if (recordBtn) {
+    const fid = parseInt(recordBtn.dataset.floor), aname = recordBtn.dataset.area;
+    if (!canEditFloor(fid)) { showToast('无该楼层操作权限'); return; }
+    showRecordConfirm(fid, aname);
+    return;
+  }
+  const seatBtn = target.closest('[data-action="toggle-seat"]');
+  if (seatBtn) { const fid = parseInt(seatBtn.dataset.floor), aname = seatBtn.dataset.area, sidx = parseInt(seatBtn.dataset.seat), sk = seatKey(fid, aname, sidx); const prev = [...state.expandedSeats]; state.expandedSeats.clear(); if (!prev.includes(sk)) state.expandedSeats.add(sk); saveUIState(); renderMain(); return; }
+  const addBtn = target.closest('[data-action="add-seat"]');
+  if (addBtn) {
+    const fid = parseInt(addBtn.dataset.floor), aname = addBtn.dataset.area, ak = areaKey(fid, aname);
+    if (!canEditFloor(fid)) { showToast('无该楼层操作权限'); return; }
+    const cfg = getAreaConfig(fid, aname);
+    const baseCount = cfg ? cfg.count : 0;
+    const currentExtra = state.extraSeats[ak] || 0;
+    // 【v1.18.0】新增座位上限30个：计算有效新增数 = extraSeats - 已删除的额外座位数
+    let deletedExtra = 0;
+    state.deletedSeats.forEach(dsk => {
+      const dp = dsk.split('-');
+      if (dp[1] === aname && parseInt(dp[0]) === fid && parseInt(dp[2]) >= baseCount) deletedExtra++;
+    });
+    const effectiveExtra = currentExtra - deletedExtra;
+    if (effectiveExtra >= 30) {
+      showToast('该区域新增座位已达上限（30个）');
+      return;
+    }
+    const nc = currentExtra + 1;
+    state.extraSeats[ak] = nc;
+    await saveExtraSeat(ak, nc);
+    const sc = document.getElementById('seats-' + ak);
+    if (sc) { sc.innerHTML = renderSeatFlow(fid, aname); state.expandedSeats.forEach(sk => renderTimeSlots(sk)); }
+    const newIdx = getAreaSeatCount(fid, aname) - 1;
+    showToast(`已新增座位 ${getSeatNameSync(fid, aname, newIdx)}`);
+    return;
+  }
+  const delSeatBtn = target.closest('[data-action="delete-seat"]');
+  if (delSeatBtn) {
+    const sk = delSeatBtn.dataset.seatKey;
+    if (!confirm('确定删除该座位及其所有图片？')) return;
+    const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+    if (!canEditFloor(fid)) { showToast('无该楼层操作权限'); return; }
+    for (let t = 0; t < TIME_SLOTS.length; t++) {
+      const ck = cellKey(fid, aname, sidx, t);
+      await dbDelete('cells', ck);
+      imageCountCache.delete(ck); // 【性能优化】同步更新计数缓存
+      clearCellBlobCache(ck); // 【性能优化-深度】回收内存 Blob 缓存
+    }
+    await dbDelete('seatNames', sk); delete state.seatNames[sk];
+    state.deletedSeats.add(sk); await saveDeletedSeat(sk);
+    state.seatHasImages.delete(sk); state.expandedSeats.delete(sk);
+    state.selectedCells = state.selectedCells.filter(ck => cellToSeatKey(ck) !== sk);
+    updateBottomBar(); saveUIState(); renderMain(); showToast('座位已删除'); return;
+  }
+  const checkbox = target.closest('[data-action="toggle-select"]');
+  // 【v1.10.0】限制手动勾选最多22个时段（仅影响打包下载ZIP）
+  if (checkbox) { if (checkbox.classList.contains('disabled')) return; const ck = checkbox.dataset.cellKey, idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); checkbox.classList.remove('checked'); } else { if (state.selectedCells.length >= 22) { showToast('最多可选 22 个时段，如超出请使用"批量下载"'); return; } state.selectedCells.push(ck); checkbox.classList.add('checked'); } updateBottomBar(); return; }
+  const captureBtn = target.closest('[data-action="capture"]');
+  // 【v1.2.2 iOS修复】先同步触发 click()，再在 change 回调中检查图片数量
+  // iOS PWA 中 await 后调用 click() 会被系统阻止，必须在用户交互同步栈中触发
+  if (captureBtn) { const ck = captureBtn.dataset.cellKey; const fid = parseInt(ck.split('-')[0]); if (!canEditFloor(fid)) { showToast('无该楼层操作权限'); return; } if (isUploading(ck)) { showToast('请等待当前上传完成'); return; } currentCaptureCellKey = ck; captureInput.value = ''; captureInput.click(); return; }
+  const uploadBtn = target.closest('[data-action="upload"]');
+  if (uploadBtn) { const ck = uploadBtn.dataset.cellKey; const fid = parseInt(ck.split('-')[0]); if (!canEditFloor(fid)) { showToast('无该楼层操作权限'); return; } if (isUploading(ck)) { showToast('请等待当前上传完成'); return; } currentUploadCellKey = ck; uploadInput.value = ''; uploadInput.click(); return; }
+  const delBtn = target.closest('[data-action="delete-img"]');
+  // 【v1.13.5】删除保护：开启后禁止删除缩略图，显示 toast 提示
+  if (delBtn && state.deleteProtection) {
+    showToast('已开启删除保护，请关闭后重试', 1500);
+    return;
+  }
+  // 【修改2】删除图片：调用 dlDeletePhoto(Storage+DB+缓存)，即时刷新UI
+  if (delBtn) {
+    const ck = delBtn.dataset.cellKey, imgIdx = parseInt(delBtn.dataset.imgIdx);
+    const fid = parseInt(ck.split('-')[0]);
+    if (!canEditFloor(fid)) { showToast('无该楼层操作权限'); return; }
+    // 删除加锁：同一 cell 正在删除中时忽略后续点击
+    if (_deletingCells.has(ck)) { return; }
+    const cd = await getCellData(ck);
+    let imgs = (cd && cd.images) ? [...cd.images] : [];
+    if (imgIdx >= 0 && imgIdx < imgs.length) {
+      const img = imgs[imgIdx];
+      const photoId = img.photo_id;
+      const photoUrl = img.url;
+      if (!photoId) { showToast('该图片尚未上传完成'); return; }
+
+      // 加锁
+      _deletingCells.add(ck);
+      // 立即从 DOM 中移除缩略图（乐观更新）
+      const thumbWrap = delBtn.closest('.thumb-wrap');
+      if (thumbWrap) thumbWrap.remove();
+
+      try {
+        // 调用三步删除：Storage + DB + 缓存
+        const result = await dlDeletePhoto(photoId, photoUrl, ck);
+        if (!result.success) {
+          showToast('删除失败：' + (result.error || '未知错误'));
+          // 恢复 DOM：重新渲染
+          invalidateTimeslotCache(cellToSeatKey(ck));
+          await renderTimeSlots(cellToSeatKey(ck));
+          return;
+        }
+
+        // 清除 Blob 缓存和 DOM 缓存
+        clearCellBlobCache(ck);
+        const sk = cellToSeatKey(ck);
+        invalidateTimeslotCache(sk);
+
+        // dlDeletePhoto 已清空该 cell 的 _cellDataCache，需重新查询计数
+        const refreshedData = await getCellData(ck);
+        const remaining = (refreshedData && refreshedData.images) ? refreshedData.images.length : 0;
+        imageCountCache.set(ck, remaining);
+        if (remaining > 0) {
+          state.seatHasImages.add(sk);
+        } else {
+          imageCountCache.delete(ck);
+          state.seatHasImages.delete(sk);
+          // 图片清零，从勾选集合中移除
+          const selIdx = state.selectedCells.indexOf(ck);
+          if (selIdx >= 0) state.selectedCells.splice(selIdx, 1);
+        }
+
+        // 重新渲染时段区域（更新 img-idx、勾选框状态）
+        await renderTimeSlots(sk);
+        updateSeatVisual(sk);
+        updateBottomBar();
+      } finally {
+        _deletingCells.delete(ck);
+      }
+    }
+    return;
+  }
+  const previewBtn = target.closest('[data-action="preview"]');
+  if (previewBtn) { showPreview(previewBtn.dataset.cellKey, parseInt(previewBtn.dataset.imgIdx)); return; }
+  // 点击时段卡片空白区域切换勾选
+  const card = target.closest('[data-action="toggle-card"]');
+  if (card) { if (card.dataset.hasImages !== '1') return; const ck = card.dataset.cellKey, cb = card.querySelector('.ts-checkbox'); if (!cb || cb.classList.contains('disabled')) return; const idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); cb.classList.remove('checked'); } else { if (state.selectedCells.length >= 22) { showToast('最多可选 22 个时段，如超出请使用"批量下载"'); return; } state.selectedCells.push(ck); cb.classList.add('checked'); } updateBottomBar(); return; }
+  const nameEl = target.closest('[data-action="edit-seat-name"]');
+  if (nameEl && !isFeatureEnabled('feat_rename_seat')) return;
+  if (nameEl) { const sk = nameEl.dataset.seatKey; const nameFid = parseInt(sk.split('-')[0]); if (!canEditFloor(nameFid)) { showToast('无该楼层操作权限'); return; } const curName = nameEl.textContent; const input = document.createElement('input'); input.type = 'text'; input.value = curName; input.className = 'seat-name-edit-input'; const doSave = async () => { const newName = input.value.trim() || curName; if (newName === curName) { const sp = document.createElement('span'); sp.className = 'seat-name-text'; sp.dataset.action = 'edit-seat-name'; sp.dataset.seatKey = sk; sp.textContent = newName; if (input.parentNode) input.replaceWith(sp); return; } if (newName.length > 6) { showToast('编号最多6位'); input.focus(); return; } state.seatNames[sk] = newName; await saveSeatName(sk, newName); const sp = document.createElement('span'); sp.className = 'seat-name-text'; sp.dataset.action = 'edit-seat-name'; sp.dataset.seatKey = sk; sp.textContent = newName; if (input.parentNode) input.replaceWith(sp); updateSeatButtonText(sk, newName); await regenerateWatermarksForSeat(sk); }; input.addEventListener('blur', doSave); input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') input.blur(); }); nameEl.replaceWith(input); input.focus(); input.select(); return; }
+  const cleanupBtn = target.closest('[data-action="open-cleanup"]');
+  if (cleanupBtn) { initCleanupModal(); cleanupModal.classList.add('show'); return; }
+  const batchDlBtn = target.closest('[data-action="open-batch-dl"]');
+  if (batchDlBtn) { initBatchModal(); batchModal.classList.add('show'); return; }
+  const filterBtn = target.closest('[data-action="open-filter"]');
+  if (filterBtn) { openFilterSheet(); return; }
+  // 【修改3】功能面板入口
+  const funcPanelBtn = target.closest('[data-action="open-func-panel"]');
+  if (funcPanelBtn) { openFuncPanel(); return; }
+});
+
+// ============================================================
+// 【v1.9.25】移动端按压反馈：touchstart 立即添加 _pressing 类
+// 不调用 preventDefault()，保留系统长按行为（复制、选择等）
+// ============================================================
+(function(){
+  var cls='_pressing',sel='.floor-btn,.area-btn,.record-time-btn,.seat-btn,.header-btn,.btn-delete-seat,.func-item,.update-bar';
+  document.addEventListener('touchstart',function(e){
+    var t=e.target.closest(sel);
+    if(t) t.classList.add(cls);
+  },{passive:true});
+  document.addEventListener('touchend',function(e){
+    var t=e.target.closest(sel);
+    if(t) t.classList.remove(cls);
+  },{passive:true});
+  document.addEventListener('touchcancel',function(e){
+    var t=e.target.closest(sel);
+    if(t) t.classList.remove(cls);
+  },{passive:true});
+  document.addEventListener('mouseleave',function(e){
+    if(e.target.matches&&e.target.matches(sel)) e.target.classList.remove(cls);
+  },true);
+})();
+// ============================================================
+// 十二-A、标题点击检查更新（纯内联 onclick，最原始最稳固）
+// 【v1.9.22】修复非默认主题下标题点击失效
+//   - 仅使用内联 onclick="handleTitleClick()"
+//   - 行内样式 pointer-events:auto!important; z-index:99 防遮挡
+//   - 防抖存储在 window.__updateCheckTimer，3秒内不允许重复触发
+// 【v1.10.12】增加绕过缓存的强制探测，检测 index.html 内容变化
+// ============================================================
+window.__updateCheckTimer = false;
+function handleTitleClick() {
+  if (window.__updateCheckTimer) return;
+  window.__updateCheckTimer = true;
+  setTimeout(function() { window.__updateCheckTimer = false; }, 3000);
+  try {
+    // 优先：如果 SW 已有 waiting worker，直接激活
+    if (swRegistration && swRegistration.waiting) {
+      try { saveFilterState(); } catch(ex) {}
+      swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      navigator.serviceWorker.addEventListener('controllerchange', function() {
+        try { saveFilterState(); } catch(ex) {}
+        window.location.reload();
+      });
+      setTimeout(function() {
+        try { saveFilterState(); } catch(ex) {}
+        window.location.reload();
+      }, 1000);
+      return;
+    }
+    // 【v1.10.12】绕过缓存强制探测 index.html 是否有更新
+    showToast('正在检查更新...');
+    fetch('/index.html', { cache: 'no-cache' })
+      .then(function(resp) {
+        var newEtag = resp.headers.get('ETag');
+        var newModified = resp.headers.get('Last-Modified');
+        var cachedEtag = window.__cachedEtag || null;
+        var cachedModified = window.__cachedModified || null;
+        // 优先用 ETag/Last-Modified 头判断
+        if (newEtag && cachedEtag && newEtag !== cachedEtag) { forceUpdate(); return; }
+        if (newModified && cachedModified && newModified !== cachedModified) { forceUpdate(); return; }
+        // 无头信息或头相同，回退到内容比对（取前 2000 字符的简易哈希）
+        return resp.text().then(function(text) {
+          var hash = simpleHash(text.substring(0, 2000));
+          var cachedHash = window.__cachedPageHash || null;
+          if (!cachedHash) {
+            // 首次加载时记录当前页面哈希
+            window.__cachedPageHash = hash;
+            window.__cachedEtag = newEtag;
+            window.__cachedModified = newModified;
+            showToast('已是最新版本');
+            return;
+          }
+          if (hash !== cachedHash) { forceUpdate(); }
+          else { showToast('已是最新版本'); }
+        });
+      })
+      .catch(function(err) {
+        console.warn('检查更新失败:', err);
+        showToast('检查更新失败，请稍后重试');
+      });
+  } catch(ex) { console.warn('检查更新失败:', ex); }
+}
+
+// 【v1.10.12】简易哈希函数：将字符串转为数字哈希
+function simpleHash(str) {
+  var hash = 0;
+  for (var i = 0; i < str.length; i++) {
+    var ch = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + ch;
+    hash = hash & hash;
+  }
+  return hash.toString(16);
+}
+
+// 【v1.10.12】强制更新：尝试更新 SW → skipWaiting → 刷新
+function forceUpdate() {
+  showToast('发现新版本，正在更新...');
+  try { saveFilterState(); } catch(ex) {}
+  if (swRegistration) {
+    swRegistration.update().then(function() {
+      if (swRegistration.waiting) { swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' }); }
+      setTimeout(function() { window.location.reload(); }, 800);
+    }).catch(function() {
+      setTimeout(function() { window.location.reload(); }, 800);
+    });
+  } else {
+    setTimeout(function() { window.location.reload(); }, 800);
+  }
+}
+
+// ============================================================
+// 十二-B、时段筛选面板
+// ============================================================
+const filterOverlay = document.getElementById('filter-overlay');
+const filterSheet = document.getElementById('filter-sheet');
+const filterBody = document.getElementById('filter-body');
+
+/** 打开筛选面板 */
+function openFilterSheet() {
+  renderFilterBody();
+  filterOverlay.classList.add('show');
+  requestAnimationFrame(() => filterSheet.classList.add('show'));
+}
+
+/** 关闭筛选面板 */
+function closeFilterSheet() {
+  filterSheet.classList.remove('show');
+  setTimeout(() => filterOverlay.classList.remove('show'), 300);
+}
+
+/** 渲染筛选面板内容 */
+function renderFilterBody() {
+  let html = '';
+  TIME_SLOTS.forEach((ts, idx) => {
+    const checked = isTimeSlotVisible(idx);
+    const passed = isTimeSlotPassed(idx);
+    html += `<div class="filter-slot-item" data-tidx="${idx}"><div class="filter-slot-cb ${checked ? 'checked' : ''}"></div><span class="filter-slot-label ${passed ? 'passed' : ''}">${ts}${passed ? ' (已过)' : ''}</span></div>`;
+  });
+  filterBody.innerHTML = html;
+}
+
+/** 切换单个时段勾选 */
+filterBody.addEventListener('click', (e) => {
+  const item = e.target.closest('.filter-slot-item');
+  if (!item) return;
+  const tidx = parseInt(item.dataset.tidx);
+  const cb = item.querySelector('.filter-slot-cb');
+  // 如果当前是全显状态（空集+_filterNone=false），先初始化为全部勾选
+  if (state.visibleTimeSlots.size === 0 && !state._filterNone) {
+    state.visibleTimeSlots = new Set(TIME_SLOTS.map((_, i) => i));
+  }
+  if (state.visibleTimeSlots.has(tidx)) {
+    state.visibleTimeSlots.delete(tidx);
+    cb.classList.remove('checked');
+    // 【v1.10.21】手动取消最后一个时段时，标记为全不显示，避免被重置为全选
+    if (state.visibleTimeSlots.size === 0) state._filterNone = true;
+  } else {
+    state.visibleTimeSlots.add(tidx);
+    cb.classList.add('checked');
+    state._filterNone = false;
+  }
+  // 如果全部勾选，等价于无筛选
+  if (state.visibleTimeSlots.size === TIME_SLOTS.length) {
+    state.visibleTimeSlots = new Set();
+    state._filterNone = false;
+  }
+  saveFilterState();
+  refreshExpandedSeats();
+});
+
+/** 隐藏已过时段 */
+document.getElementById('filter-hide-passed').addEventListener('click', () => {
+  state.visibleTimeSlots = new Set();
+  state._filterNone = false;
+  for (let i = 0; i < TIME_SLOTS.length; i++) {
+    if (!isTimeSlotPassed(i)) state.visibleTimeSlots.add(i);
+  }
+  // 如果所有时段都已过（如 21:00 之后），至少保留最后一个时段
+  if (state.visibleTimeSlots.size === 0) {
+    state.visibleTimeSlots.add(TIME_SLOTS.length - 1);
+  }
+  saveFilterState();
+  renderFilterBody();
+  refreshExpandedSeats();
+});
+
+/** 全选 */
+document.getElementById('filter-select-all').addEventListener('click', () => {
+  state.visibleTimeSlots = new Set(); // 空集+_filterNone=false = 全部显示
+  state._filterNone = false;
+  saveFilterState();
+  renderFilterBody();
+  refreshExpandedSeats();
+});
+
+/** 清除所有勾选 */
+document.getElementById('filter-clear').addEventListener('click', () => {
+  state.visibleTimeSlots = new Set();
+  state._filterNone = true; // 空集+_filterNone=true = 全不显示
+  saveFilterState();
+  renderFilterBody();
+  refreshExpandedSeats();
+});
+
+/** 关闭面板 */
+filterOverlay.addEventListener('click', closeFilterSheet);
+document.getElementById('filter-close').addEventListener('click', closeFilterSheet);
+
+/** 【修复Bug1】刷新已展开座位的视觉和筛选状态
+ *  轻量化：筛选变化时只切换 CSS 显隐，不重建 DOM；数据变化时才重建
+ *  【性能优化】单次遍历所有座位按钮，避免 O(n²) 的 updateSeatVisual 调用 */
+let _refreshingSeats = false;
+
+async function refreshExpandedSeats() {
+  // 【修复BUG】防止并发调用导致卡死
+  if (_refreshingSeats) return;
+  _refreshingSeats = true;
+  try {
+    // 【修复Bug1】不再 invalidateAllTimeslotCache！筛选变化时只需切换 CSS 显隐
+    await refreshSeatImageStats();
+    // 【性能优化】单次遍历所有座位按钮，批量更新视觉，避免 O(n²)
+    const updatedAreas = new Set();
+    // 【v1.3.10】判断筛选是否非全选
+    const isFilterActive = !(state.visibleTimeSlots.size === 0 && !state._filterNone);
+    document.querySelectorAll('.seat-btn').forEach(btn => {
+      const sk = seatKey(parseInt(btn.dataset.floor), btn.dataset.area, parseInt(btn.dataset.seat));
+      refreshSingleSeatStats(sk);
+      // 移除旧类
+      btn.classList.remove('has-images', 'has-images-1', 'has-images-2');
+      // 移除旧图标
+      btn.querySelectorAll('.icon-hidden, .icon-filter-hit').forEach(el => el.remove());
+      // 【v1.3.16 修复】颜色基于可见时段统计，与 renderSeatFlow/updateSeatVisual 一致
+      const stat = seatImageStats.get(sk);
+      if (stat && stat.visibleTotalCount >= 2 && stat.visibleHasSlotWithMulti) {
+        btn.classList.add('has-images-2');
+      } else if (stat && stat.visibleTotalCount >= 1) {
+        btn.classList.add('has-images-1');
+      }
+      // 【v1.3.14 修复】移除 seatHasImages 兜底，隐藏时段有图不再触发蓝色
+      // 【v1.4.1 修改】左上角闭眼图标：隐藏时段有图
+      if (stat && stat.hiddenHasImages) {
+        const icon = document.createElement('span');
+        icon.className = 'icon-hidden';
+        icon.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46A11.804 11.804 0 001 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/></svg>';
+        btn.appendChild(icon);
+      }
+      // 【v1.3.10】右上角筛选命中图标：筛选非全选 + 可见时段有图
+      if (isFilterActive && stat && stat.visibleHasImages) {
+        const icon = document.createElement('span');
+        icon.className = 'icon-filter-hit';
+        icon.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>';
+        btn.appendChild(icon);
+      }
+      // 记录需要更新区域视觉的区域
+      const parts = sk.split('-');
+      updatedAreas.add(`${parts[0]}-${parts[1]}`);
+    });
+    // 【性能优化】每个区域只更新一次区域按钮视觉
+    updatedAreas.forEach(ak => {
+      const p = ak.split('-');
+      updateAreaVisual(parseInt(p[0]), p[1]);
+    });
+    // 【修复Bug1】筛选变化时只切换时段卡片的显隐，不重建 DOM
+    for (const sk of state.expandedSeats) {
+      const container = document.getElementById('timeslots-' + sk);
+      applyTimeslotFilter(container);
+    }
+  } finally {
+    _refreshingSeats = false;
+  }
+}
+
+function updateSeatButtonText(sk, newName) {
+  document.querySelectorAll('.seat-btn').forEach(btn => { const k = seatKey(parseInt(btn.dataset.floor), btn.dataset.area, parseInt(btn.dataset.seat)); if (k === sk) { const t = btn.querySelector('.seat-btn-text'); if (t) t.textContent = newName; else btn.textContent = newName; } });
+}
+async function regenerateWatermarksForSeat(sk) {
+  // 【v1.4.0】修改座位编号后，仅更新 seatName 字段，不再重新生成水印
+  // 已存储的图片保持原样，新编号仅影响之后新拍照的水印文字
+  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  const sName = getSeatNameSync(fid, aname, sidx);
+  for (let t = 0; t < TIME_SLOTS.length; t++) {
+    const ck = cellKey(fid, aname, sidx, t), cd = await getCellData(ck);
+    if (!cd || !cd.images) continue;
+    let changed = false;
+    for (let i = 0; i < cd.images.length; i++) {
+      // 仅更新 seatName，不重新生成水印图
+      if (cd.images[i].seatName !== sName) {
+        cd.images[i].seatName = sName;
+        changed = true;
+      }
+    }
+    if (changed) {
+      await saveCellData(ck, cd.images);
+      cacheCellBlobs(ck, cd.images);
+    }
+  }
+  invalidateTimeslotCache(sk);
+  await renderTimeSlots(sk);
+}
+
+// ============================================================
+// 十二-C、【修改3】功能面板
+// ============================================================
+const funcPanelOverlay = document.getElementById('func-panel-overlay');
+const funcPanel = document.getElementById('func-panel');
+const funcPanelBody = document.getElementById('func-panel-body');
+const funcPanelClose = document.getElementById('func-panel-close');
+
+function renderFuncPanelBody() {
+  const isReader = currentUser.role === 'reader';
+  funcPanelBody.innerHTML = `
+    <div class="func-item" data-func="open-filter">
+      <div class="func-item-label">时段筛选<div class="func-item-desc">选择显示的时段范围</div></div>
+      <span style="color:#bfbfbf;font-size:18px">›</span>
+    </div>
+    <div class="func-item" data-func="show-collab-passwords" style="${(currentUser.role === 'owner' || currentUser.role === 'admin' || currentUser.role === 'floor_manager' || currentUser.role === 'assistant') ? '' : 'display:none'}">
+      <div class="func-item-label">协作密码<div class="func-item-desc">查看今日协作密码二维码</div></div>
+      <span style="color:#bfbfbf;font-size:18px" id="collab-arrow">›</span>
+    </div>
+    <div class="collab-floor-list" id="collab-floor-list" style="display:none">
+    </div>
+    ${!isReader ? `<div class="func-item" data-func="open-batch-dl" style="${isFeatureEnabled('feat_batch_download') ? '' : 'display:none'}">
+      <div class="func-item-label">批量下载<div class="func-item-desc">下载选中时段的图片</div></div>
+      <span style="color:#bfbfbf;font-size:18px">›</span>
+    </div>
+    <!-- 【v1.10.0 修改】清除全部图片 → 清除图片 -->
+    <div class="func-item" data-func="open-cleanup" style="${isFeatureEnabled('feat_clear_images') ? '' : 'display:none'}">
+      <div class="func-item-label">清除图片<div class="func-item-desc">选择区域和时段清除图片</div></div>
+      <span style="color:#bfbfbf;font-size:18px">›</span>
+    </div>` : ''}
+    <!-- 【v1.6.0 新增】主题选择 -->
+    <div class="func-item" data-func="toggle-theme">
+      <div class="func-item-label">主题<div class="func-item-desc">切换界面风格</div></div>
+      <span style="color:#bfbfbf;font-size:18px" id="theme-arrow">›</span>
+    </div>
+    <div class="theme-list" id="theme-list" style="display:none">
+      <div class="theme-list-item${(!state.currentTheme || state.currentTheme === 'default') ? ' active' : ''}" data-theme="default"><span>默认</span><span class="theme-check"></span></div>
+      <div class="theme-list-item${state.currentTheme === 'normal' ? ' active' : ''}" data-theme="normal"><span>护眼</span><span class="theme-check"></span></div>
+      <div class="theme-list-item${state.currentTheme === 'yiban' ? ' active' : ''}" data-theme="yiban"><span>蓝色</span><span class="theme-check"></span></div>
+      <div class="theme-list-item${state.currentTheme === 'pixel' ? ' active' : ''}" data-theme="pixel"><span>怀旧</span><span class="theme-check"></span></div>
+    </div>
+    ${!isReader ? `<!-- 【v1.13.5】删除保护开关 -->
+    <div class="func-item" data-func="toggle-delete-protection">
+      <div class="func-item-label">删除保护<div class="func-item-desc">开启后禁止手动点触删除图片</div></div>
+      <div class="func-toggle ${state.deleteProtection ? 'on' : ''}" id="func-toggle-del-protect"></div>
+    </div>
+    <div class="func-item" data-func="toggle-auto-share" style="${isFeatureEnabled('feat_photo_download') ? '' : 'display:none'}">
+      <div class="func-item-label">拍照后下载<div class="func-item-desc">拍照完成后提示下载图片</div></div>
+      <div class="func-toggle ${state.autoShare ? 'on' : ''}" id="func-toggle-share"></div>
+    </div>
+    <div class="func-item" data-func="toggle-allow-delete" style="${isFeatureEnabled('feat_delete_seat') ? '' : 'display:none'}">
+      <div class="func-item-label">允许删除座位<div class="func-item-desc">开启后显示座位删除按钮</div></div>
+      <div class="func-toggle ${state.allowDeleteSeat ? 'on' : ''}" id="func-toggle-delete"></div>
+    </div>
+    <!-- 【v1.3.2 新功能3】深业运营 LOGO 水印开关 -->
+    <div class="func-item" data-func="toggle-show-logo">
+      <div class="func-item-label">深业运营 LOGO<div class="func-item-desc">拍照水印添加 LOGO 图标</div></div>
+      <div class="func-toggle ${state.showLogo ? 'on' : ''}" id="func-toggle-logo"></div>
+    </div>
+    <!-- 【v1.3.9 新功能1】上传图片加水印开关 -->
+    <div class="func-item" data-func="toggle-upload-watermark">
+      <div class="func-item-label">上传图片加水印<div class="func-item-desc">上传图片时添加与拍照相同的水印</div></div>
+      <div class="func-toggle ${state.uploadWatermark ? 'on' : ''}" id="func-toggle-upload-wm"></div>
+    </div>
+    <!-- 【v1.3.0 菜单改名+重置功能】新增重置应用按钮 -->
+    <div class="func-item" data-func="reset-app" style="border-top:1px solid #e8e8e8;margin-top:8px;padding-top:16px;${isFeatureEnabled('feat_reset_app') && state.allowDeleteSeat ? '' : 'display:none'}">
+      <div class="func-item-label" style="color:#ff4d4f;font-weight:600">重置应用<div class="func-item-desc" style="color:#ff7875">清除本地自定义数据（云端图片不受影响）</div></div>
+      <span style="color:#ff4d4f;font-size:18px">›</span>
+    </div>` : ''}`;
+}
+
+function openFuncPanel() {
+  renderFuncPanelBody();
+  funcPanelOverlay.classList.add('show');
+  funcPanel.classList.add('show');
+  // 【v1.3.9 修复2】菜单打开时阻止背景页面滚动
+  document.body.style.overflow = 'hidden';
+}
+
+function closeFuncPanel() {
+  funcPanelOverlay.classList.remove('show');
+  funcPanel.classList.remove('show');
+  // 【v1.3.9 修复2】菜单关闭时恢复背景页面滚动
+  document.body.style.overflow = '';
+  // 【v1.10.10】菜单关闭时校验筛选状态，防止偶发重置
+  try {
+    if (restoreFilterStateFromStorage()) {
+      refreshExpandedSeats();
+    }
+  } catch(e) {}
+}
+
+funcPanelOverlay.addEventListener('click', closeFuncPanel);
+funcPanelClose.addEventListener('click', closeFuncPanel);
+
+// 【v1.3.9 修复2】阻止菜单面板触摸事件冒泡到背景页面，防止滑动穿透
+funcPanel.addEventListener('touchmove', (e) => {
+  // 如果 func-panel-body 内部不可滚动（内容未超出），阻止默认行为
+  const body = funcPanelBody;
+  const atTop = body.scrollTop <= 0;
+  const atBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 1;
+  if ((atTop && e.touches[0].clientY > funcPanel._touchStartY) || (atBottom && e.touches[0].clientY < funcPanel._touchStartY)) {
+    // 在顶部继续下拉 或 在底部继续上拉 → 阻止（防止穿透到背景）
+    e.preventDefault();
+  }
+}, { passive: false });
+funcPanel.addEventListener('touchstart', (e) => {
+  funcPanel._touchStartY = e.touches[0].clientY;
+}, { passive: true });
+
+funcPanelBody.addEventListener('click', (e) => {
+  // 【v1.6.0】主题列表项点击（独立处理，不在 func-item 分支内）
+  const themeItem = e.target.closest('.theme-list-item');
+  if (themeItem) {
+    const theme = themeItem.dataset.theme;
+    state.currentTheme = theme;
+    applyTheme(theme);
+    saveThemeState();
+    // 更新列表高亮
+    funcPanelBody.querySelectorAll('.theme-list-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.theme === theme);
+    });
+    return; // 不关闭菜单，方便继续操作
+  }
+  // 【v2.0.0】协作密码楼层列表项点击
+  const collabItem = e.target.closest('.collab-floor-item');
+  if (collabItem) {
+    const fid = collabItem.dataset.floor;
+    const hasPerm = collabItem.dataset.hasPerm === '1';
+    if (!hasPerm) { showToast('无此楼层权限'); return; }
+    const hasPw = collabItem.dataset.hasPw === '1';
+    if (!hasPw) { showToast('该楼层今日尚无协作密码'); return; }
+    const pw = collabItem.dataset.pw;
+    showQRCodeForPassword(pw, fid);
+    return;
+  }
+  const item = e.target.closest('.func-item');
+  if (!item) return;
+  const func = item.dataset.func;
+  if (func === 'open-filter') { closeFuncPanel(); setTimeout(() => openFilterSheet(), 300); }
+  else if (func === 'open-batch-dl') { closeFuncPanel(); setTimeout(() => { initBatchModal(); batchModal.classList.add('show'); }, 300); }
+  else if (func === 'open-cleanup') { closeFuncPanel(); setTimeout(() => { initCleanupModal(); cleanupModal.classList.add('show'); }, 300); }
+  else if (func === 'show-collab-passwords') {
+    // 展开楼层列表（类似主题列表的展开/收起）
+    const list = document.getElementById('collab-floor-list');
+    const arrow = document.getElementById('collab-arrow');
+    if (list) {
+      const isShown = list.style.display !== 'none';
+      if (isShown) {
+        list.style.display = 'none';
+        if (arrow) arrow.textContent = '›';
+      } else {
+        // 异步加载楼层密码数据
+        loadCollabFloorList();
+        list.style.display = 'block';
+        if (arrow) arrow.textContent = '⌄';
+      }
+    }
+  }
+  // 【v1.6.0】主题选择：展开/收起主题列表，不关闭菜单
+  else if (func === 'toggle-theme') {
+    const list = document.getElementById('theme-list');
+    const arrow = document.getElementById('theme-arrow');
+    if (list) {
+      const isShown = list.style.display !== 'none';
+      list.style.display = isShown ? 'none' : 'block';
+      if (arrow) arrow.textContent = isShown ? '›' : '⌄';
+    }
+  }
+  else if (func === 'toggle-auto-share') {
+    state.autoShare = !state.autoShare;
+    saveAutoShareState();
+    const toggle = document.getElementById('func-toggle-share');
+    if (toggle) toggle.classList.toggle('on', state.autoShare);
+  }
+  else if (func === 'toggle-allow-delete') {
+    state.allowDeleteSeat = !state.allowDeleteSeat;
+    saveAllowDeleteState();
+    const toggle = document.getElementById('func-toggle-delete');
+    if (toggle) toggle.classList.toggle('on', state.allowDeleteSeat);
+    // 【修复Bug2】立即更新所有删除座位按钮的可见性（全局设置关闭时强制隐藏）
+    document.querySelectorAll('.btn-delete-seat').forEach(btn => {
+      btn.classList.toggle('visible', isFeatureEnabled('feat_delete_seat') && state.allowDeleteSeat);
+    });
+    // 【修复Bug2】清除 DOM 缓存并刷新已展开座位（确保新渲染的 HTML 包含正确按钮状态）
+    invalidateAllTimeslotCache();
+    state.expandedSeats.forEach(sk => renderTimeSlots(sk));
+  }
+  // 【v1.13.5】删除保护开关
+  else if (func === 'toggle-delete-protection') {
+    state.deleteProtection = !state.deleteProtection;
+    saveDeleteProtectionState();
+    const toggle = document.getElementById('func-toggle-del-protect');
+    if (toggle) toggle.classList.toggle('on', state.deleteProtection);
+  }
+  // 【v1.3.2 新功能3】深业运营 LOGO 水印开关
+  else if (func === 'toggle-show-logo') {
+    state.showLogo = !state.showLogo;
+    saveShowLogoState();
+    const toggle = document.getElementById('func-toggle-logo');
+    if (toggle) toggle.classList.toggle('on', state.showLogo);
+    // LOGO 状态变更时重置缓存，下次拍照时重新加载
+    _logoLoaded = false; _logoImg = null;
+  }
+  // 【v1.3.9 新功能1】上传图片加水印开关
+  else if (func === 'toggle-upload-watermark') {
+    state.uploadWatermark = !state.uploadWatermark;
+    saveUploadWatermarkState();
+    const toggle = document.getElementById('func-toggle-upload-wm');
+    if (toggle) toggle.classList.toggle('on', state.uploadWatermark);
+  }
+  // 【v2.0.6】重置应用：仅清除本地自定义数据，保留云端图片
+  else if (func === 'reset-app') {
+    if (!state.allowDeleteSeat) { showToast('请先开启"允许删除座位"开关'); return; }
+    if (!confirm('此操作将清除所有本地自定义数据和偏好设置，座位数量恢复默认值。云端图片不受影响。确认重置？')) return;
+    closeFuncPanel();
+    try {
+      // 第一步：清除本地缓存
+      dlClearCache();
+      // 第二步：清除自定义数据
+      state.extraSeats = {};
+      state.deletedSeats = new Set();
+      state.seatNames = {};
+      Object.keys(_extraSeatsCache).forEach(k => delete _extraSeatsCache[k]);
+      _deletedSeatsCache.clear();
+      Object.keys(_seatNamesCache).forEach(k => delete _seatNamesCache[k]);
+      // 第三步：清除 localStorage 中所有非认证相关键（保留 supabase auth token）
+      const keysToKeep = new Set();
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith('sb-') || key.startsWith('supabase')) keysToKeep.add(key);
+      }
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!keysToKeep.has(key)) keysToRemove.push(key);
+      }
+      keysToRemove.forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+      // 第四步：刷新页面，恢复 FLOORS 默认座位
+      location.reload();
+    } catch (err) {
+      console.error('重置出错:', err);
+      showToast('重置出错：' + (err.message || '未知错误'));
+    }
+  }
+});
+
+// ============================================================
+// 十三、初始化
+// ============================================================
+// 【v1.2.2 微信兼容】全局未捕获异常处理，防止页面崩溃触发微信自动重载
+window.addEventListener('unhandledrejection', (e) => {
+  console.warn('未捕获的 Promise 异常:', e.reason);
+  e.preventDefault(); // 阻止默认的控制台报错行为
+});
+window.addEventListener('error', (e) => {
+  console.warn('全局异常:', e.message);
+});
+
+// 【共享版】reader 等待审批/暂未开放页面
+// mode: 'pending' = 等待审批, 'closed' = 读者视图暂未开放
+function showReaderPendingPage(mode) {
+  const isClosed = mode === 'closed';
+  document.title = (isClosed ? '暂未开放' : '等待审批') + ' - 座位图片管理';
+  document.body.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px 20px;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;background:linear-gradient(135deg,#e6f7ff,#f0f2f5,#f9f0ff)">
+      <div style="width:80px;height:80px;background:linear-gradient(135deg,${isClosed ? '#8c8c8c,#595959' : '#faad14,#d48806'});border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:24px">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><path d="${isClosed ? 'M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z' : 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z'}"/></svg>
+      </div>
+      <h2 style="font-size:22px;color:#1a1a1a;margin-bottom:12px">${isClosed ? '读者视图暂未开放' : '账号待审批'}</h2>
+      <p style="font-size:15px;color:#666;text-align:center;max-width:320px;margin-bottom:8px">
+        你好，<strong style="color:#1890ff">${currentUser.name || ''}</strong>
+      </p>
+      <p style="font-size:14px;color:#999;text-align:center;max-width:320px;margin-bottom:32px">
+        ${isClosed ? '读者视图功能暂未开放，请联系管理员开启。' : '你的账号（' + (currentUser.cardNumber || '') + '）正在等待管理员审批。<br>审批通过后点击下方按钮刷新状态。'}
+      </p>
+      ${isClosed
+        ? '<button onclick="signOut()" style="padding:12px 48px;background:linear-gradient(135deg,#8c8c8c,#595959);color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-weight:600;margin-bottom:12px">退出登录</button>'
+        : '<button onclick="checkApprovalStatus()" style="padding:12px 48px;background:linear-gradient(135deg,#1890ff,#096dd9);color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-weight:600;margin-bottom:12px">检查审批状态</button><button onclick="signOut()" style="padding:10px 36px;background:none;border:1px solid #d9d9d9;color:#666;border-radius:8px;font-size:14px;cursor:pointer">退出登录</button>'}
+    </div>`;
+}
+
+// 检查审批状态：重新读取角色，若已变更则刷新页面
+async function checkApprovalStatus() {
+  try {
+    await loadUserProfile();
+    console.log('[审批检查] currentUser:', JSON.stringify({ uid: currentUser.uid, role: currentUser.role, loaded: currentUser.loaded }));
+    if (currentUser.role !== 'reader') {
+      window.location.reload();
+    } else {
+      alert('仍未审批（当前角色: ' + currentUser.role + '），请等待管理员操作');
+    }
+  } catch (e) {
+    alert('检查失败: ' + (e.message || e));
+  }
+}
+
+// 【v1.9.15】全局变量：SW registration，供标题点击检查更新使用
+let swRegistration = null;
+
+async function init() {
+  // 【共享版】登录拦截：未登录则跳转登录页
+  try {
+    const session = await getSession();
+    if (!session) {
+      window.location.href = 'login.html';
+      return;
+    }
+    // 加载用户角色信息
+    await loadUserProfile();
+    state.currentUser = currentUser; // 引用 auth.js 全局对象
+    // 【功能开关】加载全局设置
+    await loadGlobalSettings();
+
+    // 【共享版】reader 角色拦截：检查 reader_view_enabled 设置
+    if (currentUser.role === 'reader') {
+      console.log('[init] reader 角色检查 reader_view_enabled:', globalSettings.reader_view_enabled);
+      if (!isFeatureEnabled('reader_view_enabled')) {
+        showReaderPendingPage('closed');
+        return;
+      }
+      // reader 视图已开放，继续加载主界面（只读模式）
+      console.log('[init] reader 视图已开放，进入只读模式');
+    }
+
+    // 显示用户信息条
+    const userBar = document.getElementById('user-bar');
+    const userName = document.getElementById('user-bar-name');
+    const userRole = document.getElementById('user-bar-role');
+    const userExpire = document.getElementById('user-bar-expire');
+    const userLogout = document.getElementById('user-bar-logout');
+    if (userBar && currentUser.loaded) {
+      userBar.style.display = 'flex';
+      if (userName) userName.textContent = currentUser.name || currentUser.email;
+      if (userRole) userRole.textContent = getRoleDisplayName(currentUser.role);
+      // 协助者显示过期时间
+      if (userExpire && currentUser.role === 'assistant' && currentUser.assistantExpiresAt) {
+        const exp = new Date(currentUser.assistantExpiresAt);
+        userExpire.textContent = '有效期至 ' + exp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        userExpire.style.display = 'inline';
+      }
+      // 登出按钮
+      if (userLogout) {
+        userLogout.onclick = () => { signOut(); };
+      }
+    }
+  } catch (err) {
+    console.warn('登录检查失败，跳转登录页:', err);
+    window.location.href = 'login.html';
+    return;
+  }
+
+  // 【v1.12.0】骨架屏：记录初始化开始时间，加载完成后判断是否显示过骨架屏
+  const initStart = Date.now();
+  const skeletonEl = document.getElementById('skeleton');
+  try {
+    await openDB();
+    // 【共享版】从云端加载元数据
+    state.seatNames = await getAllSeatNames();
+    state.extraSeats = await getAllExtraSeats();
+    state.deletedSeats = await getAllDeletedSeats();
+    await buildSeatHasImages();
+    loadUIState();
+    loadFilterState();
+    loadAutoShareState();
+    loadAllowDeleteState();
+    loadShowLogoState(); // 【v1.3.2 新功能3】加载 LOGO 水印开关状态
+    loadUploadWatermarkState(); // 【v1.3.9 新功能1】加载上传加水印开关状态
+    loadDeleteProtectionState(); // 【v1.13.5】加载删除保护开关状态
+    loadThemeState(); // 【v1.6.0】加载主题状态
+    loadCompletionRecords(); // 【v1.12.7】加载记录完成时间数据
+    ensureFuncBtnText();
+    startFuncBtnObserver();
+    await renderMain();
+    // 【v1.2.4】版本号已在 renderMain 中直接写入 HTML，无需再手动设置
+  } catch (err) {
+    console.error('初始化失败:', err);
+    // 【v1.2.2 微信兼容】初始化失败时显示友好提示，不崩溃
+    try { app.innerHTML = '<p style="padding:20px;color:#666;">初始化遇到问题，请刷新页面重试。如持续出现，请使用系统浏览器打开。</p>'; } catch(e) {}
+  }
+  // 【v1.12.2】骨架屏：最小显示 0.4 秒，确保刷新时也能看到动画
+  if (skeletonEl) {
+    const elapsed = Date.now() - initStart;
+    const minDelay = Math.max(0, 200 - elapsed);
+    const pageHeader = document.getElementById('page-header');
+    const reveal = () => { if (pageHeader) pageHeader.style.opacity = '1'; };
+    setTimeout(() => {
+      skeletonEl.style.opacity = '0';
+      skeletonEl.style.transition = 'opacity .2s ease';
+      reveal();
+      setTimeout(() => skeletonEl.remove(), 200);
+    }, minDelay);
+  }
+  // Service Worker 已禁用
+  // if (!isWeChat && 'serviceWorker' in navigator) {
+  //   try {
+  //     navigator.serviceWorker.register('./sw.js').then(reg => {
+  //       swRegistration = reg;
+  //       if (reg.waiting) { try { showUpdateBar(reg.waiting); } catch(e) {} }
+  //       reg.addEventListener('updatefound', () => {
+  //         const newWorker = reg.installing;
+  //         if (!newWorker) return;
+  //         newWorker.addEventListener('statechange', () => {
+  //           if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+  //             try { showUpdateBar(newWorker); } catch(e) {}
+  //           }
+  //         });
+  //       });
+  //       setInterval(() => { try { reg.update(); } catch(e) {} }, 30 * 60 * 1000);
+  //     }).catch(() => {});
+  //   } catch (e) { console.warn('SW 注册失败，不影响使用:', e); }
+  // }
+  function showUpdateBar(worker) {
+    try {
+      const bar = document.getElementById('update-bar');
+      if (!bar || bar.classList.contains('show')) return;
+      bar.classList.add('show');
+      bar.onclick = () => {
+        // 【v1.3.18 深度修复】SW 更新前强制保存筛选状态（使用新键名双重备份），防止刷新后丢失
+        try { saveFilterState(); } catch(e) {}
+        if (worker && worker.postMessage) {
+          worker.postMessage({ type: 'SKIP_WAITING' });
+        }
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          // 【v1.3.18 深度修复】刷新前再次强制保存，确保最新状态
+          try { saveFilterState(); } catch(e) {}
+          window.location.reload();
+        });
+        setTimeout(() => {
+          // 【v1.3.18 深度修复】超时刷新前也强制保存
+          try { saveFilterState(); } catch(e) {}
+          window.location.reload();
+        }, 1000);
+      };
+    } catch(e) {}
+  }
+  // 【v1.9.13】标题点击检查更新已移至全局事件委托（data-action="check-update"），此处不再绑定
+}
+// 协作密码弹窗
+/** 【v2.0.0】加载协作密码楼层列表（展开菜单样式）
+ *  缓存机制：仅首次展开时从数据库加载，后续展开直接使用缓存，除非点击刷新按钮
+ */
+let _collabPasswordCache = null; // { timestamp, data: Map<floorId, passwords[]> }
+let _collabCacheLoading = false;
+
+async function loadCollabFloorList(forceRefresh = false) {
+  const list = document.getElementById('collab-floor-list');
+  if (!list || _collabCacheLoading) return;
+
+  // 缓存有效且非强制刷新时，直接使用缓存
+  if (_collabPasswordCache && !forceRefresh) {
+    renderCollabFloorList(list, _collabPasswordCache);
+    return;
+  }
+
+  _collabCacheLoading = true;
+  // 显示加载状态
+  list.innerHTML = '<div style="padding:12px;color:#999;text-align:center;font-size:13px">加载中...</div>';
+
+  const cacheData = new Map();
+  for (const floor of FLOORS) {
+    const fid = String(floor.id);
+    const passwords = await dlGetCollabPasswords(fid);
+    cacheData.set(fid, passwords || []);
+  }
+  _collabPasswordCache = { timestamp: Date.now(), data: cacheData };
+  _collabCacheLoading = false;
+
+  renderCollabFloorList(list, _collabPasswordCache);
+}
+
+function renderCollabFloorList(list, cache) {
+  let html = '<div style="text-align:right;margin-bottom:8px"><button id="collab-refresh-btn" style="border:1px solid #d9d9d9;border-radius:4px;background:#fff;padding:2px 10px;font-size:12px;cursor:pointer;color:#666">刷新</button></div>';
+  for (const floor of FLOORS) {
+    const fid = String(floor.id);
+    const hasPerm = canEditFloor(parseInt(fid));
+    const passwords = cache.data.get(fid) || [];
+    // 取第一个有效的密码
+    const activePw = passwords.find(pw => {
+      const expired = pw.expires_at && new Date(pw.expires_at) < new Date();
+      const exhausted = pw.used_count >= pw.max_uses;
+      return !expired && !exhausted;
+    });
+    const hasPw = !!activePw;
+    const noPermClass = hasPerm ? '' : ' no-perm';
+    const noPwClass = hasPw ? '' : ' no-pw';
+
+    html += `<div class="collab-floor-item${noPermClass}${noPwClass}" data-floor="${fid}" data-has-perm="${hasPerm ? '1' : '0'}" data-has-pw="${hasPw ? '1' : '0'}" ${hasPw ? `data-pw="${activePw.password}"` : ''}>
+      <span class="collab-floor-name">${floor.name}</span>
+      <span class="collab-floor-status">${hasPw ? '<svg viewBox="0 0 24 24" width="20" height="20" style="vertical-align:middle"><path d="M3 3h18v18H3V3zm2 2v14h14V5H5zm3 3h2v2H8V8zm0 4h2v2H8v-2zm4-4h4v2h-4V8zm0 4h4v2h-4v-2z" fill="currentColor"/></svg>' : '<span class="collab-no-pw-text">暂无密码</span>'}</span>
+    </div>`;
+  }
+  list.innerHTML = html;
+  // 绑定刷新按钮
+  const refreshBtn = document.getElementById('collab-refresh-btn');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => { _collabPasswordCache = null; loadCollabFloorList(true); });
+}
+
+async function showCollabPasswordsModal() {
+  const floors = FLOORS.map(f => String(f.id));
+  let viewableFloors = floors;
+  if (currentUser.role === 'floor_manager') {
+    viewableFloors = (currentUser.managedFloors || []).map(String);
+  }
+
+  // 创建弹窗
+  let overlay = document.getElementById('collab-pw-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'collab-pw-overlay';
+    overlay.className = 'modal-overlay';
+    document.body.appendChild(overlay);
+  }
+
+  let html = '<div class="modal-box" style="max-width:500px"><h3>今日协作密码</h3>';
+
+  for (const fid of viewableFloors) {
+    const floorName = FLOORS.find(f => String(f.id) === fid)?.name || (fid + '楼');
+    const passwords = await dlGetCollabPasswords(fid);
+    html += `<div style="margin:12px 0"><strong>${floorName}</strong>`;
+    if (passwords.length === 0) {
+      html += '<div style="color:#999;font-size:13px;padding:4px 0">暂无密码</div>';
+    } else {
+      passwords.forEach(pw => {
+        const expired = pw.expires_at && new Date(pw.expires_at) < new Date();
+        const exhausted = pw.used_count >= pw.max_uses;
+        const active = !expired && !exhausted;
+        html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0">
+          <span style="font-family:monospace;font-size:15px;font-weight:600">${pw.password}</span>
+          <span style="font-size:12px;color:${active ? '#52c41a' : '#999'}">${active ? '有效' : (expired ? '已过期' : '已用完')}</span>
+          <span style="font-size:12px;color:#888">${pw.used_count}/${pw.max_uses}</span>
+          <button class="btn-qrcode" data-pw="${pw.password}" data-floor="${fid}" style="margin-left:auto;padding:2px 10px;border:1px solid #d9d9d9;border-radius:4px;background:#fff;cursor:pointer;font-size:12px">二维码</button>
+        </div>`;
+      });
+    }
+    html += '</div>';
+  }
+
+  html += '<div style="text-align:right;margin-top:16px"><button class="modal-cancel" onclick="document.getElementById(\'collab-pw-overlay\').classList.remove(\'show\')">关闭</button></div></div>';
+  overlay.innerHTML = html;
+  overlay.classList.add('show');
+
+  // 绑定二维码按钮
+  overlay.querySelectorAll('.btn-qrcode').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pw = btn.dataset.pw;
+      const fid = btn.dataset.floor;
+      showQRCodeForPassword(pw, fid);
+    });
+  });
+}
+
+function showQRCodeForPassword(password, floorId) {
+  const qrData = JSON.stringify({
+    password: password,
+    floor_id: floorId,
+    granter_name: currentUser.name || '',
+    granter_uid: currentUser.uid || ''
+  });
+
+  const floorName = FLOORS.find(f => String(f.id) === String(floorId))?.name || (floorId + '楼');
+
+  // 创建全屏二维码弹窗
+  let qrOverlay = document.getElementById('qr-full-overlay');
+  if (!qrOverlay) {
+    qrOverlay = document.createElement('div');
+    qrOverlay.id = 'qr-full-overlay';
+    qrOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10000;display:flex;flex-direction:column;align-items:center;justify-content:center';
+    document.body.appendChild(qrOverlay);
+  }
+
+  // 先显示加载占位
+  qrOverlay.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:32px;text-align:center">
+      <div id="qr-img-wrap" style="width:256px;height:256px;display:flex;align-items:center;justify-content:center;color:#999;font-size:14px">生成中...</div>
+      <div style="margin-top:16px;font-size:16px;font-weight:600;color:#333">${floorName} · 协作二维码</div>
+      <div style="font-size:13px;color:#888;margin-top:4px">${currentUser.name || ''}</div>
+    </div>
+    <button style="margin-top:24px;padding:12px 36px;background:none;border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:8px;font-size:14px;cursor:pointer" onclick="document.getElementById('qr-full-overlay').style.display='none'">关闭</button>
+  `;
+  qrOverlay.style.display = 'flex';
+
+  // 点击背景关闭
+  qrOverlay.onclick = (e) => { if (e.target === qrOverlay) qrOverlay.style.display = 'none'; };
+
+  // 使用 QRCode.toDataURL 生成图片（比 toCanvas 更可靠）
+  const wrap = document.getElementById('qr-img-wrap');
+  if (typeof QRCode !== 'undefined' && typeof QRCode.toDataURL === 'function' && wrap) {
+    QRCode.toDataURL(qrData, { width: 250, margin: 2, errorCorrectionLevel: 'M' }, (error, url) => {
+      if (error) {
+        console.error('[QR] 生成失败:', error);
+        wrap.textContent = '二维码生成失败';
+        return;
+      }
+      wrap.innerHTML = `<img src="${url}" style="width:250px;height:250px;border-radius:8px" alt="协作二维码" />`;
+    });
+  } else if (wrap) {
+    // QRCode 库未加载，尝试动态加载 qrcode-generator 并创建兼容层
+    console.warn('[QR] QRCode 库未就绪，尝试动态加载');
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+    script.onload = () => {
+      if (typeof qrcode === 'function') {
+        try {
+          const qr = qrcode(0, 'M');
+          qr.addData(qrData); qr.make();
+          const mc = qr.getModuleCount();
+          const cs = Math.max(1, Math.floor(250 / (mc + 4)));
+          const url = qr.createDataURL(cs, 2);
+          wrap.innerHTML = `<img src="${url}" style="width:250px;height:250px;border-radius:8px" alt="协作二维码" />`;
+        } catch(e) { wrap.textContent = '二维码生成失败'; }
+      } else {
+        wrap.textContent = 'QRCode 库加载失败';
+      }
+    };
+    script.onerror = () => { wrap.textContent = 'QRCode 库加载失败'; };
+    document.head.appendChild(script);
+  }
+}
+
+// 【v2.0.1】QRCode 兼容层：qrcode-generator 库暴露全局 qrcode() 函数
+// 包装为 QRCode.toDataURL API，供 showQRCodeForPassword 使用
+if (typeof QRCode === 'undefined' && typeof qrcode === 'function') {
+  window.QRCode = {
+    toDataURL: function(text, options, callback) {
+      try {
+        var typeNumber = 0; // auto-detect
+        var ecLevel = (options && options.errorCorrectionLevel) || 'M';
+        var qr = qrcode(typeNumber, ecLevel);
+        qr.addData(text);
+        qr.make();
+        var moduleCount = qr.getModuleCount();
+        var margin = (options && options.margin != null) ? options.margin : 2;
+        var width = (options && options.width) || 250;
+        var cellSize = Math.max(1, Math.floor(width / (moduleCount + margin * 2)));
+        var dataUrl = qr.createDataURL(cellSize, margin);
+        callback(null, dataUrl);
+      } catch (e) {
+        callback(e);
+      }
+    }
+  };
+  console.log('[QR] qrcode-generator 兼容层已就绪');
+} else if (typeof QRCode === 'undefined') {
+  console.warn('[QR] QRCode 库未加载，尝试备用 CDN');
+  var _qrScript = document.createElement('script');
+  _qrScript.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+  _qrScript.onload = function() {
+    if (typeof qrcode === 'function') {
+      window.QRCode = {
+        toDataURL: function(text, options, callback) {
+          try {
+            var qr = qrcode(0, (options && options.errorCorrectionLevel) || 'M');
+            qr.addData(text); qr.make();
+            var mc = qr.getModuleCount();
+            var mg = (options && options.margin != null) ? options.margin : 2;
+            var w = (options && options.width) || 250;
+            var cs = Math.max(1, Math.floor(w / (mc + mg * 2)));
+            callback(null, qr.createDataURL(cs, mg));
+          } catch(e) { callback(e); }
+        }
+      };
+      console.log('[QR] 备用 CDN 加载成功');
+    }
+  };
+  _qrScript.onerror = function() { console.error('[QR] 所有 QRCode CDN 均加载失败'); };
+  document.head.appendChild(_qrScript);
+}
+
+// ========== 全局设置实时同步 ==========
+async function refreshSettingsAndUI() {
+  try {
+    await loadGlobalSettings();
+    // 更新所有依赖设置的 UI
+    updateBottomBar();
+    // 刷新功能面板中的开关状态
+    ensureFuncBtnText();
+    // 更新设置相关按钮
+    loadAllowDeleteState();
+    loadShowLogoState();
+    loadUploadWatermarkState();
+    loadDeleteProtectionState();
+  } catch(e) { console.warn('刷新设置失败:', e); }
+}
+// 从后台切回时重新拉取设置
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') refreshSettingsAndUI();
+});
+// 定时轮询双保险（30秒）
+setInterval(refreshSettingsAndUI, 30000);
+
+// 【v1.2.2 微信兼容】最外层 try-catch 防止任何未捕获异常导致页面崩溃
+try {
+  init();
+} catch(e) {
+  console.error('应用启动异常:', e);
+  try { document.getElementById('app').innerHTML = '<p style="padding:20px;color:#666;">应用启动异常，请刷新页面重试。</p>'; } catch(e2) {}
+}
