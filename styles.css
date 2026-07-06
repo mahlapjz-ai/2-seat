@@ -343,6 +343,17 @@ button,[data-action],.ts-checkbox,.thumb-del,.thumb-wrap,.concat-thumb,.filter-s
 .theme-list-item.active .theme-check{background:#1890ff;border-color:#1890ff}
 .theme-list-item.active .theme-check::after{content:'✓';color:#fff;font-size:12px;font-weight:700}
 
+/* 【v2.0.0】协作密码楼层列表（展开菜单样式） */
+.collab-floor-list{padding:0 0 4px;margin:0;list-style:none}
+.collab-floor-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;margin:2px 0;border-radius:8px;cursor:pointer;font-size:14px;color:#333;transition:background .15s}
+.collab-floor-item:active{background:#f5f5f5}
+.collab-floor-name{font-weight:500}
+.collab-floor-status{color:#1890ff;flex-shrink:0}
+.collab-floor-item.no-perm{opacity:.45;cursor:default}
+.collab-floor-item.no-perm:active{background:transparent}
+.collab-floor-item.no-pw .collab-floor-status{color:#bfbfbf}
+.collab-no-pw-text{font-size:12px}
+
 /* ============================================================
    【v1.7.0 新增】"普通"主题 - 吉卜力动画风格
    色彩提取：天空蓝 / 草地暖绿 / 木质暖棕 / 云朵米白 / 花朵淡粉
@@ -424,6 +435,9 @@ html.theme-normal{background:repeating-linear-gradient(175deg,#e8f0f8 0%,#eaf2e4
 /* 开关按钮 */
 .theme-normal .func-toggle{background:#c8bca8}
 .theme-normal .func-toggle.on{background:#6a9a4a}
+.theme-normal .collab-floor-item{font-family:Georgia,'KaiTi','STKaiti',serif;color:#4A3728}
+.theme-normal .collab-floor-item:active{background:rgba(245,252,245,.5)}
+.theme-normal .collab-floor-status{color:#6a9a4a}
 /* 筛选面板 */
 .theme-normal .filter-sheet{background:rgba(255,252,245,.97);box-shadow:0 -4px 18px rgba(120,100,70,.1)}
 .theme-normal .filter-sheet-header{border-bottom:1px dashed #d4c8b0}
@@ -629,6 +643,9 @@ html.theme-yiban{background:repeating-linear-gradient(180deg,#3c3c46 0%,#4a4540 
 .theme-yiban .theme-list-item.active{background:rgba(0,255,255,.1)}
 .theme-yiban .theme-list-item .theme-check{border-color:#666}
 .theme-yiban .theme-list-item.active .theme-check{background:#00cccc;border-color:#00cccc}
+.theme-yiban .collab-floor-item{color:#e0e0e0}
+.theme-yiban .collab-floor-item:active{background:rgba(0,255,255,.08)}
+.theme-yiban .collab-floor-status{color:#00cccc}
 
 /* ============================================================
    【v1.9.0 新增】"像素"主题 - 16位像素风格（参考《我的世界》）
@@ -788,6 +805,9 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 .theme-pixel .theme-list-item.active{background:#7ec850;border:2px solid #5a8a30}
 .theme-pixel .theme-list-item .theme-check{border-radius:0;border:2px solid #5a3d2b}
 .theme-pixel .theme-list-item.active .theme-check{background:#7ec850;border-color:#5a8a30}
+.theme-pixel .collab-floor-item{color:#4a3728;font-family:'Courier New',monospace;font-weight:700;border-radius:0}
+.theme-pixel .collab-floor-item:active{background:rgba(90,61,43,.15)}
+.theme-pixel .collab-floor-status{color:#5a8a30}
 /* 【v1.12.0】骨架屏加载动画 */
 @keyframes skeleton-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 .skeleton-screen{position:fixed;top:0;left:0;right:0;bottom:0;padding:0 16px;background:#f0f2f5;z-index:500;animation:skeleton-fadein .2s ease;overflow-y:auto}

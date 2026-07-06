@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+<title>登录 - 座位图片管理</title>
+<link rel="icon" type="image/png" sizes="192x192" href="seat-icon-192.png">
+<link rel="stylesheet" href="login.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
+<script src="auth.js"></script>
+</head>
+<body>
+<div class="login-container">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M3 3h18v2H3V3zm0 4h18v14H3V7zm2 2v10h14V9H5zm2 2h4v2H7v-2zm6 0h4v2h-4v-2zm-6 4h4v2H7v-2zm6 0h4v2h-4v-2z"/></svg>
+      </div>
+      <div class="login-title">座位图片管理</div>
+      <div class="login-subtitle">图书馆座位巡检协同系统</div>
+    </div>
+
+    <div class="login-tabs">
+      <div class="login-tab active" data-tab="card">证号登录</div>
+      <div class="login-tab" data-tab="collab">协作登录</div>
+    </div>
+
+    <!-- 证号登录 -->
+    <div class="login-form active" id="form-card">
+      <div id="card-login">
+        <div class="form-group">
+          <label class="form-label">读者证号</label>
+          <input class="form-input" type="text" id="card-number" placeholder="13-18位数字" inputmode="numeric" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label class="form-label">密码</label>
+          <input class="form-input" type="password" id="card-password" placeholder="请输入密码" autocomplete="current-password">
+        </div>
+        <button class="login-btn" id="btn-card-login">登录</button>
+        <div class="login-error err" id="card-login-error"></div>
+        <div class="login-switch">还没有账号？<a id="switch-to-register">注册</a></div>
+      </div>
+      <div id="card-register" style="display:none">
+        <div class="form-group">
+          <label class="form-label">姓名</label>
+          <input class="form-input" type="text" id="reg-name" placeholder="请输入姓名" autocomplete="name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">读者证号</label>
+          <input class="form-input" type="text" id="reg-card" placeholder="13-18位数字" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label class="form-label">密码</label>
+          <input class="form-input" type="password" id="reg-password" placeholder="至少6位" autocomplete="new-password">
+        </div>
+        <button class="login-btn" id="btn-card-register">注册</button>
+        <div class="login-error err" id="card-register-error"></div>
+        <div class="login-switch">已有账号？<a id="switch-to-login">登录</a></div>
+      </div>
+    </div>
+
+    <!-- 协作登录 -->
+    <div class="login-form" id="form-collab">
+      <div id="collab-step1">
+        <div class="form-group">
+          <label class="form-label">姓名</label>
+          <input class="form-input" type="text" id="collab-name" placeholder="请输入姓名">
+        </div>
+        <div class="form-group">
+          <label class="form-label">手机号</label>
+          <input class="form-input" type="tel" id="collab-phone" placeholder="11位手机号" inputmode="numeric">
+        </div>
+        <button class="login-btn" id="btn-collab-relogin">快捷登录</button>
+        <div style="text-align:center;margin:10px 0;color:#d9d9d9;font-size:12px">—— 或 ——</div>
+        <button class="login-btn green" id="btn-collab-scan">扫描协作二维码</button>
+        <div class="login-error err" id="collab-error"></div>
+      </div>
+      <div id="collab-scan" style="display:none">
+        <div class="qr-scan-area" id="qr-scan-area">
+          <video id="qr-video" autoplay playsinline></video>
+          <canvas id="qr-canvas" style="display:none"></canvas>
+          <div class="qr-scan-hint">将二维码对准摄像头</div>
+        </div>
+        <button class="login-btn gray sm" id="btn-scan-cancel">取消扫描</button>
+      </div>
+    </div>
+
+    <div class="login-footer">座位图片管理 共享版 v2</div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script>
+(async function(){
+  if(typeof isSupabaseReady==='function'&&!isSupabaseReady()){
+    show('card-login-error','Supabase 未配置，请先完成搭建');return;
+  }
+  try{const s=await getSession();if(s){location.href='index.html';return;}}catch(e){}
+  try{const p=localStorage.getItem('assistant_phone');if(p){const r=await assistantReLogin('',p);if(r.success){location.href='index.html';return;}localStorage.removeItem('assistant_uid');localStorage.removeItem('assistant_phone');}}catch(e){}
+
+  const $=id=>document.getElementById(id);
+  const tabs=document.querySelectorAll('.login-tab');
+  const forms=document.querySelectorAll('.login-form');
+
+  tabs.forEach(t=>t.onclick=()=>{
+    tabs.forEach(x=>x.classList.remove('active'));forms.forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');$('form-'+t.dataset.tab).classList.add('active');
+  });
+
+  $('switch-to-register').onclick=()=>{$('card-login').style.display='none';$('card-register').style.display='block';hide('card-login-error');};
+  $('switch-to-login').onclick=()=>{$('card-register').style.display='none';$('card-login').style.display='block';hide('card-register-error');};
+
+  function show(id,msg,type='err'){$(id).textContent=msg;$(id).className='login-error show '+type;}
+  function hide(id){$(id).className='login-error err';}
+  function loading(btn,on,text){
+    if(on){
+      btn.classList.add('loading');
+      btn.disabled=true;
+      btn._origText=btn.textContent;
+      btn.setAttribute('data-loading-text',text||'正在验证...');
+    }else{
+      btn.classList.remove('loading');
+      btn.disabled=false;
+      if(btn._origText)btn.textContent=btn._origText;
+    }
+  }
+
+  // 证号登录
+  $('btn-card-login').onclick=async()=>{
+    const c=$('card-number').value.trim(),p=$('card-password').value;
+    if(!c||!p){show('card-login-error','请输入证号和密码');return;}
+    if(!/^\d{13,18}$/.test(c)){show('card-login-error','证号应为13-18位数字');return;}
+    const btn=$('btn-card-login');loading(btn,true);hide('card-login-error');
+    try{const r=await signInWithCard(c,p);loading(btn,false);
+      if(r.success)location.href='index.html';
+      else show('card-login-error',r.error||'登录失败');
+    }catch(e){loading(btn,false);show('card-login-error','登录出错');}
+  };
+
+  // 注册
+  $('btn-card-register').onclick=async()=>{
+    const n=$('reg-name').value.trim(),c=$('reg-card').value.trim(),p=$('reg-password').value;
+    if(!n||!c||!p){show('card-register-error','请填写所有字段');return;}
+    const btn=$('btn-card-register');loading(btn,true);hide('card-register-error');
+    try{const r=await signUpWithCard(c,p,n);loading(btn,false);
+      if(r.success){
+        if(r.needsEmailConfirm)show('card-register-error','注册成功！请直接登录','info');
+        else location.href='index.html';
+      }else{let m=r.error||'注册失败';if(m.includes('already'))m='该证号已注册，请直接登录';show('card-register-error',m);}
+    }catch(e){loading(btn,false);show('card-register-error','注册出错');}
+  };
+
+  // 协作快捷登录
+  $('btn-collab-relogin').onclick=async()=>{
+    const n=$('collab-name').value.trim(),ph=$('collab-phone').value.trim();
+    if(!ph||!/^1\d{10}$/.test(ph)){show('collab-error','请输入正确的手机号');return;}
+    const btn=$('btn-collab-relogin');loading(btn,true);hide('collab-error');
+    try{const r=await assistantReLogin(n,ph);loading(btn,false);
+      if(r.success)location.href='index.html';
+      else show('collab-error',r.error||'登录失败，请先扫码绑定');
+    }catch(e){loading(btn,false);show('collab-error','登录出错');}
+  };
+
+  // 扫码
+  let scanStream=null,scanAnim=null;
+  $('btn-collab-scan').onclick=async()=>{
+    const n=$('collab-name').value.trim(),ph=$('collab-phone').value.trim();
+    if(!n){show('collab-error','请先输入姓名');return;}
+    if(!ph||!/^1\d{10}$/.test(ph)){show('collab-error','请先输入正确的手机号');return;}
+    try{scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:640},height:{ideal:480}}});
+      $('qr-video').srcObject=scanStream;$('collab-step1').style.display='none';$('collab-scan').style.display='block';
+      scanAnim=requestAnimationFrame(scanQR);
+    }catch(e){show('collab-error','无法访问摄像头：'+(e.message||e));}
+  };
+  $('btn-scan-cancel').onclick=()=>{stopScan();$('collab-step1').style.display='block';$('collab-scan').style.display='none';};
+
+  function stopScan(){if(scanAnim)cancelAnimationFrame(scanAnim);if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}}
+  function scanQR(){
+    const v=$('qr-video'),c=$('qr-canvas');
+    if(!v.videoWidth){scanAnim=requestAnimationFrame(scanQR);return;}
+    c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
+    if(typeof jsQR==='function'){const d=c.getContext('2d').getImageData(0,0,c.width,c.height),code=jsQR(d.data,d.width,d.height);
+      if(code&&code.data){stopScan();handleQR(code.data);return;}}
+    scanAnim=requestAnimationFrame(scanQR);
+  }
+
+  async function handleQR(str){
+    $('collab-step1').style.display='block';$('collab-scan').style.display='none';
+    let qr;try{qr=JSON.parse(str);}catch(e){show('collab-error','无效的二维码');return;}
+    if(!qr.password||!qr.floor_id){show('collab-error','二维码格式不正确');return;}
+    const n=$('collab-name').value.trim(),ph=$('collab-phone').value.trim();
+    const btn=$('btn-collab-scan');loading(btn,true);hide('collab-error');
+    try{const r=await assistantQRLogin(qr,n,ph);loading(btn,false);
+      if(r.success)location.href='index.html';
+      else show('collab-error',r.error||'扫码登录失败');
+    }catch(e){loading(btn,false);show('collab-error','扫码登录出错');}
+  }
+
+  $('card-password').addEventListener('keydown',e=>{if(e.key==='Enter')$('btn-card-login').click();});
+  $('reg-password').addEventListener('keydown',e=>{if(e.key==='Enter')$('btn-card-register').click();});
+})();
+</script>
+</body>
+</html>

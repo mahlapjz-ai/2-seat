@@ -17,8 +17,14 @@
 <link rel="apple-touch-icon" href="seat-icon.png">
 <title>座位图片管理</title>
 <script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
+<!-- Supabase SDK + 认证模块 + 数据层 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
+<script src="auth.js?v=2.0.5"></script>
+<script src="data-layer.js?v=2.0.5"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <!-- 拆分自原单文件 - 外部样式 -->
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=2.0.5">
+<link rel="stylesheet" href="login.css?v=2.0.5">
 </head>
 <body>
 <!-- 【v1.12.0】骨架屏：页面加载时显示，数据就绪后移除 -->
@@ -33,6 +39,13 @@
 </div>
 <div class="update-bar" id="update-bar">有新版本可用，点击刷新</div>
 <!-- 【修复文字消失】page-header 移出 app，作为静态 DOM，不会被 renderMain 重建 -->
+<!-- 用户信息条 -->
+<div class="user-bar" id="user-bar" style="display:none;max-width:480px;margin:0 auto">
+  <span class="user-bar-name" id="user-bar-name"></span>
+  <span class="user-bar-role" id="user-bar-role"></span>
+  <span class="user-bar-expire" id="user-bar-expire" style="display:none"></span>
+  <button class="user-bar-logout" id="user-bar-logout">登出</button>
+</div>
 <div class="page-header" id="page-header" style="opacity:0;transition:opacity .2s ease"><span class="page-title" style="pointer-events:none;position:relative;z-index:99">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">设置</button></div>
 <div id="app"></div>
 <div id="bottom-bar">
@@ -114,6 +127,6 @@
   <div class="func-panel-body" id="func-panel-body"></div>
 </div>
 <!-- 拆分自原单文件 - 外部脚本 -->
-<script src="scripts.js"></script>
+<script src="scripts.js?v=2.0.5"></script>
 </body>
 </html>

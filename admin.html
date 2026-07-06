@@ -1,0 +1,1821 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>座位管理系统 - 本地管理后台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* ===== 最小量自定义 CSS（JS 动态引用的类 + Tailwind 无法覆盖的样式）===== */
+
+    /* 面板切换 */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* 侧边栏导航 active 状态 */
+    .tab-btn.active {
+      background: rgba(59,130,246,.15) !important;
+      color: #93c5fd !important;
+      border-right: 3px solid #3b82f6;
+    }
+
+    /* 开关组件 */
+    .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch .slider { position: absolute; inset: 0; background: #cbd5e1; border-radius: 24px; cursor: pointer; transition: .3s; }
+    .switch .slider::before { content: ""; position: absolute; width: 20px; height: 20px; left: 2px; top: 2px; background: #fff; border-radius: 50%; transition: .3s; }
+    .switch input:checked + .slider { background: #3b82f6; }
+    .switch input:checked + .slider::before { transform: translateX(20px); }
+
+    /* Toast 通知 */
+    .toast { padding: 10px 20px; border-radius: 8px; font-size: 14px; color: #fff; animation: fadeIn .25s; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+    .toast.success { background: #22c55e; }
+    .toast.error { background: #ef4444; }
+    .toast.info { background: #3b82f6; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+
+    /* 连接状态徽章 */
+    .key-status { font-size: 12px; padding: 3px 10px; border-radius: 9999px; font-weight: 500; }
+    .key-status.connected { background: #dcfce7; color: #16a34a; }
+    .key-status.disconnected { background: #fee2e2; color: #dc2626; }
+
+    /* 状态徽章 */
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 500; }
+    .badge-active { background: #dcfce7; color: #16a34a; }
+    .badge-expired { background: #fee2e2; color: #dc2626; }
+    .badge-exhausted { background: #fef3c7; color: #d97706; }
+
+    /* 密码值 */
+    .pw-value { font-family: monospace; font-size: 13px; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; }
+
+    /* 楼层复选框组 */
+    .floor-checkboxes { display: flex; gap: 6px; flex-wrap: wrap; }
+    .floor-checkboxes label { display: flex; align-items: center; gap: 3px; font-size: 13px; cursor: pointer; background: #f8fafc; padding: 2px 8px; border-radius: 6px; border: 1px solid #e2e8f0; transition: .2s; }
+    .floor-checkboxes input[type="checkbox"] { cursor: pointer; }
+    .floor-checkboxes label:has(input:checked) { background: #dbeafe; border-color: #93c5fd; color: #2563eb; }
+
+    /* 角色下拉最小宽度 */
+    .role-select { min-width: 90px; }
+
+    /* 按钮（JS 模板字符串中动态创建） */
+    .btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 16px; font-size: 13px; font-weight: 500; border: 1px solid #d1d5db; border-radius: 6px; cursor: pointer; background: #fff; color: #374151; transition: all .2s; }
+    .btn:hover { border-color: #3b82f6; color: #3b82f6; }
+    .btn-primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+    .btn-primary:hover { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .btn-danger { color: #ef4444; border-color: #fecaca; }
+    .btn-danger:hover { background: #ef4444; color: #fff; border-color: #ef4444; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* 空状态前缀 */
+    .empty::before { content: "📭 "; }
+
+    /* 代码标签 */
+    code { font-family: monospace; font-size: 13px; background: #f1f5f9; padding: 1px 6px; border-radius: 4px; }
+
+    /* 侧边栏移动端过渡 */
+    #sidebar { transition: transform .3s ease; }
+
+    /* 图片缩略图 Tooltip */
+    .photo-tooltip {
+      position: fixed;
+      z-index: 9999;
+      background: rgba(0,0,0,0.78);
+      color: #fff;
+      font-size: 11px;
+      line-height: 1.5;
+      padding: 5px 8px;
+      border-radius: 5px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      white-space: nowrap;
+      max-width: 220px;
+    }
+    .photo-tooltip.visible { opacity: 1; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen" style="font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;">
+
+<!-- 警告横幅 -->
+<div class="bg-red-500 text-white text-center py-2.5 text-sm font-semibold tracking-wider">⚠️ 此页面仅供本地管理使用，请勿部署到公共服务器！</div>
+
+<!-- 主布局：侧边栏 + 内容区 -->
+<div class="flex min-h-[calc(100vh-40px)]">
+
+  <!-- 移动端遮罩层 -->
+  <div id="sidebarOverlay" class="fixed inset-0 bg-black/40 z-40 hidden md:hidden"></div>
+
+  <!-- 侧边栏 -->
+  <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white flex-shrink-0 flex flex-col -translate-x-full md:translate-x-0" style="top:40px;">
+    <!-- Logo -->
+    <div class="p-5 border-b border-slate-700">
+      <h1 class="text-lg font-bold tracking-tight">📋 座位管理系统</h1>
+      <p class="text-slate-400 text-xs mt-1">本地管理后台</p>
+    </div>
+
+    <!-- 导航菜单 -->
+    <nav class="flex-1 py-3 overflow-y-auto">
+      <button class="tab-btn active w-full text-left px-5 py-3 text-sm flex items-center gap-3 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors" data-tab="users">
+        <span>👤</span> 用户管理
+      </button>
+      <button class="tab-btn w-full text-left px-5 py-3 text-sm flex items-center gap-3 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors" data-tab="passwords">
+        <span>🔑</span> 协作密码
+      </button>
+      <button class="tab-btn w-full text-left px-5 py-3 text-sm flex items-center gap-3 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors" data-tab="settings">
+        <span>⚙️</span> 全局设置
+      </button>
+      <button class="tab-btn w-full text-left px-5 py-3 text-sm flex items-center gap-3 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors" data-tab="history">
+        <span>📜</span> 历史记录
+      </button>
+      <button class="tab-btn w-full text-left px-5 py-3 text-sm flex items-center gap-3 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors" data-tab="photos">
+        <span>📷</span> 图片记录
+      </button>
+      <button class="tab-btn w-full text-left px-5 py-3 text-sm flex items-center gap-3 text-slate-300 hover:bg-slate-800 hover:text-white transition-colors" data-tab="reports">
+        <span>📊</span> 报表
+      </button>
+    </nav>
+
+    <!-- 连接区域 -->
+    <div class="p-4 border-t border-slate-700">
+      <div class="mb-3">
+        <label class="text-xs text-slate-400 mb-1.5 block font-medium">Service Role Key</label>
+        <div class="relative">
+          <input type="password" id="srkInput" class="w-full bg-slate-800 text-white text-xs px-3 py-2 pr-8 rounded-md border border-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 font-mono" placeholder="粘贴 Key…">
+          <button id="toggleKey" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-sm transition-colors" title="显示/隐藏">👁️</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="key-status disconnected" id="keyStatus">未连接</span>
+        <button class="btn btn-primary btn-sm ml-auto" id="connectBtn">连接</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 移动端菜单按钮 -->
+  <button id="menuToggle" class="fixed top-14 left-4 z-50 md:hidden bg-slate-900 text-white w-10 h-10 rounded-lg flex items-center justify-center shadow-lg hover:bg-slate-800 transition-colors text-lg">☰</button>
+
+  <!-- 内容区 -->
+  <main class="flex-1 p-4 md:p-8 overflow-auto">
+
+    <!-- ===== 用户管理 ===== -->
+    <div class="tab-panel active" id="panel-users">
+      <!-- 功能说明 -->
+      <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-blue-800">👥 用户管理说明</span>
+          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-users">收起</button>
+        </div>
+        <div id="info-users" class="text-sm text-slate-600 mt-2 space-y-1">
+          <p>• 新注册用户默认角色为"读者"，需在后台审核并手动提升为辅专或管理者。</p>
+          <p>• 辅专需分配管辖楼层（可多选），仅能操作所管楼层的拍照、上传、删除等功能。</p>
+          <p>• 辅专可以查看所有楼层的图片缩略图和拼接预览，但不能操作无权限楼层。</p>
+          <p>• 协助者（义工）的权限有有效期，过期后自动降级为读者。</p>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <h2 class="text-base font-semibold text-slate-800 mb-4">用户列表</h2>
+        <div id="usersLoading" class="text-center py-10 text-slate-400 text-sm">加载中…</div>
+        <div id="usersEmpty" class="text-center py-10 text-slate-400 text-sm" style="display:none">暂无用户数据</div>
+        <div id="usersTableWrap" style="display:none;overflow-x:auto" class="rounded-lg border border-slate-200">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200">
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">姓名</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">卡号</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">手机号</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">角色</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">管理楼层</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">操作</th>
+              </tr>
+            </thead>
+            <tbody id="usersBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 协作密码 ===== -->
+    <div class="tab-panel" id="panel-passwords">
+      <!-- 功能说明 -->
+      <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-blue-800">📌 协作密码规则</span>
+          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-passwords">收起</button>
+        </div>
+        <div id="info-passwords" class="text-sm text-slate-600 mt-2 space-y-1">
+          <p>• 每天 08:00 自动生成第一批密码（5个楼层各1个），过期时间为当天 13:00。</p>
+          <p>• 每天 13:30 自动生成第二批密码（5个楼层各1个），过期时间为当天 18:00。</p>
+          <p>• 默认最大使用次数为 10 次，可在生成时修改。</p>
+          <p>• 手动生成的密码与自动生成的密码互不影响。</p>
+          <p>• 吊销密码后，已使用该密码登录的协作者将在权限到期后自动降级，不会立即失效。</p>
+          <p>• 辅专可在 PWA 的设置中查看自己管辖楼层的当天协作密码二维码。</p>
+        </div>
+      </div>
+      <!-- 生成新密码 -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <h2 class="text-base font-semibold text-slate-800 mb-4">生成新密码</h2>
+        <div class="flex items-end gap-4 flex-wrap">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">楼层</label>
+            <select id="pwFloor" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+              <option value="1">1 楼</option>
+              <option value="2">2 楼</option>
+              <option value="3">3 楼</option>
+              <option value="4">4 楼</option>
+              <option value="5">5 楼</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">最大使用次数</label>
+            <input type="number" id="pwMaxUses" min="1" value="10" class="w-20 px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">起始日期</label>
+            <input type="date" id="pwStartDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">结束日期</label>
+            <input type="date" id="pwEndDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">过期时间（可选，留空则按日期当天23:59:59）</label>
+            <input type="datetime-local" id="pwExpires" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+          </div>
+          <button class="btn btn-primary" id="genPwBtn">🔑 生成密码</button>
+        </div>
+      </div>
+
+      <!-- 今日密码列表 -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <h2 class="text-base font-semibold text-slate-800 mb-4">今日协作密码</h2>
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <label class="text-xs text-slate-400">按楼层筛选：</label>
+          <select id="pwFilterFloor" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+            <option value="">全部楼层</option>
+            <option value="1">1 楼</option>
+            <option value="2">2 楼</option>
+            <option value="3">3 楼</option>
+            <option value="4">4 楼</option>
+            <option value="5">5 楼</option>
+          </select>
+          <button class="btn btn-sm" id="refreshPwBtn">🔄 刷新</button>
+        </div>
+        <div id="pwLoading" class="text-center py-10 text-slate-400 text-sm">加载中…</div>
+        <div id="pwEmpty" class="text-center py-10 text-slate-400 text-sm" style="display:none">今日暂无协作密码</div>
+        <div id="pwTableWrap" style="display:none;overflow-x:auto" class="rounded-lg border border-slate-200">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200">
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">密码</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">楼层</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">状态</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">已用/上限</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">过期时间</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">操作</th>
+              </tr>
+            </thead>
+            <tbody id="pwBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 全局设置 ===== -->
+    <div class="tab-panel" id="panel-settings">
+      <!-- 功能说明 -->
+      <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-blue-800">⚙️ 全局设置说明</span>
+          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-settings">收起</button>
+        </div>
+        <div id="info-settings" class="text-sm text-slate-600 mt-2 space-y-1">
+          <p>• "读者视图开关"：开启后，角色为"读者"的用户登录后可查看座位占用状态（无照片）；关闭后读者看不到任何内容。</p>
+          <p>• "功能开关"区域：控制 PWA 中特定功能的显示与隐藏。默认全部关闭，仅所有者角色不受限制。</p>
+          <p>• 修改设置后即时生效，无需刷新 PWA。</p>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <h2 class="text-base font-semibold text-slate-800 mb-4">功能开关</h2>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
+          <div>
+            <div class="text-sm font-medium text-slate-700">读者视图</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后普通读者可查看座位实时状态，关闭后仅管理员和协作员可见</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="readerViewToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 功能开关列表 -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <h2 class="text-base font-semibold text-slate-800 mb-4">功能开关（默认关闭，仅对非owner角色生效）</h2>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
+          <div>
+            <div class="text-sm font-medium text-slate-700">批量下载</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可使用批量下载功能</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="feat_batch_downloadToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
+          <div>
+            <div class="text-sm font-medium text-slate-700">清除图片</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可使用清除图片功能</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="feat_clear_imagesToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
+          <div>
+            <div class="text-sm font-medium text-slate-700">拍照后下载</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可使用拍照后自动下载功能</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="feat_photo_downloadToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
+          <div>
+            <div class="text-sm font-medium text-slate-700">允许删除座位</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可删除座位</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="feat_delete_seatToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
+          <div>
+            <div class="text-sm font-medium text-slate-700">重置应用</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可使用重置应用功能</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="feat_reset_appToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
+          <div>
+            <div class="text-sm font-medium text-slate-700">修改座位编号名称</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可修改座位编号名称</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="feat_rename_seatToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
+          <div>
+            <div class="text-sm font-medium text-slate-700">添加座位按钮</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可看到添加座位按钮</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="feat_add_seatToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
+          <div>
+            <div class="text-sm font-medium text-slate-700">底部下载按钮</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可看到底部栏的下载按钮</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="feat_bottom_downloadToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
+          <div>
+            <div class="text-sm font-medium text-slate-700">打包下载（ZIP）</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可使用打包下载ZIP功能</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="feat_zip_downloadToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
+          <div>
+            <div class="text-sm font-medium text-slate-700">全屏预览保存图片</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可在全屏预览时保存图片</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="feat_preview_saveToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-4">
+          <div>
+            <div class="text-sm font-medium text-slate-700">区域按钮拖动调序</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可拖动区域按钮调整顺序</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="feat_area_drag_sortToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 历史记录 ===== -->
+    <div class="tab-panel" id="panel-history">
+      <!-- 功能说明 -->
+      <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-blue-800">📋 历史记录说明</span>
+          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-history">收起</button>
+        </div>
+        <div id="info-history" class="text-sm text-slate-600 mt-2 space-y-1">
+          <p>• 记录辅专分享的协作密码激活了哪些协助者（姓名、手机号、激活时间、对应楼层）。</p>
+          <p>• 默认显示当天记录，可按日期范围筛选。</p>
+          <p>• 此记录仅反映扫码激活行为，不包含协作登录后的具体操作。</p>
+        </div>
+      </div>
+      <!-- 日期筛选 -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <h2 class="text-base font-semibold text-slate-800 mb-4">协作者激活历史</h2>
+        <div class="flex items-end gap-4 flex-wrap">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">起始日期</label>
+            <input type="date" id="histStartDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">结束日期</label>
+            <input type="date" id="histEndDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+          </div>
+          <button class="btn btn-primary btn-sm" id="histQueryBtn">查询</button>
+        </div>
+      </div>
+      <!-- 数据表格 -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div id="histLoading" class="text-center py-10 text-slate-400 text-sm">加载中…</div>
+        <div id="histEmpty" class="text-center py-10 text-slate-400 text-sm" style="display:none">暂无记录</div>
+        <div id="histTableWrap" style="display:none;overflow-x:auto" class="rounded-lg border border-slate-200">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200">
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">密码</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">楼层</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">辅专姓名</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">协作者姓名</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">协作者手机</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">激活时间</th>
+              </tr>
+            </thead>
+            <tbody id="histBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 报表 ===== -->
+    <div class="tab-panel" id="panel-reports">
+      <!-- 功能说明 -->
+      <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-blue-800">📊 报表规则</span>
+          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-reports">收起</button>
+        </div>
+        <div id="info-reports" class="text-sm text-slate-600 mt-2 space-y-1">
+          <p>• 每天 21:30 自动生成当日报表，也可点击"手动生成今日报表"立即生成。</p>
+          <p>• 报表数据基于当天图片统计：1 张图 → 填"×"，2 或 3 张图 → 填"△"。</p>
+          <p>• 早班责任人统计 08:30-13:14 的操作者，晚班责任人统计 13:15-21:20 的操作者。</p>
+          <p>• 报表存储在云端，可在线预览或下载，支持删除和按日期筛选。</p>
+        </div>
+      </div>
+      <!-- 已生成报表列表 -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold text-slate-800">已生成报表</h2>
+          <button class="btn btn-sm" id="refreshReportsBtn">🔄 刷新</button>
+        </div>
+        <!-- 日期筛选栏 -->
+        <div class="flex items-center gap-3 mb-4 flex-wrap">
+          <label class="text-sm text-slate-500">日期范围：</label>
+          <input type="date" id="reportDateFrom" class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <span class="text-slate-400">至</span>
+          <input type="date" id="reportDateTo" class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+          <button class="btn btn-sm btn-primary" id="reportFilterBtn">查询</button>
+          <button class="btn btn-sm" id="reportFilterClearBtn">清除</button>
+        </div>
+        <div id="reportsLoading" class="text-center py-10 text-slate-400 text-sm">加载中…</div>
+        <div id="reportsEmpty" class="text-center py-10 text-slate-400 text-sm" style="display:none">暂无报表</div>
+        <div id="reportsTableWrap" style="display:none;overflow-x:auto" class="rounded-lg border border-slate-200">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200">
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">文件名</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">生成时间</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">大小</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">操作</th>
+              </tr>
+            </thead>
+            <tbody id="reportsBody"></tbody>
+          </table>
+        </div>
+        <!-- 分页控件 -->
+        <div id="reportsPagination" class="flex items-center justify-center gap-3 mt-4" style="display:none">
+          <button class="btn btn-sm" id="reportPrevPage">上一页</button>
+          <span id="reportPageInfo" class="text-sm text-slate-500"></span>
+          <button class="btn btn-sm" id="reportNextPage">下一页</button>
+        </div>
+      </div>
+      <!-- 手动生成报表 -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <h2 class="text-base font-semibold text-slate-800 mb-4">手动生成</h2>
+        <p class="text-sm text-slate-500 mb-3">手动触发生成今天的报表（系统会在每晚 21:30 自动生成）</p>
+        <button class="btn btn-primary" id="genReportBtn">📊 立即生成今日报表</button>
+        <div id="genReportStatus" class="mt-2 text-sm text-slate-500"></div>
+      </div>
+    </div>
+
+    <!-- ===== 图片记录 ===== -->
+    <div class="tab-panel" id="panel-photos">
+      <!-- 功能说明 -->
+      <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-medium text-blue-800">🖼️ 图片记录说明</span>
+          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-photos">收起</button>
+        </div>
+        <div id="info-photos" class="text-sm text-slate-600 mt-2 space-y-1">
+          <p>• 以座位为单位展示，每个座位一行，按时段分列显示图片缩略图。</p>
+          <p>• 每个时段最多可存 3 张图片，右上角"×"可删除单张图片。</p>
+          <p>• 删除图片会同时清除云端存储文件和数据库记录，不可恢复。</p>
+          <p>• 每页显示 10 个座位，可翻页查看；表格支持水平滚动查看全部时段。</p>
+        </div>
+      </div>
+      <!-- 筛选器 -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <h2 class="text-base font-semibold text-slate-800 mb-4">图片记录（矩阵视图）</h2>
+        <div class="flex items-end gap-4 flex-wrap">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">起始日期</label>
+            <input type="date" id="photoStartDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">结束日期</label>
+            <input type="date" id="photoEndDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">楼层</label>
+            <select id="photoFloor" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+              <option value="">全部</option>
+              <option value="1">1 楼</option>
+              <option value="2">2 楼</option>
+              <option value="3">3 楼</option>
+              <option value="4">4 楼</option>
+              <option value="5">5 楼</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">座位号</label>
+            <input type="text" id="photoSeatId" placeholder="如：中1001" class="w-24 px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+          </div>
+          <button class="btn btn-primary btn-sm" id="photoQueryBtn">查询</button>
+        </div>
+      </div>
+      <!-- 矩阵视图 -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div id="photoLoading" class="text-center py-10 text-slate-400 text-sm">加载中…</div>
+        <div id="photoEmpty" class="text-center py-10 text-slate-400 text-sm" style="display:none">暂无图片记录</div>
+        <div id="photoTableWrap" style="display:none;overflow-x:auto;overflow-y:visible" class="rounded-lg border border-slate-200">
+          <table class="text-xs whitespace-nowrap" id="photoMatrixTable">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                <th class="text-left py-2 px-2 font-medium text-slate-500 sticky left-0 bg-slate-50 z-20 min-w-[40px]">楼层</th>
+                <th class="text-left py-2 px-2 font-medium text-slate-500 sticky left-[40px] bg-slate-50 z-20 min-w-[60px]">区域</th>
+                <th class="text-left py-2 px-2 font-medium text-slate-500 sticky left-[100px] bg-slate-50 z-20 min-w-[70px]">座位</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="09:00">09:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="09:30">09:30</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="10:00">10:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="10:30">10:30</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="11:00">11:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="12:00">12:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="13:00">13:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="13:30">13:30</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="14:00">14:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="14:30">14:30</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="15:00">15:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="15:30">15:30</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="16:00">16:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="16:30">16:30</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="17:00">17:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="18:00">18:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="18:30">18:30</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="19:00">19:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="19:30">19:30</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="20:00">20:00</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="20:30">20:30</th>
+                <th class="text-center py-2 px-1 font-medium text-slate-500 min-w-[130px]" data-ts="21:00">21:00</th>
+              </tr>
+            </thead>
+            <tbody id="photoBody"></tbody>
+          </table>
+        </div>
+        <!-- 分页 -->
+        <div id="photoPagination" class="flex items-center justify-center gap-3 mt-4"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- toast 容器 -->
+<div class="fixed top-14 right-6 z-[9999] flex flex-col gap-2" id="toastContainer"></div>
+
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
+
+<script>
+(function() {
+  'use strict';
+
+  // ========== 常量 ==========
+  const SUPABASE_URL = 'https://cuejslqxatzkortnkdsf.supabase.co';
+  const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1ZWpzbHF4YXR6a29ydG5rZHNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4OTk4OTAsImV4cCI6MjA5ODQ3NTg5MH0.T76oSi1ycI8xxBrybQsscR-eWM3ItJiKC_z3xaRglFE';
+
+  let supabase = null; // 初始化后的 Supabase 客户端
+
+  // ========== DOM 引用 ==========
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => document.querySelectorAll(sel);
+
+  const srkInput = $('#srkInput');
+  const toggleKey = $('#toggleKey');
+  const keyStatus = $('#keyStatus');
+  const connectBtn = $('#connectBtn');
+
+  // ========== 工具函数 ==========
+
+  /** 显示 toast 提示 */
+  function toast(msg, type = 'info') {
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.textContent = msg;
+    $('#toastContainer').appendChild(el);
+    setTimeout(() => el.remove(), 3000);
+  }
+
+  /** 生成随机6位数字密码 */
+  function genPassword() {
+    return String(Math.floor(100000 + Math.random() * 900000));
+  }
+
+  /** 格式化时间 */
+  function fmtTime(ts) {
+    if (!ts) return '—';
+    const d = new Date(ts);
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  /** 今日日期字符串 YYYY-MM-DD */
+  function todayStr() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+
+  /** 确保有 Supabase 连接，未连接时提示并返回 false */
+  function ensureClient() {
+    if (!supabase) {
+      toast('请先连接 Supabase', 'error');
+      return false;
+    }
+    return true;
+  }
+
+  // ========== Service Role Key 管理 ==========
+
+  // 从 sessionStorage 恢复
+  const savedKey = sessionStorage.getItem('supabase_srk');
+  if (savedKey) {
+    srkInput.value = savedKey;
+  }
+
+  // 显示/隐藏密码
+  toggleKey.addEventListener('click', () => {
+    const isPassword = srkInput.type === 'password';
+    srkInput.type = isPassword ? 'text' : 'password';
+    toggleKey.textContent = isPassword ? '🙈' : '👁️';
+  });
+
+  // 连接
+  connectBtn.addEventListener('click', async () => {
+    const key = srkInput.value.trim();
+    if (!key) {
+      toast('请输入 Service Role Key', 'error');
+      return;
+    }
+    try {
+      supabase = window.supabase.createClient(SUPABASE_URL, key, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+      sessionStorage.setItem('supabase_srk', key);
+      keyStatus.textContent = '已连接';
+      keyStatus.className = 'key-status connected';
+      toast('Supabase 连接成功', 'success');
+      // 先测试连接是否正常
+      const { data, error } = await supabase.from('floors').select('id').limit(1);
+      if (error) {
+        let errMsg = error.message || String(error);
+        if (errMsg.includes('permission denied')) {
+          errMsg = '权限不足：请确认使用的是 Service Role Key（非 Anon Key），并在 SQL Editor 中执行 supabase-fix-permissions.sql';
+        }
+        toast('连接测试失败：' + errMsg, 'error');
+        keyStatus.textContent = '连接失败';
+        keyStatus.className = 'key-status';
+        return;
+      }
+      // 自动加载各面板数据
+      // 设置历史记录默认日期为今天
+      $('#histStartDate').value = todayStr();
+      $('#histEndDate').value = todayStr();
+      // 设置图片记录默认日期为今天
+      $('#photoStartDate').value = todayStr();
+      $('#photoEndDate').value = todayStr();
+      await Promise.all([loadUsers(), loadPasswords(), loadSettings(), loadHistory(), loadPhotos(), loadReports()]);
+    } catch (e) {
+      toast('连接失败：' + (e.message || e), 'error');
+      keyStatus.textContent = '连接失败';
+      keyStatus.className = 'key-status';
+    }
+  });
+
+  // ========== 选项卡切换 ==========
+  $$('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('.tab-btn').forEach(b => b.classList.remove('active'));
+      $$('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      $('#panel-' + btn.dataset.tab).classList.add('active');
+      // 移动端点击导航后自动关闭侧边栏
+      if (window.innerWidth < 768) {
+        $('#sidebar').classList.add('-translate-x-full');
+        $('#sidebarOverlay').classList.add('hidden');
+      }
+    });
+  });
+
+  // ================================================================
+  //   用户管理
+  // ================================================================
+
+  let allUsers = [];
+  let allFloors = [];
+
+  /** 加载用户列表 */
+  async function loadUsers() {
+    if (!ensureClient()) return;
+    const usersLoading = $('#usersLoading');
+    const usersEmpty = $('#usersEmpty');
+    const usersTableWrap = $('#usersTableWrap');
+
+    usersLoading.style.display = '';
+    usersEmpty.style.display = 'none';
+    usersTableWrap.style.display = 'none';
+
+    try {
+      // 并行获取用户和楼层
+      const [uRes, fRes] = await Promise.all([
+        supabase.from('users').select('*').order('name'),
+        supabase.from('floors').select('*').order('sort_order')
+      ]);
+
+      if (uRes.error) throw uRes.error;
+      if (fRes.error) throw fRes.error;
+
+      allUsers = uRes.data || [];
+      allFloors = fRes.data || [];
+
+      usersLoading.style.display = 'none';
+      if (allUsers.length === 0) {
+        usersEmpty.style.display = '';
+        return;
+      }
+      usersTableWrap.style.display = '';
+      renderUsers();
+    } catch (e) {
+      usersLoading.style.display = 'none';
+      toast('加载用户失败：' + e.message, 'error');
+    }
+  }
+
+  /** 渲染用户表格 */
+  function renderUsers() {
+    const tbody = $('#usersBody');
+    tbody.innerHTML = '';
+
+    allUsers.forEach(user => {
+      const tr = document.createElement('tr');
+      const isOwner = user.role === 'owner';
+
+      tr.innerHTML = `
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">${esc(user.name || '—')}</td>
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors"><code>${esc(user.card_number || '—')}</code></td>
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">${esc(user.phone || '—')}</td>
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+          <select class="role-select px-2 py-1 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none" data-uid="${user.uid}" ${isOwner ? 'disabled title="owner 角色不可修改"' : ''}>
+            <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>owner (所有者)</option>
+            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin (管理者)</option>
+            <option value="floor_manager" ${user.role === 'floor_manager' ? 'selected' : ''}>floor_manager (辅专)</option>
+            <option value="assistant" ${user.role === 'assistant' ? 'selected' : ''}>assistant (协助者)</option>
+            <option value="reader" ${user.role === 'reader' ? 'selected' : ''}>reader (读者)</option>
+          </select>
+        </td>
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+          <div class="floor-checkboxes" data-uid="${user.uid}">
+            ${allFloors.map(f => `
+              <label>
+                <input type="checkbox" value="${f.id}" ${(user.managed_floors || []).includes(f.id) ? 'checked' : ''} ${isOwner ? 'disabled' : ''}>
+                ${esc(f.name)}
+              </label>
+            `).join('')}
+          </div>
+        </td>
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+          <button class="btn btn-danger btn-sm" data-delete-uid="${user.uid}" ${isOwner ? 'disabled title="owner 不可删除"' : ''}>🗑️ 删除</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // 绑定角色变更
+    tbody.querySelectorAll('.role-select').forEach(sel => {
+      sel.addEventListener('change', async (e) => {
+        const uid = e.target.dataset.uid;
+        const newRole = e.target.value;
+        console.log('[admin] 更新角色:', { uid, newRole });
+        const { data, error } = await supabase.from('users').update({ role: newRole }).eq('uid', uid).select();
+        console.log('[admin] 更新结果:', { data, error });
+        if (error) {
+          toast('角色更新失败：' + error.message, 'error');
+          loadUsers(); // 回滚
+        } else {
+          toast('角色已更新为 ' + newRole, 'success');
+          loadUsers();
+        }
+      });
+    });
+
+    // 绑定管理楼层变更
+    tbody.querySelectorAll('.floor-checkboxes').forEach(wrap => {
+      wrap.addEventListener('change', async () => {
+        const uid = wrap.dataset.uid;
+        const checked = [...wrap.querySelectorAll('input:checked')].map(cb => cb.value);
+        const { error } = await supabase.from('users').update({ managed_floors: checked }).eq('uid', uid);
+        if (error) {
+          toast('楼层更新失败：' + error.message, 'error');
+          loadUsers();
+        } else {
+          toast('管理楼层已更新', 'success');
+        }
+      });
+    });
+
+    // 绑定删除
+    tbody.querySelectorAll('[data-delete-uid]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const uid = btn.dataset.deleteUid;
+        const user = allUsers.find(u => u.uid === uid);
+        if (user && user.role === 'owner') return;
+        if (!confirm(`确定删除用户「${user?.name || uid}」吗？`)) return;
+        const { error } = await supabase.from('users').delete().eq('uid', uid);
+        if (error) {
+          toast('删除失败：' + error.message, 'error');
+        } else {
+          toast('用户已删除', 'success');
+          loadUsers();
+        }
+      });
+    });
+  }
+
+  /** HTML 转义 */
+  function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
+
+  // ================================================================
+  //   协作密码
+  // ================================================================
+
+  let allPasswords = [];
+
+  /** 加载今日密码 */
+  async function loadPasswords() {
+    if (!ensureClient()) return;
+    const pwLoading = $('#pwLoading');
+    const pwEmpty = $('#pwEmpty');
+    const pwTableWrap = $('#pwTableWrap');
+
+    pwLoading.style.display = '';
+    pwEmpty.style.display = 'none';
+    pwTableWrap.style.display = 'none';
+
+    try {
+      const today = todayStr();
+      const { data, error } = await supabase
+        .from('collab_passwords')
+        .select('*')
+        .eq('date', today)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      allPasswords = data || [];
+
+      pwLoading.style.display = 'none';
+      if (allPasswords.length === 0) {
+        pwEmpty.style.display = '';
+        return;
+      }
+      pwTableWrap.style.display = '';
+      renderPasswords();
+    } catch (e) {
+      pwLoading.style.display = 'none';
+      toast('加载密码失败：' + e.message, 'error');
+    }
+  }
+
+  /** 渲染密码表格 */
+  function renderPasswords() {
+    const filter = $('#pwFilterFloor').value;
+    const filtered = filter
+      ? allPasswords.filter(p => p.floor_id === filter)
+      : allPasswords;
+
+    const tbody = $('#pwBody');
+    tbody.innerHTML = '';
+
+    if (filtered.length === 0) {
+      $('#pwTableWrap').style.display = 'none';
+      $('#pwEmpty').style.display = '';
+      return;
+    }
+    $('#pwTableWrap').style.display = '';
+    $('#pwEmpty').style.display = 'none';
+
+    const now = Date.now();
+
+    filtered.forEach(pw => {
+      const tr = document.createElement('tr');
+      const expired = pw.expires_at && new Date(pw.expires_at).getTime() < now;
+      const exhausted = pw.used_count >= pw.max_uses;
+      const isActive = !expired && !exhausted;
+
+      // 状态徽章
+      let badgeHtml;
+      if (expired) badgeHtml = '<span class="badge badge-expired">已过期</span>';
+      else if (exhausted) badgeHtml = '<span class="badge badge-exhausted">已用完</span>';
+      else badgeHtml = '<span class="badge badge-active">有效</span>';
+
+      // 楼层显示
+      const floorLabel = pw.floor_id ? pw.floor_id + ' 楼' : '—';
+
+      tr.innerHTML = `
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100"><span class="pw-value">${esc(pw.password)}</span></td>
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(floorLabel)}</td>
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${badgeHtml}</td>
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${pw.used_count} / ${pw.max_uses}</td>
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${pw.expires_at ? fmtTime(pw.expires_at) : '—'}</td>
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100">
+          ${isActive ? `<button class="btn btn-danger btn-sm" data-revoke-id="${pw.id}">🚫 吊销</button>` : ''}
+          <button class="btn btn-danger btn-sm" data-del-pw-id="${pw.id}">🗑️ 删除</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // 绑定吊销（将过期时间设为当前时间）
+    tbody.querySelectorAll('[data-revoke-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.revokeId;
+        const { error } = await supabase
+          .from('collab_passwords')
+          .update({ expires_at: new Date().toISOString() })
+          .eq('id', id);
+        if (error) toast('吊销失败：' + error.message, 'error');
+        else { toast('密码已吊销', 'success'); loadPasswords(); }
+      });
+    });
+
+    // 绑定删除
+    tbody.querySelectorAll('[data-del-pw-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.delPwId;
+        if (!confirm('确定删除此密码？')) return;
+        const { error } = await supabase.from('collab_passwords').delete().eq('id', id);
+        if (error) toast('删除失败：' + error.message, 'error');
+        else { toast('密码已删除', 'success'); loadPasswords(); }
+      });
+    });
+  }
+
+  // 楼层筛选
+  $('#pwFilterFloor').addEventListener('change', renderPasswords);
+
+  // 刷新按钮
+  $('#refreshPwBtn').addEventListener('click', loadPasswords);
+
+  // 生成新密码（支持日期范围）
+  $('#genPwBtn').addEventListener('click', async () => {
+    if (!ensureClient()) return;
+
+    const floorId = $('#pwFloor').value;
+    const maxUses = parseInt($('#pwMaxUses').value) || 10;
+    const expiresVal = $('#pwExpires').value;
+    const startDate = $('#pwStartDate').value;
+    const endDate = $('#pwEndDate').value;
+
+    // 确定日期范围
+    let dates = [];
+    if (startDate && endDate) {
+      let cur = new Date(startDate);
+      const end = new Date(endDate);
+      while (cur <= end) {
+        const y = cur.getFullYear();
+        const m = String(cur.getMonth() + 1).padStart(2, '0');
+        const d = String(cur.getDate()).padStart(2, '0');
+        dates.push(`${y}-${m}-${d}`);
+        cur.setDate(cur.getDate() + 1);
+      }
+    } else {
+      dates.push(todayStr());
+    }
+
+    let count = 0;
+    let failCount = 0;
+
+    for (const date of dates) {
+      const expiresAt = expiresVal ? new Date(expiresVal).toISOString() : new Date(date + 'T23:59:59').toISOString();
+      const password = genPassword();
+      const record = { password, floor_id: floorId, date, max_uses: maxUses, used_count: 0, expires_at: expiresAt };
+
+      const { error } = await supabase.from('collab_passwords').insert(record);
+      if (!error) {
+        count++;
+      } else if (error.message?.includes('duplicate') || error.message?.includes('unique')) {
+        // 密码冲突，重试
+        let retry = 0;
+        while (retry < 5) {
+          record.password = genPassword();
+          const { error: e2 } = await supabase.from('collab_passwords').insert(record);
+          if (!e2) { count++; break; }
+          if (!e2.message?.includes('duplicate') && !e2.message?.includes('unique')) { failCount++; break; }
+          retry++;
+        }
+        if (retry >= 5) failCount++;
+      } else {
+        failCount++;
+      }
+    }
+
+    if (count > 0) toast(`已生成 ${count} 个密码` + (failCount > 0 ? `，${failCount} 个失败` : ''), 'success');
+    else toast('密码生成失败', 'error');
+
+    // 清空过期时间输入
+    $('#pwExpires').value = '';
+    loadPasswords();
+  });
+
+  // ================================================================
+  //   全局设置
+  // ================================================================
+
+  /** 加载设置 */
+  async function loadSettings() {
+    if (!ensureClient()) return;
+    try {
+      const { data, error } = await supabase.from('settings').select('*');
+      if (error) throw error;
+
+      const map = {};
+      (data || []).forEach(s => { map[s.key] = s.value; });
+
+      // reader_view_enabled
+      const toggle = $('#readerViewToggle');
+      toggle.checked = map['reader_view_enabled'] === 'true';
+
+      // 功能开关
+      const featureKeys = [
+        'feat_batch_download', 'feat_clear_images', 'feat_photo_download',
+        'feat_delete_seat', 'feat_reset_app', 'feat_rename_seat',
+        'feat_add_seat', 'feat_bottom_download', 'feat_zip_download',
+        'feat_preview_save', 'feat_area_drag_sort'
+      ];
+      featureKeys.forEach(key => {
+        const el = $(`#${key}Toggle`);
+        if (el) el.checked = map[key] === 'true';
+      });
+
+    } catch (e) {
+      toast('加载设置失败：' + e.message, 'error');
+    }
+  }
+
+  // 通用开关切换函数
+  function bindFeatureToggle(key, label) {
+    const el = $(`#${key}Toggle`);
+    if (!el) return;
+    el.addEventListener('change', async (e) => {
+      if (!ensureClient()) return;
+      const val = e.target.checked ? 'true' : 'false';
+      const { error } = await supabase
+        .from('settings')
+        .upsert({ key, value: val }, { onConflict: 'key' });
+      if (error) {
+        toast('设置更新失败：' + error.message, 'error');
+        e.target.checked = !e.target.checked;
+      } else {
+        toast(val === 'true' ? `${label}已开启` : `${label}已关闭`, 'success');
+      }
+    });
+  }
+
+  // 读者视图开关
+  $('#readerViewToggle').addEventListener('change', async (e) => {
+    if (!ensureClient()) return;
+    const val = e.target.checked ? 'true' : 'false';
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ key: 'reader_view_enabled', value: val }, { onConflict: 'key' });
+    if (error) {
+      toast('设置更新失败：' + error.message, 'error');
+      e.target.checked = !e.target.checked;
+    } else {
+      toast(val === 'true' ? '读者视图已开启' : '读者视图已关闭', 'success');
+    }
+  });
+
+  // 绑定11个功能开关
+  bindFeatureToggle('feat_batch_download', '批量下载');
+  bindFeatureToggle('feat_clear_images', '清除图片');
+  bindFeatureToggle('feat_photo_download', '拍照后下载');
+  bindFeatureToggle('feat_delete_seat', '允许删除座位');
+  bindFeatureToggle('feat_reset_app', '重置应用');
+  bindFeatureToggle('feat_rename_seat', '修改座位编号名称');
+  bindFeatureToggle('feat_add_seat', '添加座位按钮');
+  bindFeatureToggle('feat_bottom_download', '底部下载按钮');
+  bindFeatureToggle('feat_zip_download', '打包下载（ZIP）');
+  bindFeatureToggle('feat_preview_save', '全屏预览保存图片');
+  bindFeatureToggle('feat_area_drag_sort', '区域按钮拖动调序');
+
+  // ================================================================
+  //   历史记录
+  // ================================================================
+
+  /** 加载历史记录 */
+  async function loadHistory() {
+    if (!ensureClient()) return;
+    const histLoading = $('#histLoading');
+    const histEmpty = $('#histEmpty');
+    const histTableWrap = $('#histTableWrap');
+
+    histLoading.style.display = '';
+    histEmpty.style.display = 'none';
+    histTableWrap.style.display = 'none';
+
+    // 获取日期范围
+    const startDate = $('#histStartDate').value || todayStr();
+    const endDate = $('#histEndDate').value || todayStr();
+
+    try {
+      // 简单方案：先查logs，再批量查询关联数据
+      const { data: logs, error } = await supabase
+        .from('collab_activation_logs')
+        .select('*')
+        .gte('activated_at', startDate + 'T00:00:00')
+        .lte('activated_at', endDate + 'T23:59:59')
+        .order('activated_at', { ascending: false })
+        .limit(200);
+
+      if (error) throw error;
+
+      // 批量获取密码信息
+      const pwIds = [...new Set((logs || []).map(l => l.password_id).filter(Boolean))];
+      let pws = [];
+      if (pwIds.length > 0) {
+        const { data: pwData } = await supabase.from('collab_passwords').select('id, password, floor_id, created_by').in('id', pwIds);
+        pws = pwData || [];
+      }
+
+      // 批量获取用户信息
+      const uids = [...new Set([...pws.map(p => p.created_by), ...(logs || []).map(l => l.assistant_uid)].filter(Boolean))];
+      let usersData = [];
+      if (uids.length > 0) {
+        const { data: ud } = await supabase.from('users').select('uid, name, phone').in('uid', uids);
+        usersData = ud || [];
+      }
+
+      // 构建映射
+      const pwMap = {}; pws.forEach(p => pwMap[p.id] = p);
+      const userMap = {}; usersData.forEach(u => userMap[u.uid] = u);
+
+      histLoading.style.display = 'none';
+      if (!logs || logs.length === 0) {
+        histEmpty.style.display = '';
+        return;
+      }
+      histTableWrap.style.display = '';
+
+      const tbody = $('#histBody');
+      tbody.innerHTML = '';
+      logs.forEach(row => {
+        const pw = pwMap[row.password_id] || {};
+        const granter = userMap[pw.created_by] || {};
+        const assistant = userMap[row.assistant_uid] || {};
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="py-3 px-4 text-slate-700 border-b border-slate-100"><span class="pw-value">${esc(pw.password || '—')}</span></td>
+          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(pw.floor_id ? pw.floor_id + ' 楼' : '—')}</td>
+          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(granter.name || '—')}</td>
+          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(assistant.name || '—')}</td>
+          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(assistant.phone || '—')}</td>
+          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${fmtTime(row.activated_at)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      histLoading.style.display = 'none';
+      toast('加载历史记录失败：' + e.message, 'error');
+    }
+  }
+
+  // 绑定查询按钮
+  $('#histQueryBtn').addEventListener('click', loadHistory);
+
+  // ================================================================
+  //   图片记录（矩阵视图）
+  // ================================================================
+
+  const PHOTO_TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
+
+  let _allPhotoRows = [];    // 全量查询结果
+  let _seatRows = [];        // 按座位聚合后的行数据
+  let _photoPage = 1;
+  const PHOTOS_PER_PAGE = 10;
+
+  /** 从 seat_id 提取区域前缀（如"中1001"→"中"，"东2001"→"东"，"东临2901"→"东临"） */
+  function extractRegionPrefix(seatId) {
+    const m = seatId.match(/^([\u4e00-\u9fff]+)/);
+    return m ? m[1] : '';
+  }
+
+  /** 从 seat_id 推算楼层（编号2xxx→2楼，3xxx→3楼） */
+  function inferFloor(seatId) {
+    const num = seatId.replace(/\D/g, '');
+    if (num.length >= 4) return parseInt(num[0]);
+    return '';
+  }
+
+  /** 渲染当前页的矩阵视图 */
+  function renderPhotoPage() {
+    const tbody = $('#photoBody');
+    const photoTableWrap = $('#photoTableWrap');
+    const photoEmpty = $('#photoEmpty');
+    const pagination = $('#photoPagination');
+
+    tbody.innerHTML = '';
+
+    if (_seatRows.length === 0) {
+      photoTableWrap.style.display = 'none';
+      photoEmpty.style.display = '';
+      pagination.innerHTML = '';
+      return;
+    }
+
+    photoTableWrap.style.display = '';
+    photoEmpty.style.display = 'none';
+
+    const totalPages = Math.ceil(_seatRows.length / PHOTOS_PER_PAGE);
+    if (_photoPage > totalPages) _photoPage = totalPages;
+    if (_photoPage < 1) _photoPage = 1;
+
+    const start = (_photoPage - 1) * PHOTOS_PER_PAGE;
+    const pageRows = _seatRows.slice(start, start + PHOTOS_PER_PAGE);
+
+    pageRows.forEach((row, rowIdx) => {
+      const tr = document.createElement('tr');
+      tr.className = rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+      tr.dataset.seatId = row.seatId;
+
+      // 楼层、区域、座位（sticky 列）
+      const floorTd = document.createElement('td');
+      floorTd.className = 'py-1.5 px-2 text-slate-600 border-b border-slate-100 sticky left-0 z-10 bg-inherit font-medium';
+      floorTd.textContent = row.floor + ' 楼';
+
+      const regionTd = document.createElement('td');
+      regionTd.className = 'py-1.5 px-2 text-slate-600 border-b border-slate-100 sticky left-[40px] z-10 bg-inherit';
+      regionTd.textContent = row.region;
+
+      const seatTd = document.createElement('td');
+      seatTd.className = 'py-1.5 px-2 text-slate-700 border-b border-slate-100 sticky left-[100px] z-10 bg-inherit font-medium';
+      seatTd.textContent = row.seatId;
+
+      tr.appendChild(floorTd);
+      tr.appendChild(regionTd);
+      tr.appendChild(seatTd);
+
+      // 22 个时段列
+      PHOTO_TIME_SLOTS.forEach(ts => {
+        const td = document.createElement('td');
+        td.className = 'py-1 px-1 border-b border-slate-100 align-top';
+        td.dataset.timeSlot = ts;
+
+        const photos = row.byTimeSlot[ts] || [];
+        if (photos.length > 0) {
+          const container = document.createElement('div');
+          container.className = 'flex flex-wrap gap-0.5';
+          photos.slice(0, 3).forEach(p => {
+            const wrap = document.createElement('div');
+            wrap.className = 'relative inline-block photo-thumb';
+            wrap.dataset.operator = p.operator;
+            wrap.dataset.date = p.date;
+            wrap.innerHTML = `
+              <img src="${esc(p.url)}" class="w-[40px] h-[30px] object-cover rounded-sm cursor-pointer hover:opacity-80" onclick="window.open('${esc(p.url)}','_blank')">
+              <button class="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 hover:bg-red-700 text-white rounded-full flex items-center justify-center text-[8px] leading-none shadow-sm photo-del-btn" data-photo-id="${p.id}" data-photo-url="${esc(p.url)}" data-seat-id="${esc(row.seatId)}" data-time-slot="${esc(ts)}" title="删除">×</button>
+            `;
+            container.appendChild(wrap);
+          });
+          if (photos.length > 3) {
+            const more = document.createElement('span');
+            more.className = 'text-[10px] text-slate-400 ml-0.5';
+            more.textContent = `+${photos.length - 3}`;
+            container.appendChild(more);
+          }
+          td.appendChild(container);
+        }
+
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    });
+
+    // 删除按钮事件
+    tbody.querySelectorAll('.photo-del-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('确定删除该图片吗？将同时删除存储文件和数据库记录。')) return;
+        const photoId = btn.dataset.photoId;
+        const photoUrl = btn.dataset.photoUrl;
+        // 删除 Storage 文件
+        if (photoUrl) {
+          try {
+            const path = new URL(photoUrl).pathname.match(/\/object\/public\/seat-photos\/(.+)/);
+            if (path && path[1]) await supabase.storage.from('seat-photos').remove([path[1]]);
+          } catch(e) { console.warn('删除文件失败:', e); }
+        }
+        // 删除数据库记录
+        const { error } = await supabase.from('seat_photos').delete().eq('id', photoId);
+        if (error) { toast('删除失败：' + error.message, 'error'); return; }
+        toast('图片已删除', 'success');
+        // 从内存数据中移除，即时更新 UI
+        const seatId = btn.dataset.seatId;
+        const timeSlot = btn.dataset.timeSlot;
+        const seatRow = _seatRows.find(r => r.seatId === seatId);
+        if (seatRow && seatRow.byTimeSlot[timeSlot]) {
+          seatRow.byTimeSlot[timeSlot] = seatRow.byTimeSlot[timeSlot].filter(p => p.id !== photoId);
+          if (seatRow.byTimeSlot[timeSlot].length === 0) delete seatRow.byTimeSlot[timeSlot];
+        }
+        // 移除 DOM 中的缩略图
+        const wrap = btn.closest('.relative');
+        if (wrap) wrap.remove();
+      });
+    });
+
+    // 分页
+    pagination.innerHTML = '';
+    if (totalPages > 1) {
+      const prevBtn = document.createElement('button');
+      prevBtn.className = 'btn btn-sm';
+      prevBtn.textContent = '上一页';
+      prevBtn.disabled = _photoPage <= 1;
+      prevBtn.addEventListener('click', () => { _photoPage--; renderPhotoPage(); });
+
+      const info = document.createElement('span');
+      info.className = 'text-sm text-slate-500';
+      info.textContent = `${_photoPage} / ${totalPages}`;
+
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'btn btn-sm';
+      nextBtn.textContent = '下一页';
+      nextBtn.disabled = _photoPage >= totalPages;
+      nextBtn.addEventListener('click', () => { _photoPage++; renderPhotoPage(); });
+
+      pagination.appendChild(prevBtn);
+      pagination.appendChild(info);
+      pagination.appendChild(nextBtn);
+    }
+  }
+
+  async function loadPhotos() {
+    if (!ensureClient()) return;
+    const photoLoading = $('#photoLoading');
+    const photoEmpty = $('#photoEmpty');
+    const photoTableWrap = $('#photoTableWrap');
+
+    photoLoading.style.display = '';
+    photoEmpty.style.display = 'none';
+    photoTableWrap.style.display = 'none';
+
+    const startDate = $('#photoStartDate').value || todayStr();
+    const endDate = $('#photoEndDate').value || todayStr();
+    const floorId = $('#photoFloor').value;
+    const seatId = $('#photoSeatId').value.trim();
+
+    try {
+      // 查询所有符合条件的照片（不分页，前端聚合）
+      let query = supabase.from('seat_photos')
+        .select('id, url, seat_id, uploaded_by, created_at, time_slot')
+        .gte('created_at', startDate + 'T00:00:00')
+        .lte('created_at', endDate + 'T23:59:59')
+        .order('created_at', { ascending: true });
+
+      if (floorId) {
+        const { data: seats } = await supabase.from('seats').select('seat_id').eq('floor_id', floorId);
+        if (seats && seats.length > 0) {
+          query = query.in('seat_id', seats.map(s => s.seat_id));
+        } else {
+          photoLoading.style.display = 'none';
+          photoEmpty.style.display = '';
+          return;
+        }
+      }
+      if (seatId) query = query.eq('seat_id', seatId);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      photoLoading.style.display = 'none';
+      _allPhotoRows = data || [];
+
+      if (_allPhotoRows.length === 0) {
+        photoEmpty.style.display = '';
+        _seatRows = [];
+        renderPhotoPage();
+        return;
+      }
+
+      // 批量获取上传者姓名
+      const uploaderUids = [...new Set(_allPhotoRows.map(p => p.uploaded_by).filter(Boolean))];
+      const uploaderMap = {};
+      if (uploaderUids.length > 0) {
+        const { data: uploaders } = await supabase.from('users').select('uid, name').in('uid', uploaderUids);
+        (uploaders || []).forEach(u => uploaderMap[u.uid] = u.name || '');
+      }
+
+      // 按座位聚合，按时段分列
+      const seatMap = {};
+      for (const p of _allPhotoRows) {
+        if (!p.seat_id) continue;
+        if (!seatMap[p.seat_id]) {
+          seatMap[p.seat_id] = { seatId: p.seat_id, byTimeSlot: {} };
+        }
+        let ts = p.time_slot;
+        if (!ts || !PHOTO_TIME_SLOTS.includes(ts)) {
+          // 从 created_at 推算时段
+          const d = new Date(p.created_at);
+          const bjH = (d.getUTCHours() + 8) % 24;
+          const bjM = d.getUTCMinutes();
+          const hhmm = `${String(bjH).padStart(2,'0')}:${String(bjM).padStart(2,'0')}`;
+          for (let i = PHOTO_TIME_SLOTS.length - 1; i >= 0; i--) {
+            if (hhmm >= PHOTO_TIME_SLOTS[i]) { ts = PHOTO_TIME_SLOTS[i]; break; }
+          }
+          if (!ts) continue;
+        }
+        if (!seatMap[p.seat_id].byTimeSlot[ts]) seatMap[p.seat_id].byTimeSlot[ts] = [];
+        // 格式化日期时间（北京时间）
+        const cd = new Date(p.created_at);
+        const bjH2 = (cd.getUTCHours() + 8) % 24;
+        const bjM2 = cd.getUTCMinutes();
+        const dateStr = p.created_at ? p.created_at.split('T')[0] : '';
+        const timeStr = `${String(bjH2).padStart(2,'0')}:${String(bjM2).padStart(2,'0')}`;
+        seatMap[p.seat_id].byTimeSlot[ts].push({
+          id: p.id,
+          url: p.url,
+          operator: uploaderMap[p.uploaded_by] || '未知',
+          date: `${dateStr} ${timeStr}`
+        });
+      }
+
+      // 转为数组并排序
+      _seatRows = Object.values(seatMap).map(row => {
+        const prefix = extractRegionPrefix(row.seatId);
+        const floor = inferFloor(row.seatId);
+        return { ...row, region: prefix, floor: floor || '?' };
+      }).sort((a, b) => {
+        if (a.floor !== b.floor) return (a.floor || 0) - (b.floor || 0);
+        if (a.region !== b.region) return a.region.localeCompare(b.region);
+        const na = parseInt(a.seatId.replace(/\D/g, '')) || 0;
+        const nb = parseInt(b.seatId.replace(/\D/g, '')) || 0;
+        return na - nb;
+      });
+
+      _photoPage = 1;
+      renderPhotoPage();
+    } catch (e) {
+      photoLoading.style.display = 'none';
+      toast('加载图片记录失败：' + e.message, 'error');
+    }
+  }
+
+  $('#photoQueryBtn').addEventListener('click', () => { _photoPage = 1; loadPhotos(); });
+
+  // ================================================================
+  //   报表
+  // ================================================================
+
+  const REPORTS_EDGE_URL = 'https://cuejslqxatzkortnkdsf.supabase.co/functions/v1/generate-report';
+
+  // 报表列表状态
+  let _allReportFiles = [];  // 全量数据（筛选前）
+  let _filteredFiles = [];   // 筛选后数据
+  let _reportPage = 1;
+  const REPORTS_PER_PAGE = 10;
+
+  /** 从文件名提取日期字符串（如 report_2026-07-05.xlsx → 2026-07-05） */
+  function extractReportDate(name) {
+    const m = name.match(/^report_(\d{4}-\d{2}-\d{2})\.xlsx$/);
+    return m ? m[1] : null;
+  }
+
+  /** 渲染当前页的报表列表 */
+  function renderReportPage() {
+    const tbody = $('#reportsBody');
+    const reportsTableWrap = $('#reportsTableWrap');
+    const reportsEmpty = $('#reportsEmpty');
+    const pagination = $('#reportsPagination');
+    const pageInfo = $('#reportPageInfo');
+
+    tbody.innerHTML = '';
+
+    if (_filteredFiles.length === 0) {
+      reportsTableWrap.style.display = 'none';
+      reportsEmpty.style.display = '';
+      pagination.style.display = 'none';
+      return;
+    }
+
+    reportsTableWrap.style.display = '';
+    reportsEmpty.style.display = 'none';
+
+    const totalPages = Math.ceil(_filteredFiles.length / REPORTS_PER_PAGE);
+    if (_reportPage > totalPages) _reportPage = totalPages;
+    if (_reportPage < 1) _reportPage = 1;
+
+    const start = (_reportPage - 1) * REPORTS_PER_PAGE;
+    const pageFiles = _filteredFiles.slice(start, start + REPORTS_PER_PAGE);
+
+    pageFiles.forEach(file => {
+      if (file.id === '.emptyFolderPlaceholder') return;
+      const tr = document.createElement('tr');
+      const size = file.metadata?.size || 0;
+      const sizeStr = size > 1024*1024 ? (size/1024/1024).toFixed(1) + ' MB' : (size/1024).toFixed(0) + ' KB';
+      const created = file.updated_at ? fmtTime(file.updated_at) : (file.created_at ? fmtTime(file.created_at) : '—');
+
+      // 将存储文件名转换为中文显示名
+      let displayName = file.name;
+      const nameMatch = file.name.match(/^report_(\d{4})-(\d{2})-(\d{2})\.xlsx$/);
+      if (nameMatch) {
+        displayName = `${parseInt(nameMatch[1])}年${parseInt(nameMatch[2])}月${parseInt(nameMatch[3])}日座位管理统计表.xlsx`;
+      }
+
+      const filePath = 'reports/' + file.name;
+
+      tr.innerHTML = `
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">${esc(displayName)}</td>
+        <td class="py-3 px-4 text-slate-500 border-b border-slate-100">${created}</td>
+        <td class="py-3 px-4 text-slate-500 border-b border-slate-100">${sizeStr}</td>
+        <td class="py-3 px-4 border-b border-slate-100 whitespace-nowrap">
+          <button class="btn btn-sm btn-download-report" data-path="${esc(filePath)}" data-name="${esc(displayName)}">📥 下载</button>
+          <button class="btn btn-sm btn-delete-report text-red-500 hover:text-red-700" data-name="${esc(file.name)}" data-display="${esc(displayName)}" title="删除此报表">🗑️ 删除</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // 下载按钮
+    tbody.querySelectorAll('.btn-download-report').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          const filePath = btn.dataset.path;
+          const { data, error } = await supabase.storage.from('reports').download(filePath);
+          if (error) throw error;
+          const url = URL.createObjectURL(data);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = btn.dataset.name || 'report.xlsx';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          toast('下载失败：' + (e.message || e), 'error');
+        }
+      });
+    });
+
+    // 删除按钮
+    tbody.querySelectorAll('.btn-delete-report').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const fileName = btn.dataset.name;
+        const displayName = btn.dataset.display;
+        if (!confirm(`确定要删除报表 ${displayName} 吗？此操作不可恢复。`)) return;
+        try {
+          const { error } = await supabase.storage.from('reports').remove(['reports/' + fileName]);
+          if (error) throw error;
+          // 从列表中移除
+          _allReportFiles = _allReportFiles.filter(f => f.name !== fileName);
+          _filteredFiles = _filteredFiles.filter(f => f.name !== fileName);
+          toast('删除成功', 'success');
+          renderReportPage();
+        } catch (e) {
+          toast('删除失败：' + (e.message || e), 'error');
+        }
+      });
+    });
+
+    // 分页控件
+    if (totalPages > 1) {
+      pagination.style.display = '';
+      pageInfo.textContent = `${_reportPage} / ${totalPages}`;
+      $('#reportPrevPage').disabled = _reportPage <= 1;
+      $('#reportNextPage').disabled = _reportPage >= totalPages;
+    } else {
+      pagination.style.display = 'none';
+    }
+  }
+
+  /** 加载报表文件列表（从 Storage 重新拉取） */
+  async function loadReports() {
+    if (!ensureClient()) return;
+    const reportsLoading = $('#reportsLoading');
+    const reportsTableWrap = $('#reportsTableWrap');
+    const reportsEmpty = $('#reportsEmpty');
+
+    reportsLoading.style.display = '';
+    reportsEmpty.style.display = 'none';
+    reportsTableWrap.style.display = 'none';
+
+    try {
+      const { data, error } = await supabase.storage.from('reports').list('reports', {
+        sortBy: { column: 'updated_at', order: 'desc' },
+        limit: 100
+      });
+
+      if (error) throw error;
+
+      reportsLoading.style.display = 'none';
+      _allReportFiles = (data || []).filter(f => f.id !== '.emptyFolderPlaceholder');
+
+      if (_allReportFiles.length === 0) {
+        reportsEmpty.style.display = '';
+        _filteredFiles = [];
+        renderReportPage();
+        return;
+      }
+
+      // 应用当前筛选
+      applyReportFilter();
+    } catch (e) {
+      reportsLoading.style.display = 'none';
+      toast('加载报表失败：' + e.message, 'error');
+    }
+  }
+
+  /** 应用日期筛选 */
+  function applyReportFilter() {
+    const from = $('#reportDateFrom').value || null;  // YYYY-MM-DD
+    const to = $('#reportDateTo').value || null;
+
+    _filteredFiles = _allReportFiles.filter(file => {
+      const d = extractReportDate(file.name);
+      if (!d) return true;  // 文件名不含日期的保留
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+
+    _reportPage = 1;
+    renderReportPage();
+  }
+
+  // 分页按钮
+  $('#reportPrevPage').addEventListener('click', () => { _reportPage--; renderReportPage(); });
+  $('#reportNextPage').addEventListener('click', () => { _reportPage++; renderReportPage(); });
+
+  // 筛选按钮
+  $('#reportFilterBtn').addEventListener('click', applyReportFilter);
+  $('#reportFilterClearBtn').addEventListener('click', () => {
+    $('#reportDateFrom').value = '';
+    $('#reportDateTo').value = '';
+    applyReportFilter();
+  });
+
+  // 手动生成报表
+  $('#genReportBtn').addEventListener('click', async () => {
+    if (!ensureClient()) return;
+    const status = $('#genReportStatus');
+    status.textContent = '正在生成报表，请稍候…';
+    try {
+      const resp = await fetch(REPORTS_EDGE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ANON_KEY, 'apikey': ANON_KEY },
+        body: JSON.stringify({ action: 'generate' })
+      });
+      const text = await resp.text();
+      console.log('[reports] Edge Function response:', resp.status, text);
+      let result;
+      try { result = JSON.parse(text); } catch(e) { result = { success: false, error: '响应解析失败: ' + text.substring(0, 200) }; }
+      if (result.success) {
+        status.textContent = '报表生成成功：' + (result.filename || '');
+        toast('报表已生成', 'success');
+        loadReports();
+      } else {
+        status.textContent = '生成失败：' + (result.error || '未知错误') + (resp.status !== 200 ? ' (HTTP ' + resp.status + ')' : '');
+        toast('报表生成失败', 'error');
+      }
+    } catch (e) {
+      status.textContent = '请求失败：' + (e.message || e) + '（请确认 Edge Function 已部署）';
+      toast('报表请求失败', 'error');
+    }
+  });
+
+  $('#refreshReportsBtn').addEventListener('click', loadReports);
+
+})();
+
+// ========== 移动端侧边栏切换 ==========
+(function() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  const menuToggle = document.getElementById('menuToggle');
+
+  if (menuToggle) {
+    menuToggle.addEventListener('click', () => {
+      sidebar.classList.toggle('-translate-x-full');
+      overlay.classList.toggle('hidden');
+    });
+  }
+  if (overlay) {
+    overlay.addEventListener('click', () => {
+      sidebar.classList.add('-translate-x-full');
+      overlay.classList.add('hidden');
+    });
+  }
+})();
+
+// ========== 功能说明折叠/展开 ==========
+document.querySelectorAll('.info-toggle').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const target = document.getElementById(btn.dataset.target);
+    if (!target) return;
+    const hidden = target.style.display === 'none';
+    target.style.display = hidden ? '' : 'none';
+    btn.textContent = hidden ? '收起' : '展开';
+  });
+});
+
+// ========== 图片缩略图 Tooltip ==========
+(function() {
+  const tip = document.createElement('div');
+  tip.className = 'photo-tooltip';
+  document.body.appendChild(tip);
+
+  document.addEventListener('mouseenter', e => {
+    const thumb = e.target.closest('.photo-thumb');
+    if (!thumb) return;
+    const op = thumb.dataset.operator || '未知';
+    const dt = thumb.dataset.date || '';
+    tip.innerHTML = `<div>📷 ${op}</div>${dt ? `<div>🕐 ${dt}</div>` : ''}`;
+    // 定位在缩略图上方
+    const rect = thumb.getBoundingClientRect();
+    tip.style.left = rect.left + 'px';
+    tip.style.top = (rect.top - tip.offsetHeight - 6) + 'px';
+    // 防止超出视口顶部
+    requestAnimationFrame(() => {
+      if (parseFloat(tip.style.top) < 0) tip.style.top = (rect.bottom + 4) + 'px';
+      tip.classList.add('visible');
+    });
+  }, true);
+
+  document.addEventListener('mouseleave', e => {
+    const thumb = e.target.closest('.photo-thumb');
+    if (!thumb) return;
+    tip.classList.remove('visible');
+  }, true);
+})();
+</script>
+</body>
+</html>
