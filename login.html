@@ -78,12 +78,20 @@
         <div class="login-error err" id="collab-error"></div>
       </div>
       <div id="collab-scan" style="display:none">
-        <div class="qr-scan-area" id="qr-scan-area">
+        <div class="qr-scan-overlay" id="qr-scan-overlay">
           <video id="qr-video" autoplay playsinline></video>
           <canvas id="qr-canvas" style="display:none"></canvas>
-          <div class="qr-scan-hint">将二维码对准摄像头</div>
+          <div class="qr-scan-ui">
+            <div class="qr-scan-top">请将二维码对准框内</div>
+            <div class="qr-scan-frame">
+              <span class="qr-corner qr-corner-tl"></span>
+              <span class="qr-corner qr-corner-tr"></span>
+              <span class="qr-corner qr-corner-bl"></span>
+              <span class="qr-corner qr-corner-br"></span>
+            </div>
+            <button class="qr-scan-cancel" id="btn-scan-cancel">取消</button>
+          </div>
         </div>
-        <button class="login-btn gray sm" id="btn-scan-cancel">取消扫描</button>
       </div>
     </div>
 
@@ -262,12 +270,19 @@
   };
   $('btn-scan-cancel').onclick=()=>{stopScan();$('collab-step1').style.display='block';$('collab-scan').style.display='none';};
 
-  function stopScan(){if(scanAnim)cancelAnimationFrame(scanAnim);if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}}
+  function stopScan(){if(scanAnim)cancelAnimationFrame(scanAnim);scanAnim=null;if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}}
   function scanQR(){
     const v=$('qr-video'),c=$('qr-canvas');
-    if(!v.videoWidth){scanAnim=requestAnimationFrame(scanQR);return;}
-    c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);
-    if(typeof jsQR==='function'){const d=c.getContext('2d').getImageData(0,0,c.width,c.height),code=jsQR(d.data,d.width,d.height);
+    if(!v.videoWidth||v.readyState<v.HAVE_ENOUGH_DATA){scanAnim=requestAnimationFrame(scanQR);return;}
+    c.width=v.videoWidth;c.height=v.videoHeight;
+    const ctx=c.getContext('2d');
+    // 视频画面是镜像的，Canvas 需要翻转后再绘制，jsQR 才能正确识别
+    ctx.save();
+    ctx.translate(c.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(v, 0, 0, c.width, c.height);
+    ctx.restore();
+    if(typeof jsQR==='function'){const d=ctx.getImageData(0,0,c.width,c.height),code=jsQR(d.data,d.width,d.height);
       if(code&&code.data){stopScan();handleQR(code.data);return;}}
     scanAnim=requestAnimationFrame(scanQR);
   }

@@ -39,10 +39,19 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","P
 .login-switch a{color:#1890ff;text-decoration:none;font-weight:600;cursor:pointer}
 .login-footer{margin-top:28px;text-align:center;font-size:12px;color:#bfbfbf}
 
-/* 扫码区域 */
-.qr-scan-area{width:100%;aspect-ratio:4/3;background:#000;border-radius:8px;overflow:hidden;position:relative;margin-bottom:12px}
-.qr-scan-area video{width:100%;height:100%;object-fit:cover}
-.qr-scan-hint{position:absolute;bottom:8px;left:0;right:0;text-align:center;color:#fff;font-size:12px;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+/* 扫码区域 - 全屏覆盖 */
+.qr-scan-overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9999;background:#000;display:flex;align-items:center;justify-content:center}
+.qr-scan-overlay video{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.qr-scan-ui{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%}
+.qr-scan-top{color:#fff;font-size:16px;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,.7);margin-bottom:24px;padding:12px 20px;background:rgba(0,0,0,.4);border-radius:8px}
+.qr-scan-frame{width:250px;height:250px;position:relative;border:2px dashed rgba(255,255,255,.5);border-radius:4px}
+.qr-corner{position:absolute;width:28px;height:28px}
+.qr-corner-tl{top:-2px;left:-2px;border-top:3px solid #1890ff;border-left:3px solid #1890ff}
+.qr-corner-tr{top:-2px;right:-2px;border-top:3px solid #1890ff;border-right:3px solid #1890ff}
+.qr-corner-bl{bottom:-2px;left:-2px;border-bottom:3px solid #1890ff;border-left:3px solid #1890ff}
+.qr-corner-br{bottom:-2px;right:-2px;border-bottom:3px solid #1890ff;border-right:3px solid #1890ff}
+.qr-scan-cancel{margin-top:32px;padding:10px 36px;background:rgba(255,255,255,.2);color:#fff;font-size:15px;font-weight:600;border:1px solid rgba(255,255,255,.5);border-radius:8px;cursor:pointer;backdrop-filter:blur(4px)}
+.qr-scan-cancel:active{background:rgba(255,255,255,.35)}
 
 /* 用户信息条 */
 .user-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#e6f7ff;border-radius:6px;margin-bottom:8px;font-size:12px;color:#096dd9;max-width:480px;margin-left:auto;margin-right:auto}
