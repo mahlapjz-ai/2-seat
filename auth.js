@@ -4,7 +4,7 @@
 
 const SUPABASE_URL = 'https://cuejslqxatzkortnkdsf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1ZWpzbHF4YXR6a29ydG5rZHNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4OTk4OTAsImV4cCI6MjA5ODQ3NTg5MH0.T76oSi1ycI8xxBrybQsscR-eWM3ItJiKC_z3xaRglFE';
-const EDGE_FUNCTION_URL = SUPABASE_URL + '/functions/v1/assistant-login';
+const EDGE_FUNCTION_URL = SUPABASE_URL + '/functions/v1/handle-assistant-login';
 
 let _sb = null;
 let _sbConfigured = false;
@@ -23,23 +23,60 @@ const currentUser = {
 };
 
 function isSupabaseReady() { return _sbConfigured && _sb !== null; }
+function getSupabaseClient() { return _sb; }
+
+// 英文错误→中文映射
+const _errMap = [
+  [/\bcolumn reference \w+ is ambiguous\b/i, '数据库查询错误，请联系管理员'],
+  [/\bnew row violates row-level security policy\b/i, '权限不足，无法完成操作'],
+  [/\bInvalid key\b/i, '文件路径无效'],
+  [/\bUnauthorized\b/i, '未授权，请重新登录'],
+  [/\bInvalid login credentials\b/i, '证号或密码错误'],
+  [/\bUser already registered\b/i, '该账号已注册，请直接登录'],
+  [/\bEmail not confirmed\b/i, '账号未验证，请联系管理员'],
+  [/\bNetwork request failed\b/i, '网络连接失败，请检查网络'],
+  [/\bFailed to fetch\b/i, '网络连接失败，请检查网络'],
+  [/\bJWT expired\b/i, '登录已过期，请重新登录'],
+  [/\bnot found\b/i, '未找到相关数据'],
+  [/\bduplicate key\b/i, '数据已存在，请勿重复操作'],
+  [/\bviolates unique constraint\b/i, '数据已存在，请勿重复操作'],
+  [/\bviolates foreign key constraint\b/i, '关联数据不存在，无法操作'],
+  [/\bpermission denied\b/i, '权限不足，无法完成操作'],
+  [/\bstorage\.object\b/i, '文件操作失败'],
+  [/\bbucket not found\b/i, '存储空间不存在'],
+  [/\bPayload too large\b/i, '文件过大，请压缩后重试'],
+];
+
+function translateErrMsg(msg) {
+  if (!msg || typeof msg !== 'string') return msg;
+  for (const [re, cn] of _errMap) {
+    if (re.test(msg)) return cn;
+  }
+  return msg;
+}
 
 function extractErrMsg(err) {
   if (!err) return '';
-  if (typeof err === 'string') return err;
-  if (err.message && typeof err.message === 'string' && err.message.trim()) return err.message.trim();
-  if (err.msg) return err.msg;
-  if (err.error_description) return err.error_description;
-  if (err.error) return typeof err.error === 'string' ? err.error : extractErrMsg(err.error);
-  try { const s = JSON.stringify(err); if (s && s !== '{}' && s !== '[]') return s; } catch (e) {}
-  return '';
+  if (typeof err === 'string') return translateErrMsg(err);
+  let raw = '';
+  if (err.message && typeof err.message === 'string' && err.message.trim()) raw = err.message.trim();
+  else if (err.msg) raw = err.msg;
+  else if (err.error_description) raw = err.error_description;
+  else if (err.error) raw = typeof err.error === 'string' ? err.error : extractErrMsg(err.error);
+  else { try { const s = JSON.stringify(err); if (s && s !== '{}' && s !== '[]') raw = s; } catch (e) {} }
+  return translateErrMsg(raw);
 }
 
 // ---- 读者证号注册 ----
 async function signUpWithCard(cardNumber, password, name) {
   if (!isSupabaseReady()) return { success: false, error: 'Supabase 未配置' };
-  if (!/^\d{13,18}$/.test(cardNumber)) return { success: false, error: '读者证号应为13-18位数字' };
+  if (!/^[A-Z0-9]{13,18}$/.test(cardNumber)) return { success: false, error: '读者证号应为13-18位大写字母或数字' };
   if (!password || password.length < 6) return { success: false, error: '密码至少6位' };
+  // 校验注册开关
+  try {
+    const { data } = await _sb.from('settings').select('value').eq('key', 'registration_enabled').single();
+    if (!data || data.value !== 'true') return { success: false, error: '注册功能未开放，请联系管理员' };
+  } catch (e) { return { success: false, error: '注册功能未开放，请联系管理员' }; }
   try {
     const fakeEmail = `${cardNumber}@lib.internal`;
     const { data, error } = await _sb.auth.signUp({
@@ -242,7 +279,6 @@ async function loadUserProfile() {
     const { data: profile, error } = await _sb.from('users')
       .select('uid, role, managed_floors, assistant_expires_at, name, card_number, phone')
       .eq('uid', session.user.id);
-    console.log('[auth] loadUserProfile raw query:', { uid: session.user.id, count: profile?.length, data: profile, error });
     if (error || !profile || profile.length === 0) {
       console.error('[auth] 查询用户角色失败:', error);
       currentUser.role = 'reader'; currentUser.managedFloors = [];
@@ -257,7 +293,7 @@ async function loadUserProfile() {
     }
   } catch (err) { currentUser.role = 'reader'; currentUser.managedFloors = []; }
 
-  checkAssistantExpiry();
+  await checkAssistantExpiry();
   currentUser.loaded = true;
   // 更新缓存
   try {
@@ -270,10 +306,21 @@ async function loadUserProfile() {
   } catch (e) {}
 }
 
-function checkAssistantExpiry() {
+async function checkAssistantExpiry() {
   if (currentUser.role === 'assistant' && currentUser.assistantExpiresAt) {
     if (new Date(currentUser.assistantExpiresAt) <= new Date()) {
       currentUser.role = 'reader'; currentUser.managedFloors = [];
+      currentUser.assistantExpiresAt = null;
+      // 同步降级到数据库
+      if (currentUser.uid && isSupabaseReady()) {
+        try {
+          await _sb.from('users').update({
+            role: 'reader',
+            managed_floors: null,
+            assistant_expires_at: null
+          }).eq('uid', currentUser.uid);
+        } catch (e) { console.error('降级写入失败:', e); }
+      }
     }
   }
 }
@@ -288,7 +335,6 @@ async function loadGlobalSettings() {
     if (!error && data) {
       data.forEach(s => { globalSettings[s.key] = s.value; });
     }
-    console.log('[auth] globalSettings loaded:', globalSettings);
   } catch(e) { console.warn('[auth] loadGlobalSettings error:', e); }
 }
 
@@ -319,6 +365,101 @@ function getRoleDisplayName(r) { return { owner:'所有者', admin:'管理者', 
 function getAssistantRemainingMinutes() {
   if (currentUser.role !== 'assistant' || !currentUser.assistantExpiresAt) return -1;
   return Math.max(0, Math.floor((new Date(currentUser.assistantExpiresAt) - new Date()) / 60000));
+}
+
+// ---- 扫码功能（html5-qrcode 库，最简配置） ----
+let html5QrCode = null;
+
+async function startQrScanner() {
+  const container = document.getElementById('qrScannerContainer');
+  container.style.display = 'block';
+
+  if (html5QrCode) {
+    await html5QrCode.stop().catch(() => {});
+    html5QrCode = null;
+  }
+
+  html5QrCode = new Html5Qrcode("qrReader");
+
+  try {
+    await html5QrCode.start(
+      { facingMode: "environment" },
+      {
+        fps: 10,
+        qrbox: 250,
+        // [关键] 强制请求高清视频流
+        videoConstraints: {
+          width: { min: 1280, ideal: 1920 },
+          height: { min: 720, ideal: 1080 },
+          facingMode: "environment"
+        }
+      },
+      (decodedText) => {
+        handleCollaborateLogin(decodedText);
+        stopQrScanner();
+      },
+      () => {}
+    );
+  } catch (err) {
+    console.error('摄像头启动失败:', err);
+    alert('无法打开摄像头，请检查是否授予了相机权限');
+    stopQrScanner();
+  }
+}
+
+async function stopQrScanner() {
+  if (html5QrCode) {
+    try {
+      await html5QrCode.stop();
+    } catch (e) {}
+    html5QrCode = null;
+  }
+  document.getElementById('qrScannerContainer').style.display = 'none';
+}
+
+const _btnCloseScanner = document.getElementById('btnCloseScanner');
+if (_btnCloseScanner) _btnCloseScanner.addEventListener('click', stopQrScanner);
+
+async function handleCollaborateLogin(decodedText) {
+  let qr; try { qr = JSON.parse(decodedText); } catch (e) { return; }
+  if (!qr.password || !qr.floor_id) return;
+  const name = document.getElementById('collab-name').value.trim();
+  const phone = document.getElementById('collab-phone').value.trim();
+  const btn = document.getElementById('btn-collab-scan');
+  const errEl = document.getElementById('collab-error');
+  if (btn) { btn.classList.add('loading'); btn.disabled = true; btn.setAttribute('data-loading-text', '正在验证...'); }
+  if (errEl) errEl.className = 'login-error err';
+  try {
+    // 【重复注册优化】先检查该手机号是否已注册
+    const { data: existingUser } = await _sb.from('users').select('uid, role, name, managed_floors').eq('phone', phone).maybeSingle();
+
+    let r;
+    if (existingUser) {
+      // 已注册用户（reader或assistant）扫码：一律覆盖权限，消耗密码次数
+      const now = new Date();
+      const hours = now.getHours(), mins = now.getMinutes();
+      let expireAt;
+      // 早班08:30-13:14过期时间12:30，晚班13:15-17:30过期时间17:30
+      if (hours < 13 || (hours === 13 && mins <= 14)) expireAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 30);
+      else expireAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 30);
+      await _sb.from('users').update({
+        role: 'assistant',
+        managed_floors: [String(qr.floor_id)],
+        assistant_expires_at: expireAt.toISOString()
+      }).eq('uid', existingUser.uid);
+      await _sb.rpc('increment_collab_usage', { p_password: qr.password }).catch(() => {});
+      r = await callEdgeFunctionForSession(existingUser.uid, phone);
+    } else {
+      r = await assistantQRLogin(qr, name, phone);
+    }
+
+    if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
+    if (r.success) location.href = 'index.html';
+    else { if (errEl) { errEl.textContent = r.error || '扫码登录失败'; errEl.className = 'login-error show err'; } }
+  } catch (e) {
+    if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
+    if (errEl) { errEl.textContent = '扫码登录出错'; errEl.className = 'login-error show err'; }
+  }
 }
 
 // ---- Auth 状态监听 ----
