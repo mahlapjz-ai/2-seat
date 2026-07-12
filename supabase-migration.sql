@@ -1,6 +1,8 @@
 -- ============================================================
 -- 图书馆座位管理共享版 - 完整迁移脚本
--- 在 Supabase SQL Editor 中一次性执行
+-- ⚠️⚠️⚠️ 警告：此脚本会删除所有数据！仅用于全新部署！
+-- ⚠️⚠️⚠️ 如果已有数据，绝对不要执行此文件！
+-- 如需更新函数，只需执行 CREATE OR REPLACE FUNCTION 部分
 -- ============================================================
 
 -- 0. 清理旧表（按依赖顺序）
@@ -198,12 +200,12 @@ BEGIN
   END IF;
 
   -- 2. 计算权限到期时间
-  IF v_now >= '08:00'::time AND v_now < '12:30'::time THEN
-    v_expires := current_date + '12:30'::time;
+  IF v_now >= '08:00'::time AND v_now < '13:15'::time THEN
+    v_expires := (current_date + INTERVAL '5 hours 14 minutes')::timestamptz;
   ELSIF v_now >= '13:30'::time AND v_now < '17:30'::time THEN
-    v_expires := current_date + '17:30'::time;
+    v_expires := (current_date + INTERVAL '9 hours 30 minutes')::timestamptz;
   ELSE
-    v_expires := current_date + '12:30'::time;
+    v_expires := (current_date + INTERVAL '4 hours 30 minutes')::timestamptz;
   END IF;
 
   -- 3. 更新密码使用次数

@@ -78,7 +78,11 @@ async function handleQrLogin(
   }
 
   // ---- 查询协作密码 ----
-  const today = new Date().toISOString().slice(0, 10); // 当天日期 YYYY-MM-DD
+  // 使用北京时间日期（与 RPC 函数和 pg_cron 保持一致）
+  const nowUTC = new Date();
+  const bjOffset = 8 * 60 * 60 * 1000; // UTC+8
+  const bjDate = new Date(nowUTC.getTime() + bjOffset);
+  const today = `${bjDate.getUTCFullYear()}-${String(bjDate.getUTCMonth() + 1).padStart(2, '0')}-${String(bjDate.getUTCDate()).padStart(2, '0')}`;
   const { data: collab, error: collabError } = await supabase
     .from("collab_passwords")
     .select("*")
@@ -118,19 +122,21 @@ async function handleQrLogin(
   const bjMinutes = now.getUTCMinutes();
   const totalMinutes = bjHours * 60 + bjMinutes;
 
-  // 12:30 = 750 分钟, 13:30 = 810 分钟（北京时间）
-  if (totalMinutes < 750) {
-    // 北京时间 < 12:30，过期时间设为北京时间 12:30（UTC 04:30）
+  // 早班 08:00~12:30 → 过期 12:30 北京时间（UTC 04:30）
+  // 晚班 13:30~17:30 → 过期 17:30 北京时间（UTC 09:30）
+  // 其他时间 → 兜底 12:30 北京时间（UTC 04:30）
+  if (totalMinutes >= 480 && totalMinutes <= 750) {
+    // 北京时间 08:00 ~ 12:30，过期时间设为北京时间 12:30（UTC 04:30）
     expiresAt = new Date(now);
     expiresAt.setUTCHours(4, 30, 0, 0);
-  } else if (totalMinutes >= 810) {
-    // 北京时间 >= 13:30，过期时间设为北京时间 17:30（UTC 09:30）
+  } else if (totalMinutes >= 810 && totalMinutes <= 1050) {
+    // 北京时间 13:30 ~ 17:30，过期时间设为北京时间 17:30（UTC 09:30）
     expiresAt = new Date(now);
     expiresAt.setUTCHours(9, 30, 0, 0);
   } else {
-    // 北京时间 12:30 ~ 13:30 之间，视为午间过渡，过期时间设为北京时间 17:30（UTC 09:30）
+    // 其他时间，兜底北京时间 12:30（UTC 04:30）
     expiresAt = new Date(now);
-    expiresAt.setUTCHours(9, 30, 0, 0);
+    expiresAt.setUTCHours(4, 30, 0, 0);
   }
 
   // ---- 创建或更新 users 表中的协作者记录 ----
@@ -234,8 +240,9 @@ async function handleQrLogin(
   }
 
   // ---- 为协作者生成登录令牌 ----
-  // 先重置密码为已知值，再 signInWithPassword 获取 session
-  const assistantEmail = `${phone}@assistant.lib`;
+  // 先获取用户真实邮箱，再重置密码获取 session
+  const { data: authInfo } = await supabase.auth.admin.getUserById(userId);
+  const userEmail = authInfo?.user?.email || `${phone}@assistant.lib`;
   const tempPassword = generateAutoPassword();
   const { error: resetError } = await supabase.auth.admin.updateUserById(
     userId,
@@ -252,7 +259,7 @@ async function handleQrLogin(
   // 使用邮箱密码登录获取 session
   const { data: sessionData, error: sessionError } =
     await supabase.auth.signInWithPassword({
-      email: assistantEmail,
+      email: userEmail,
       password: tempPassword,
     });
 
@@ -313,7 +320,9 @@ async function handleReLogin(
   }
 
   // ---- 生成登录令牌 ----
-  const assistantEmail = `${phone}@assistant.lib`;
+  // 先获取用户真实邮箱
+  const { data: authInfo2 } = await supabase.auth.admin.getUserById(user.uid);
+  const userEmail = authInfo2?.user?.email || `${phone}@assistant.lib`;
 
   // 重置密码为临时值再登录
   const tempPassword = generateAutoPassword();
@@ -332,7 +341,7 @@ async function handleReLogin(
   // 使用邮箱密码登录获取 session
   const { data: sessionData, error: sessionError } =
     await supabase.auth.signInWithPassword({
-      email: assistantEmail,
+      email: userEmail,
       password: tempPassword,
     });
 
@@ -361,36 +370,30 @@ async function handleGetSession(
     phone?: string;
   }
 ) {
-  const { uid, phone } = body;
+  const { uid } = body;
 
   if (!uid) {
     return jsonResponse({ success: false, error: "缺少 uid 参数" }, 400);
   }
 
-  // 查找用户记录，获取手机号（用于拼装邮箱）
-  const { data: user, error: userError } = await supabase
-    .from("users")
-    .select("uid, phone")
-    .eq("uid", uid)
-    .single();
-
-  if (userError || !user) {
+  // 通过 admin API 获取用户的真实邮箱（可能是 cardNumber@lib.internal 或 phone@assistant.lib）
+  const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(uid);
+  if (authError || !authUser?.user) {
     return jsonResponse(
-      { success: false, error: "未找到用户记录" },
+      { success: false, error: "未找到 Auth 用户" },
       400
     );
   }
 
-  const userPhone = phone || user.phone;
-  if (!userPhone) {
+  const userEmail = authUser.user.email;
+  if (!userEmail) {
     return jsonResponse(
-      { success: false, error: "用户手机号为空，无法生成 session" },
+      { success: false, error: "用户邮箱为空，无法生成 session" },
       400
     );
   }
 
   // 重置密码并登录获取 session
-  const assistantEmail = `${userPhone}@assistant.lib`;
   const tempPassword = generateAutoPassword();
   const { error: resetError } = await supabase.auth.admin.updateUserById(
     uid,
@@ -404,9 +407,10 @@ async function handleGetSession(
     );
   }
 
+  // 使用用户的真实邮箱登录获取 session
   const { data: sessionData, error: sessionError } =
     await supabase.auth.signInWithPassword({
-      email: assistantEmail,
+      email: userEmail,
       password: tempPassword,
     });
 

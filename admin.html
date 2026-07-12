@@ -48,6 +48,9 @@
     /* 密码值 */
     .pw-value { font-family: monospace; font-size: 13px; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; }
 
+    /* 模态框 */
+    #addUserModal.show, #resetPwdModal.show { display: flex !important; }
+
     /* 楼层复选框组 */
     .floor-checkboxes { display: flex; gap: 6px; flex-wrap: wrap; }
     .floor-checkboxes label { display: flex; align-items: center; gap: 3px; font-size: 13px; cursor: pointer; background: #f8fafc; padding: 2px 8px; border-radius: 6px; border: 1px solid #e2e8f0; transition: .2s; }
@@ -64,6 +67,8 @@
     .btn-primary:hover { background: #2563eb; border-color: #2563eb; color: #fff; }
     .btn-danger { color: #ef4444; border-color: #fecaca; }
     .btn-danger:hover { background: #ef4444; color: #fff; border-color: #ef4444; }
+    .btn-warning { color: #f59e0b; border-color: #fde68a; }
+    .btn-warning:hover { background: #f59e0b; color: #fff; border-color: #f59e0b; }
     .btn-sm { padding: 4px 10px; font-size: 12px; }
     .btn:disabled { opacity: .5; cursor: not-allowed; }
 
@@ -141,13 +146,13 @@
       <div class="mb-3">
         <label class="text-xs text-slate-400 mb-1.5 block font-medium">Service Role Key</label>
         <div class="relative">
-          <input type="password" id="srkInput" class="w-full bg-slate-800 text-white text-xs px-3 py-2 pr-8 rounded-md border border-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 font-mono" placeholder="粘贴 Key…">
+          <input type="password" id="serviceKeyInput" class="w-full bg-slate-800 text-white text-xs px-3 py-2 pr-8 rounded-md border border-slate-600 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 font-mono" placeholder="粘贴 Key…">
           <button id="toggleKey" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-sm transition-colors" title="显示/隐藏">👁️</button>
         </div>
       </div>
       <div class="flex items-center gap-2">
         <span class="key-status disconnected" id="keyStatus">未连接</span>
-        <button class="btn btn-primary btn-sm ml-auto" id="connectBtn">连接</button>
+        <button class="btn btn-primary btn-sm ml-auto" id="connectBtn" onclick="testConnection()">连接</button>
       </div>
     </div>
   </aside>
@@ -174,7 +179,16 @@
         </div>
       </div>
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-        <h2 class="text-base font-semibold text-slate-800 mb-4">用户列表</h2>
+        <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+          <h2 class="text-base font-semibold text-slate-800">用户列表</h2>
+          <div class="flex items-center gap-3">
+            <div class="relative">
+              <input type="text" id="userSearchInput" placeholder="搜索姓名/证号/手机号" class="pl-3 pr-8 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 w-56">
+              <button id="userSearchClear" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs" style="display:none">&times;</button>
+            </div>
+            <button id="btnAddUser" class="px-3 py-1.5 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 transition-colors">+ 新增用户</button>
+          </div>
+        </div>
         <div id="usersLoading" class="text-center py-10 text-slate-400 text-sm">加载中…</div>
         <div id="usersEmpty" class="text-center py-10 text-slate-400 text-sm" style="display:none">暂无用户数据</div>
         <div id="usersTableWrap" style="display:none;overflow-x:auto" class="rounded-lg border border-slate-200">
@@ -192,6 +206,15 @@
             <tbody id="usersBody"></tbody>
           </table>
         </div>
+        <!-- 用户分页 -->
+        <div id="usersPagination" class="flex items-center justify-between mt-4 text-sm" style="display:none">
+          <span id="usersPageInfo" class="text-slate-500"></span>
+          <div class="flex items-center gap-2">
+            <button id="usersPrevPage" class="px-3 py-1 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm">上一页</button>
+            <span id="usersPageNumbers" class="flex items-center gap-1"></span>
+            <button id="usersNextPage" class="px-3 py-1 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm">下一页</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -204,12 +227,16 @@
           <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-passwords">收起</button>
         </div>
         <div id="info-passwords" class="text-sm text-slate-600 mt-2 space-y-1">
-          <p>• 每天 08:00 自动生成第一批密码（5个楼层各1个），过期时间为当天 13:00。</p>
-          <p>• 每天 13:30 自动生成第二批密码（5个楼层各1个），过期时间为当天 18:00。</p>
+          <p>• 每天 08:00 自动生成第一批密码（5个楼层各1个），过期时间为当天 12:30。</p>
+          <p>• 每天 13:30 自动生成第二批密码（5个楼层各1个），过期时间为当天 17:30。</p>
           <p>• 默认最大使用次数为 10 次，可在生成时修改。</p>
           <p>• 手动生成的密码与自动生成的密码互不影响。</p>
-          <p>• 吊销密码后，已使用该密码登录的协作者将在权限到期后自动降级，不会立即失效。</p>
+          <p>• 吊销密码后，已使用该密码登录的协作者权限立即降级为读者权限。</p>
           <p>• 辅专可在 PWA 的设置中查看自己管辖楼层的当天协作密码二维码。</p>
+          <p class="mt-2 font-medium text-slate-700">扫码权限规则：</p>
+          <p>• 08:00～12:30 扫码 → 权限至当天 12:30 到期。</p>
+          <p>• 13:30～17:30 扫码 → 权限至当天 17:30 到期。</p>
+          <p>• 其他时间扫码 → 权限至当天 12:30 到期（兜底）。</p>
         </div>
       </div>
       <!-- 生成新密码 -->
@@ -271,6 +298,7 @@
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">楼层</th>
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">状态</th>
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">已用/上限</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">生成时间</th>
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">过期时间</th>
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">操作</th>
               </tr>
@@ -304,6 +332,16 @@
           </div>
           <label class="switch">
             <input type="checkbox" id="readerViewToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="flex items-center justify-between py-4">
+          <div>
+            <div class="text-sm font-medium text-slate-700">开放注册</div>
+            <div class="text-xs text-slate-400 mt-0.5">开启后用户可在登录页自行注册账号；关闭后仅管理员可在后台添加用户</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="registrationEnabledToggle">
             <span class="slider"></span>
           </label>
         </div>
@@ -423,6 +461,22 @@
           </label>
         </div>
       </div>
+
+      <!-- 过期协助者清理 -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <h2 class="text-base font-semibold text-slate-800 mb-2">过期协助者清理</h2>
+        <p class="text-xs text-slate-400 mb-4">将所有已过期的协助者降级为读者，清空其管理楼层权限。建议每日执行一次。</p>
+        <button id="btnCleanupExpired" class="px-4 py-2 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600 transition-colors">立即清理过期协助者</button>
+        <span id="cleanupResult" class="ml-3 text-sm text-slate-500"></span>
+        <div class="mt-4 p-3 bg-slate-50 rounded-lg text-xs text-slate-500">
+          <p class="font-medium text-slate-600 mb-1">可选：设置每日自动清理（需在 Supabase SQL 编辑器中执行）</p>
+          <code class="block bg-white p-2 rounded text-xs text-slate-700 overflow-x-auto whitespace-pre">SELECT cron.schedule('downgrade-expired-assistants', '0 0 * * *', $$
+  UPDATE public.users
+  SET role = 'reader', managed_floors = NULL, assistant_expires_at = NULL
+  WHERE role = 'assistant' AND assistant_expires_at &lt; now();
+$$);</code>
+        </div>
+      </div>
     </div>
 
     <!-- ===== 历史记录 ===== -->
@@ -467,6 +521,7 @@
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">辅专姓名</th>
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">协作者姓名</th>
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">协作者手机</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">权限失效时间</th>
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">激活时间</th>
               </tr>
             </thead>
@@ -633,6 +688,103 @@
 
 <!-- Supabase SDK -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
+<script>
+async function testConnection() {
+  const key = document.getElementById('serviceKeyInput').value.trim();
+  if (!key) { alert('请先粘贴 Service Role Key'); return; }
+  try {
+    window.supabaseAdmin = supabase.createClient(
+      'https://cuejslqxatzkortnkdsf.supabase.co',
+      key
+    );
+    const { error } = await window.supabaseAdmin.from('users').select('count', { count: 'exact', head: true });
+    if (error) {
+      alert('连接失败: ' + cnErr(error));
+    } else {
+      // 连接成功，直接启用功能，不弹窗
+      sessionStorage.setItem('supabase_srk', key);
+      document.getElementById('keyStatus').textContent = '已连接';
+      document.getElementById('keyStatus').className = 'key-status connected';
+      document.querySelectorAll('button:not(#btnConnect), input, select').forEach(el => {
+        el.disabled = false;
+      });
+      if (typeof loadAllData === 'function') loadAllData();
+    }
+  } catch(e) {
+    alert('连接失败: ' + e.message);
+  }
+}
+</script>
+
+<!-- 新增用户模态框 -->
+<div id="addUserModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:460px;max-width:95vw;max-height:90vh;overflow-y:auto;padding:24px">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-base font-semibold">新增用户</h3>
+      <button onclick="closeAddUserModal()" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">姓名 *</label>
+        <input id="addUserName" type="text" placeholder="请输入姓名" class="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">读者证号 *（13-18位大写字母或数字）</label>
+        <input id="addUserCard" type="text" placeholder="如 ABC1234567890" class="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">密码 *（至少6位）</label>
+        <input id="addUserPassword" type="password" placeholder="请设置初始密码" class="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">角色</label>
+        <select id="addUserRole" class="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none">
+          <option value="reader">reader (读者)</option>
+          <option value="assistant">assistant (协助者)</option>
+          <option value="floor_manager">floor_manager (辅专)</option>
+          <option value="admin">admin (管理者)</option>
+        </select>
+      </div>
+      <div id="addUserFloorsWrap" style="display:none">
+        <label class="block text-xs text-slate-500 mb-1">管辖楼层（辅专用）</label>
+        <div id="addUserFloors" class="flex flex-wrap gap-3"></div>
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">手机号（选填）</label>
+        <input id="addUserPhone" type="text" placeholder="11位手机号" class="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none">
+      </div>
+    </div>
+    <div class="flex justify-end gap-3 mt-5">
+      <button id="addUserCancel" class="px-4 py-1.5 border border-slate-300 rounded-md text-sm hover:bg-slate-50">取消</button>
+      <button id="addUserSubmit" class="px-4 py-1.5 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600">确认创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- 重置密码模态框 -->
+<div id="resetPwdModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:400px;max-width:95vw;padding:24px">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-base font-semibold">重置密码</h3>
+      <button onclick="closeResetPwdModal()" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+    </div>
+    <p class="text-sm text-slate-600 mb-4">为用户 <strong id="resetPwdUserName"></strong> 设置新密码：</p>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">新密码 *（至少6位）</label>
+        <input id="resetPwdNew1" type="password" placeholder="请输入新密码" class="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">确认新密码 *</label>
+        <input id="resetPwdNew2" type="password" placeholder="请再次输入新密码" class="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none">
+      </div>
+    </div>
+    <div class="flex justify-end gap-3 mt-5">
+      <button id="resetPwdCancel" class="px-4 py-1.5 border border-slate-300 rounded-md text-sm hover:bg-slate-50">取消</button>
+      <button id="resetPwdSubmit" class="px-4 py-1.5 bg-orange-500 text-white rounded-md text-sm hover:bg-orange-600">确认重置</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (function() {
@@ -648,12 +800,41 @@
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => document.querySelectorAll(sel);
 
-  const srkInput = $('#srkInput');
+  const srkInput = $('#serviceKeyInput');
   const toggleKey = $('#toggleKey');
   const keyStatus = $('#keyStatus');
   const connectBtn = $('#connectBtn');
 
   // ========== 工具函数 ==========
+
+  /** 英文错误→中文映射 */
+  const _errMap = [
+    [/\bcolumn reference \w+ is ambiguous\b/i, '数据库查询错误，请联系管理员'],
+    [/\bnew row violates row-level security policy\b/i, '权限不足，无法完成操作'],
+    [/\bInvalid key\b/i, '文件路径无效'],
+    [/\bUnauthorized\b/i, '未授权，请重新登录'],
+    [/\bInvalid login credentials\b/i, '证号或密码错误'],
+    [/\bUser already registered\b/i, '该账号已注册，请直接登录'],
+    [/\bNetwork request failed\b/i, '网络连接失败，请检查网络'],
+    [/\bFailed to fetch\b/i, '网络连接失败，请检查网络'],
+    [/\bJWT expired\b/i, '登录已过期，请重新登录'],
+    [/\bnot found\b/i, '未找到相关数据'],
+    [/\bduplicate key\b/i, '数据已存在，请勿重复操作'],
+    [/\bviolates unique constraint\b/i, '数据已存在，请勿重复操作'],
+    [/\bviolates foreign key constraint\b/i, '关联数据不存在，无法操作'],
+    [/\bpermission denied\b/i, '权限不足，无法完成操作'],
+    [/\bPayload too large\b/i, '文件过大，请压缩后重试'],
+  ];
+  function translateErrMsg(msg) {
+    if (!msg || typeof msg !== 'string') return msg;
+    for (const [re, cn] of _errMap) { if (re.test(msg)) return cn; }
+    return msg;
+  }
+  function cnErr(err) {
+    if (!err) return '';
+    const msg = err.message || String(err);
+    return translateErrMsg(msg);
+  }
 
   /** 显示 toast 提示 */
   function toast(msg, type = 'info') {
@@ -695,10 +876,19 @@
 
   // ========== Service Role Key 管理 ==========
 
-  // 从 sessionStorage 恢复
+  // 从 sessionStorage 恢复并自动初始化
   const savedKey = sessionStorage.getItem('supabase_srk');
   if (savedKey) {
     srkInput.value = savedKey;
+    try {
+      supabase = window.supabase.createClient(SUPABASE_URL, savedKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+      keyStatus.textContent = '已连接';
+      keyStatus.className = 'key-status connected';
+    } catch (e) {
+      console.warn('自动初始化 Supabase 失败:', e);
+    }
   }
 
   // 显示/隐藏密码
@@ -726,8 +916,8 @@
       // 先测试连接是否正常
       const { data, error } = await supabase.from('floors').select('id').limit(1);
       if (error) {
-        let errMsg = error.message || String(error);
-        if (errMsg.includes('permission denied')) {
+        let errMsg = cnErr(error) || String(error);
+        if (errMsg.includes('permission denied') || errMsg.includes('权限不足')) {
           errMsg = '权限不足：请确认使用的是 Service Role Key（非 Anon Key），并在 SQL Editor 中执行 supabase-fix-permissions.sql';
         }
         toast('连接测试失败：' + errMsg, 'error');
@@ -742,9 +932,11 @@
       // 设置图片记录默认日期为今天
       $('#photoStartDate').value = todayStr();
       $('#photoEndDate').value = todayStr();
-      await Promise.all([loadUsers(), loadPasswords(), loadSettings(), loadHistory(), loadPhotos(), loadReports()]);
+      // 各面板独立加载，避免单个面板报错导致全部失败
+      const _panels = [loadUsers, loadPasswords, loadSettings, loadHistory, loadPhotos, loadReports];
+      for (const _fn of _panels) { try { await _fn(); } catch(_e) { console.warn('面板加载失败:', _fn.name, _e); } }
     } catch (e) {
-      toast('连接失败：' + (e.message || e), 'error');
+      toast('连接失败：' + cnErr(e), 'error');
       keyStatus.textContent = '连接失败';
       keyStatus.className = 'key-status';
     }
@@ -765,12 +957,37 @@
     });
   });
 
+  // ========== 清理过期协助者 ==========
+  $('#btnCleanupExpired').addEventListener('click', async () => {
+    if (!ensureClient()) return;
+    const resultEl = $('#cleanupResult');
+    resultEl.textContent = '清理中...';
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .update({ role: 'reader', managed_floors: null, assistant_expires_at: null })
+        .eq('role', 'assistant')
+        .lt('assistant_expires_at', new Date().toISOString())
+        .select('uid');
+      if (error) throw error;
+      const count = data ? data.length : 0;
+      resultEl.textContent = count > 0 ? `已清理 ${count} 个过期协助者` : '当前无过期协助者';
+      // 刷新用户列表
+      await loadUsers();
+    } catch (e) {
+      resultEl.textContent = '清理失败：' + cnErr(e);
+    }
+  });
+
   // ================================================================
   //   用户管理
   // ================================================================
 
   let allUsers = [];
   let allFloors = [];
+  let userPage = 1;
+  const USER_PAGE_SIZE = 20;
+  let userSearchKeyword = '';
 
   /** 加载用户列表 */
   async function loadUsers() {
@@ -790,6 +1007,8 @@
         supabase.from('floors').select('*').order('sort_order')
       ]);
 
+      console.log('[admin] loadUsers:', { users: uRes.data?.length, floors: fRes.data?.length, uErr: uRes.error, fErr: fRes.error });
+
       if (uRes.error) throw uRes.error;
       if (fRes.error) throw fRes.error;
 
@@ -802,6 +1021,7 @@
         return;
       }
       usersTableWrap.style.display = '';
+      userPage = 1;
       renderUsers();
     } catch (e) {
       usersLoading.style.display = 'none';
@@ -809,12 +1029,28 @@
     }
   }
 
-  /** 渲染用户表格 */
+  /** 获取过滤后的用户列表 */
+  function getFilteredUsers() {
+    if (!userSearchKeyword) return allUsers;
+    const kw = userSearchKeyword.toLowerCase();
+    return allUsers.filter(u =>
+      (u.name || '').toLowerCase().includes(kw) ||
+      (u.card_number || '').toLowerCase().includes(kw) ||
+      (u.phone || '').toLowerCase().includes(kw)
+    );
+  }
+
+  /** 渲染用户表格（带分页） */
   function renderUsers() {
     const tbody = $('#usersBody');
     tbody.innerHTML = '';
+    const filtered = getFilteredUsers();
+    const totalPages = Math.max(1, Math.ceil(filtered.length / USER_PAGE_SIZE));
+    if (userPage > totalPages) userPage = totalPages;
+    const start = (userPage - 1) * USER_PAGE_SIZE;
+    const pageUsers = filtered.slice(start, start + USER_PAGE_SIZE);
 
-    allUsers.forEach(user => {
+    pageUsers.forEach(user => {
       const tr = document.createElement('tr');
       const isOwner = user.role === 'owner';
 
@@ -842,11 +1078,39 @@
           </div>
         </td>
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-          <button class="btn btn-danger btn-sm" data-delete-uid="${user.uid}" ${isOwner ? 'disabled title="owner 不可删除"' : ''}>🗑️ 删除</button>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button class="btn btn-warning btn-sm" data-reset-pwd-uid="${user.uid}" data-reset-pwd-name="${esc(user.name || '')}">🔑 重置密码</button>
+            <button class="btn btn-danger btn-sm" data-delete-uid="${user.uid}" ${isOwner ? 'disabled title="owner 不可删除"' : ''}>🗑️ 删除</button>
+          </div>
         </td>
       `;
       tbody.appendChild(tr);
     });
+
+    // 分页控件
+    const pagination = $('#usersPagination');
+    if (filtered.length > USER_PAGE_SIZE) {
+      pagination.style.display = '';
+      $('#usersPageInfo').textContent = `共 ${filtered.length} 条，第 ${userPage}/${totalPages} 页`;
+      $('#usersPrevPage').disabled = userPage <= 1;
+      $('#usersNextPage').disabled = userPage >= totalPages;
+      // 页码按钮
+      const pnWrap = $('#usersPageNumbers');
+      pnWrap.innerHTML = '';
+      const maxShow = 5;
+      let pStart = Math.max(1, userPage - Math.floor(maxShow / 2));
+      let pEnd = Math.min(totalPages, pStart + maxShow - 1);
+      if (pEnd - pStart < maxShow - 1) pStart = Math.max(1, pEnd - maxShow + 1);
+      for (let p = pStart; p <= pEnd; p++) {
+        const btn = document.createElement('button');
+        btn.textContent = p;
+        btn.className = `px-2.5 py-1 rounded text-sm ${p === userPage ? 'bg-blue-500 text-white' : 'border border-slate-300 hover:bg-slate-50'}`;
+        btn.addEventListener('click', () => { userPage = p; renderUsers(); });
+        pnWrap.appendChild(btn);
+      }
+    } else {
+      pagination.style.display = 'none';
+    }
 
     // 绑定角色变更
     tbody.querySelectorAll('.role-select').forEach(sel => {
@@ -857,7 +1121,7 @@
         const { data, error } = await supabase.from('users').update({ role: newRole }).eq('uid', uid).select();
         console.log('[admin] 更新结果:', { data, error });
         if (error) {
-          toast('角色更新失败：' + error.message, 'error');
+          toast('角色更新失败：' + cnErr(error), 'error');
           loadUsers(); // 回滚
         } else {
           toast('角色已更新为 ' + newRole, 'success');
@@ -873,7 +1137,7 @@
         const checked = [...wrap.querySelectorAll('input:checked')].map(cb => cb.value);
         const { error } = await supabase.from('users').update({ managed_floors: checked }).eq('uid', uid);
         if (error) {
-          toast('楼层更新失败：' + error.message, 'error');
+          toast('楼层更新失败：' + cnErr(error), 'error');
           loadUsers();
         } else {
           toast('管理楼层已更新', 'success');
@@ -890,14 +1154,43 @@
         if (!confirm(`确定删除用户「${user?.name || uid}」吗？`)) return;
         const { error } = await supabase.from('users').delete().eq('uid', uid);
         if (error) {
-          toast('删除失败：' + error.message, 'error');
+          toast('删除失败：' + cnErr(error), 'error');
         } else {
           toast('用户已删除', 'success');
           loadUsers();
         }
       });
     });
+
+    // 绑定重置密码
+    tbody.querySelectorAll('[data-reset-pwd-uid]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        openResetPasswordModal(btn.dataset.resetPwdUid, btn.dataset.resetPwdName);
+      });
+    });
   }
+
+  // 用户搜索
+  $('#userSearchInput').addEventListener('input', (e) => {
+    userSearchKeyword = e.target.value.trim();
+    $('#userSearchClear').style.display = userSearchKeyword ? '' : 'none';
+    userPage = 1;
+    renderUsers();
+  });
+  $('#userSearchClear').addEventListener('click', () => {
+    $('#userSearchInput').value = '';
+    userSearchKeyword = '';
+    $('#userSearchClear').style.display = 'none';
+    userPage = 1;
+    renderUsers();
+  });
+  // 用户分页按钮
+  $('#usersPrevPage').addEventListener('click', () => { if (userPage > 1) { userPage--; renderUsers(); } });
+  $('#usersNextPage').addEventListener('click', () => {
+    const filtered = getFilteredUsers();
+    const totalPages = Math.ceil(filtered.length / USER_PAGE_SIZE);
+    if (userPage < totalPages) { userPage++; renderUsers(); }
+  });
 
   /** HTML 转义 */
   function esc(str) {
@@ -988,6 +1281,7 @@
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(floorLabel)}</td>
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${badgeHtml}</td>
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${pw.used_count} / ${pw.max_uses}</td>
+        <td class="py-3 px-4 text-slate-600 border-b border-slate-100 whitespace-nowrap">${pw.generated_at ? fmtTime(pw.generated_at) : '—'}</td>
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${pw.expires_at ? fmtTime(pw.expires_at) : '—'}</td>
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">
           ${isActive ? `<button class="btn btn-danger btn-sm" data-revoke-id="${pw.id}">🚫 吊销</button>` : ''}
@@ -1005,7 +1299,7 @@
           .from('collab_passwords')
           .update({ expires_at: new Date().toISOString() })
           .eq('id', id);
-        if (error) toast('吊销失败：' + error.message, 'error');
+        if (error) toast('吊销失败：' + cnErr(error), 'error');
         else { toast('密码已吊销', 'success'); loadPasswords(); }
       });
     });
@@ -1016,7 +1310,7 @@
         const id = btn.dataset.delPwId;
         if (!confirm('确定删除此密码？')) return;
         const { error } = await supabase.from('collab_passwords').delete().eq('id', id);
-        if (error) toast('删除失败：' + error.message, 'error');
+        if (error) toast('删除失败：' + cnErr(error), 'error');
         else { toast('密码已删除', 'success'); loadPasswords(); }
       });
     });
@@ -1107,6 +1401,10 @@
       const toggle = $('#readerViewToggle');
       toggle.checked = map['reader_view_enabled'] === 'true';
 
+      // registration_enabled
+      const regToggle = $('#registrationEnabledToggle');
+      regToggle.checked = map['registration_enabled'] === 'true';
+
       // 功能开关
       const featureKeys = [
         'feat_batch_download', 'feat_clear_images', 'feat_photo_download',
@@ -1135,7 +1433,7 @@
         .from('settings')
         .upsert({ key, value: val }, { onConflict: 'key' });
       if (error) {
-        toast('设置更新失败：' + error.message, 'error');
+        toast('设置更新失败：' + cnErr(error), 'error');
         e.target.checked = !e.target.checked;
       } else {
         toast(val === 'true' ? `${label}已开启` : `${label}已关闭`, 'success');
@@ -1151,10 +1449,25 @@
       .from('settings')
       .upsert({ key: 'reader_view_enabled', value: val }, { onConflict: 'key' });
     if (error) {
-      toast('设置更新失败：' + error.message, 'error');
+      toast('设置更新失败：' + cnErr(error), 'error');
       e.target.checked = !e.target.checked;
     } else {
       toast(val === 'true' ? '读者视图已开启' : '读者视图已关闭', 'success');
+    }
+  });
+
+  // 开放注册开关
+  $('#registrationEnabledToggle').addEventListener('change', async (e) => {
+    if (!ensureClient()) return;
+    const val = e.target.checked ? 'true' : 'false';
+    const { error } = await supabase
+      .from('settings')
+      .upsert({ key: 'registration_enabled', value: val }, { onConflict: 'key' });
+    if (error) {
+      toast('设置更新失败：' + cnErr(error), 'error');
+      e.target.checked = !e.target.checked;
+    } else {
+      toast(val === 'true' ? '开放注册已开启' : '开放注册已关闭', 'success');
     }
   });
 
@@ -1210,11 +1523,11 @@
         pws = pwData || [];
       }
 
-      // 批量获取用户信息
+      // 批量获取用户信息（含 assistant_expires_at）
       const uids = [...new Set([...pws.map(p => p.created_by), ...(logs || []).map(l => l.assistant_uid)].filter(Boolean))];
       let usersData = [];
       if (uids.length > 0) {
-        const { data: ud } = await supabase.from('users').select('uid, name, phone').in('uid', uids);
+        const { data: ud } = await supabase.from('users').select('uid, name, phone, assistant_expires_at').in('uid', uids);
         usersData = ud || [];
       }
 
@@ -1235,6 +1548,7 @@
         const pw = pwMap[row.password_id] || {};
         const granter = userMap[pw.created_by] || {};
         const assistant = userMap[row.assistant_uid] || {};
+        const expiresAt = assistant.assistant_expires_at ? fmtTime(assistant.assistant_expires_at) : '—';
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="py-3 px-4 text-slate-700 border-b border-slate-100"><span class="pw-value">${esc(pw.password || '—')}</span></td>
@@ -1242,6 +1556,7 @@
           <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(granter.name || '—')}</td>
           <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(assistant.name || '—')}</td>
           <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(assistant.phone || '—')}</td>
+          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${expiresAt}</td>
           <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${fmtTime(row.activated_at)}</td>
         `;
         tbody.appendChild(tr);
@@ -1336,8 +1651,8 @@
         const photos = row.byTimeSlot[ts] || [];
         if (photos.length > 0) {
           const container = document.createElement('div');
-          container.className = 'flex flex-wrap gap-0.5';
-          photos.slice(0, 3).forEach(p => {
+          container.className = 'flex flex-nowrap gap-0.5 overflow-x-auto';
+          photos.slice(0, 5).forEach(p => {
             const wrap = document.createElement('div');
             wrap.className = 'relative inline-block photo-thumb';
             wrap.dataset.operator = p.operator;
@@ -1378,7 +1693,7 @@
         }
         // 删除数据库记录
         const { error } = await supabase.from('seat_photos').delete().eq('id', photoId);
-        if (error) { toast('删除失败：' + error.message, 'error'); return; }
+        if (error) { toast('删除失败：' + cnErr(error), 'error'); return; }
         toast('图片已删除', 'success');
         // 从内存数据中移除，即时更新 UI
         const seatId = btn.dataset.seatId;
@@ -1754,67 +2069,230 @@
 
   $('#refreshReportsBtn').addEventListener('click', loadReports);
 
-})();
+  // ========== 移动端侧边栏切换 ==========
+  (function() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    const menuToggle = document.getElementById('menuToggle');
 
-// ========== 移动端侧边栏切换 ==========
-(function() {
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.getElementById('sidebarOverlay');
-  const menuToggle = document.getElementById('menuToggle');
+    if (menuToggle) {
+      menuToggle.addEventListener('click', () => {
+        sidebar.classList.toggle('-translate-x-full');
+        overlay.classList.toggle('hidden');
+      });
+    }
+    if (overlay) {
+      overlay.addEventListener('click', () => {
+        sidebar.classList.add('-translate-x-full');
+        overlay.classList.add('hidden');
+      });
+    }
+  })();
 
-  if (menuToggle) {
-    menuToggle.addEventListener('click', () => {
-      sidebar.classList.toggle('-translate-x-full');
-      overlay.classList.toggle('hidden');
+  // ========== 功能说明折叠/展开 ==========
+  document.querySelectorAll('.info-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = document.getElementById(btn.dataset.target);
+      if (!target) return;
+      const hidden = target.style.display === 'none';
+      target.style.display = hidden ? '' : 'none';
+      btn.textContent = hidden ? '收起' : '展开';
     });
-  }
-  if (overlay) {
-    overlay.addEventListener('click', () => {
-      sidebar.classList.add('-translate-x-full');
-      overlay.classList.add('hidden');
-    });
-  }
-})();
-
-// ========== 功能说明折叠/展开 ==========
-document.querySelectorAll('.info-toggle').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const target = document.getElementById(btn.dataset.target);
-    if (!target) return;
-    const hidden = target.style.display === 'none';
-    target.style.display = hidden ? '' : 'none';
-    btn.textContent = hidden ? '收起' : '展开';
   });
-});
 
-// ========== 图片缩略图 Tooltip ==========
-(function() {
-  const tip = document.createElement('div');
-  tip.className = 'photo-tooltip';
-  document.body.appendChild(tip);
+  // ========== 图片缩略图 Tooltip ==========
+  (function() {
+    const tip = document.createElement('div');
+    tip.className = 'photo-tooltip';
+    document.body.appendChild(tip);
 
-  document.addEventListener('mouseenter', e => {
-    const thumb = e.target.closest('.photo-thumb');
-    if (!thumb) return;
-    const op = thumb.dataset.operator || '未知';
-    const dt = thumb.dataset.date || '';
-    tip.innerHTML = `<div>📷 ${op}</div>${dt ? `<div>🕐 ${dt}</div>` : ''}`;
-    // 定位在缩略图上方
-    const rect = thumb.getBoundingClientRect();
-    tip.style.left = rect.left + 'px';
-    tip.style.top = (rect.top - tip.offsetHeight - 6) + 'px';
-    // 防止超出视口顶部
-    requestAnimationFrame(() => {
-      if (parseFloat(tip.style.top) < 0) tip.style.top = (rect.bottom + 4) + 'px';
-      tip.classList.add('visible');
-    });
-  }, true);
+    document.addEventListener('mouseenter', e => {
+      // e.target 可能是文本节点，需确保是 Element
+      if (!(e.target instanceof Element)) return;
+      const thumb = e.target.closest('.photo-thumb');
+      if (!thumb) return;
+      const op = thumb.dataset.operator || '未知';
+      const dt = thumb.dataset.date || '';
+      tip.innerHTML = `<div>📷 ${op}</div>${dt ? `<div>🕐 ${dt}</div>` : ''}`;
+      const rect = thumb.getBoundingClientRect();
+      tip.style.left = rect.left + 'px';
+      tip.style.top = (rect.top - tip.offsetHeight - 6) + 'px';
+      requestAnimationFrame(() => {
+        if (parseFloat(tip.style.top) < 0) tip.style.top = (rect.bottom + 4) + 'px';
+        tip.classList.add('visible');
+      });
+    }, true);
 
-  document.addEventListener('mouseleave', e => {
-    const thumb = e.target.closest('.photo-thumb');
-    if (!thumb) return;
-    tip.classList.remove('visible');
-  }, true);
+    document.addEventListener('mouseleave', e => {
+      if (!(e.target instanceof Element)) return;
+      const thumb = e.target.closest('.photo-thumb');
+      if (!thumb) return;
+      tip.classList.remove('visible');
+    }, true);
+  })();
+
+  // ========== 新增用户模态框 ==========
+  const addUserModal = document.getElementById('addUserModal');
+  const resetPwdModal = document.getElementById('resetPwdModal');
+
+  $('#btnAddUser').addEventListener('click', () => {
+    if (!ensureClient()) return;
+    const floorCheckboxes = $('#addUserFloors');
+    if (allFloors.length > 0 && !floorCheckboxes.innerHTML) {
+      floorCheckboxes.innerHTML = allFloors.map(f => `
+        <label class="inline-flex items-center gap-1 text-sm">
+          <input type="checkbox" value="${f.id}"> ${esc(f.name)}
+        </label>
+      `).join('');
+    }
+    $('#addUserRole').value = 'reader';
+    $('#addUserFloorsWrap').style.display = 'none';
+    addUserModal.classList.add('show');
+  });
+
+  // 角色切换时显示/隐藏管辖楼层（只绑定一次）
+  $('#addUserRole').addEventListener('change', () => {
+    const role = $('#addUserRole').value;
+    $('#addUserFloorsWrap').style.display = (role === 'floor_manager') ? '' : 'none';
+  });
+
+  function closeAddUserModal() {
+    addUserModal.classList.remove('show');
+    $('#addUserName').value = '';
+    $('#addUserCard').value = '';
+    $('#addUserPassword').value = '';
+    $('#addUserPhone').value = '';
+    $('#addUserRole').value = 'reader';
+    $('#addUserFloorsWrap').style.display = 'none';
+    $('#addUserFloors').querySelectorAll('input:checked').forEach(cb => cb.checked = false);
+  }
+  window.closeAddUserModal = closeAddUserModal;
+
+  $('#addUserCancel').addEventListener('click', closeAddUserModal);
+  $('#addUserSubmit').addEventListener('click', async () => {
+    if (!ensureClient()) return;
+    const name = $('#addUserName').value.trim();
+    const cardNumber = $('#addUserCard').value.trim().toUpperCase();
+    const password = $('#addUserPassword').value;
+    const phone = $('#addUserPhone').value.trim();
+    const role = $('#addUserRole').value;
+    const managedFloors = [...$('#addUserFloors').querySelectorAll('input:checked')].map(cb => cb.value);
+
+    if (!name || !cardNumber || !password) { toast('请填写姓名、证号和密码', 'error'); return; }
+    if (!/^[A-Z0-9]{13,18}$/.test(cardNumber)) { toast('读者证号应为13-18位大写字母或数字', 'error'); return; }
+    if (password.length < 6) { toast('密码至少6位', 'error'); return; }
+
+    const btn = $('#addUserSubmit');
+    btn.disabled = true; btn.textContent = '创建中...';
+
+    try {
+      const fakeEmail = `${cardNumber}@lib.internal`;
+      const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
+        email: fakeEmail, password,
+        email_confirm: true,
+        user_metadata: { name: name, card_number: cardNumber, phone: phone }
+      });
+      console.log('[admin] createUser result:', { authData, authErr });
+      if (authErr) {
+        // 如果邮箱已存在（422），尝试查找已有 auth 用户并复用
+        const isDuplicate = authErr.status === 422 || (authErr.message && authErr.message.toLowerCase().includes('already'));
+        if (isDuplicate) {
+          toast('该证号已有 Auth 账号，尝试关联...', 'warning');
+          const { data: userList } = await supabase.auth.admin.listUsers();
+          const existing = userList?.users?.find(u => u.email === fakeEmail);
+          if (existing) {
+            // 直接插入 users 表记录
+            const { error: dbErr2 } = await supabase.from('users').upsert({
+              uid: existing.id, name, card_number: cardNumber, role,
+              managed_floors: role === 'floor_manager' ? managedFloors : [],
+              phone: phone || null
+            }, { onConflict: 'uid' });
+            if (dbErr2) throw new Error('写入用户数据失败: ' + cnErr(dbErr2));
+            toast(`用户「${name}」关联成功`, 'success');
+            closeAddUserModal();
+            loadUsers();
+            return;
+          }
+        }
+        throw new Error('创建用户失败: ' + authErr.message);
+      }
+      const uid = authData.user.id;
+
+      const { error: dbErr } = await supabase.from('users').upsert({
+        uid, name, card_number: cardNumber, role,
+        managed_floors: role === 'floor_manager' ? managedFloors : [],
+        phone: phone || null
+      }, { onConflict: 'uid' });
+      if (dbErr) {
+        await supabase.auth.admin.deleteUser(uid);
+        throw new Error('写入用户数据失败: ' + cnErr(dbErr));
+      }
+
+      toast(`用户「${name}」创建成功`, 'success');
+      closeAddUserModal();
+      loadUsers();
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '确认创建';
+    }
+  });
+
+  // ========== 重置密码模态框 ==========
+  let resetTargetUid = null;
+
+  function openResetPasswordModal(uid, name) {
+    resetTargetUid = uid;
+    $('#resetPwdUserName').textContent = name;
+    $('#resetPwdNew1').value = '';
+    $('#resetPwdNew2').value = '';
+    resetPwdModal.classList.add('show');
+  }
+  window.openResetPasswordModal = openResetPasswordModal;
+
+  function closeResetPwdModal() {
+    resetPwdModal.classList.remove('show');
+    resetTargetUid = null;
+  }
+  window.closeResetPwdModal = closeResetPwdModal;
+
+  $('#resetPwdCancel').addEventListener('click', closeResetPwdModal);
+  $('#resetPwdSubmit').addEventListener('click', async () => {
+    if (!ensureClient() || !resetTargetUid) return;
+    const p1 = $('#resetPwdNew1').value;
+    const p2 = $('#resetPwdNew2').value;
+    if (!p1 || p1 !== p2) { toast('两次输入的密码不一致或为空', 'error'); return; }
+    if (p1.length < 6) { toast('密码至少6位', 'error'); return; }
+
+    const btn = $('#resetPwdSubmit');
+    btn.disabled = true; btn.textContent = '重置中...';
+
+    try {
+      const { error } = await supabase.auth.admin.updateUserById(resetTargetUid, { password: p1 });
+      if (error) throw error;
+      toast('密码重置成功', 'success');
+      closeResetPwdModal();
+    } catch (e) {
+      toast('重置失败: ' + cnErr(e), 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '确认重置';
+    }
+  });
+
+  // ========== 自动加载（已连接时） ==========
+  if (supabase) {
+    (async () => {
+      try {
+        $('#histStartDate').value = todayStr();
+        $('#histEndDate').value = todayStr();
+        $('#photoStartDate').value = todayStr();
+        $('#photoEndDate').value = todayStr();
+        // 各面板独立加载，避免单个面板报错导致全部失败
+      const _panels = [loadUsers, loadPasswords, loadSettings, loadHistory, loadPhotos, loadReports];
+      for (const _fn of _panels) { try { await _fn(); } catch(_e) { console.warn('面板加载失败:', _fn.name, _e); } }
+      } catch (e) { console.warn('自动加载数据失败:', e); }
+    })();
+  }
 })();
 </script>
 </body>

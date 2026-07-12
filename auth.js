@@ -2,6 +2,12 @@
 // 认证模块 v3 - 读者证号登录 + 协作扫码登录
 // ============================================================
 
+// 获取北京时间日期字符串 YYYY-MM-DD（与数据库 RPC/Edge Function 保持一致）
+function getBjDateStr() {
+  const d = new Date(Date.now() + 8 * 3600000);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
 const SUPABASE_URL = 'https://cuejslqxatzkortnkdsf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1ZWpzbHF4YXR6a29ydG5rZHNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4OTk4OTAsImV4cCI6MjA5ODQ3NTg5MH0.T76oSi1ycI8xxBrybQsscR-eWM3ItJiKC_z3xaRglFE';
 const EDGE_FUNCTION_URL = SUPABASE_URL + '/functions/v1/handle-assistant-login';
@@ -148,7 +154,7 @@ async function assistantQRLogin(qrData, name, phone) {
     // 如果是已有用户，RPC 返回了 uid → 直接用 Edge Function 获取 session
     if (row.uid && row.msg === '登录成功') {
       // 已有用户，通过 Edge Function 获取 session token
-      const result = await callEdgeFunctionForSession(row.uid, phone);
+      const result = await callEdgeFunctionForSession(row.uid, phone, qrData);
       return result;
     }
 
@@ -167,6 +173,8 @@ async function assistantQRLogin(qrData, name, phone) {
       }
       await loadUserProfile();
       try { localStorage.setItem('assistant_uid', currentUser.uid); localStorage.setItem('assistant_phone', phone); } catch (e) {}
+      // 写入激活日志
+      if (currentUser.uid) logCollabActivation(qrData, currentUser.uid);
       return { success: true, error: null, user: currentUser };
     }
 
@@ -178,8 +186,30 @@ async function assistantQRLogin(qrData, name, phone) {
   }
 }
 
+// ---- 写入协作激活日志 ----
+async function logCollabActivation(qrData, assistantUid) {
+  try {
+    // 查询 collab_passwords 获取 password_id
+    const today = getBjDateStr();
+    const { data: cp } = await _sb.from('collab_passwords')
+      .select('id')
+      .eq('password', qrData.password)
+      .eq('floor_id', String(qrData.floor_id))
+      .eq('date', today)
+      .maybeSingle();
+    if (cp) {
+      await _sb.from('collab_activation_logs').insert({
+        password_id: cp.id,
+        assistant_uid: assistantUid
+      });
+    }
+  } catch (e) {
+    console.warn('[auth] 写入激活日志失败:', e);
+  }
+}
+
 // ---- 通过 Edge Function 获取已有用户的 session ----
-async function callEdgeFunctionForSession(uid, phone) {
+async function callEdgeFunctionForSession(uid, phone, qrData) {
   const resp = await fetchWithTimeout(EDGE_FUNCTION_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
@@ -192,6 +222,8 @@ async function callEdgeFunctionForSession(uid, phone) {
   }
   await loadUserProfile();
   try { localStorage.setItem('assistant_uid', currentUser.uid); localStorage.setItem('assistant_phone', phone); } catch (e) {}
+  // 写入激活日志
+  if (qrData && currentUser.uid) logCollabActivation(qrData, currentUser.uid);
   return { success: true, error: null, user: currentUser };
 }
 
@@ -348,11 +380,10 @@ function isFeatureEnabled(key) {
 function canEditFloor(floorId) {
   if (!currentUser.loaded) return false;
   if (currentUser.role === 'owner' || currentUser.role === 'admin') return true;
-  if (currentUser.role === 'floor_manager')
-    return (currentUser.managedFloors || []).includes(String(floorId));
-  if (currentUser.role === 'assistant') {
-    if (currentUser.assistantExpiresAt && new Date(currentUser.assistantExpiresAt) <= new Date()) return false;
-    return (currentUser.managedFloors || []).includes(String(floorId));
+  if (currentUser.role === 'floor_manager' || currentUser.role === 'assistant') {
+    if (currentUser.role === 'assistant' && currentUser.assistantExpiresAt && new Date(currentUser.assistantExpiresAt) <= new Date()) return false;
+    const floors = (currentUser.managedFloors || []).map(f => String(f));
+    return floors.includes(String(floorId));
   }
   return false;
 }
@@ -430,28 +461,8 @@ async function handleCollaborateLogin(decodedText) {
   if (btn) { btn.classList.add('loading'); btn.disabled = true; btn.setAttribute('data-loading-text', '正在验证...'); }
   if (errEl) errEl.className = 'login-error err';
   try {
-    // 【重复注册优化】先检查该手机号是否已注册
-    const { data: existingUser } = await _sb.from('users').select('uid, role, name, managed_floors').eq('phone', phone).maybeSingle();
-
-    let r;
-    if (existingUser) {
-      // 已注册用户（reader或assistant）扫码：一律覆盖权限，消耗密码次数
-      const now = new Date();
-      const hours = now.getHours(), mins = now.getMinutes();
-      let expireAt;
-      // 早班08:30-13:14过期时间12:30，晚班13:15-17:30过期时间17:30
-      if (hours < 13 || (hours === 13 && mins <= 14)) expireAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 30);
-      else expireAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 17, 30);
-      await _sb.from('users').update({
-        role: 'assistant',
-        managed_floors: [String(qr.floor_id)],
-        assistant_expires_at: expireAt.toISOString()
-      }).eq('uid', existingUser.uid);
-      await _sb.rpc('increment_collab_usage', { p_password: qr.password }).catch(() => {});
-      r = await callEdgeFunctionForSession(existingUser.uid, phone);
-    } else {
-      r = await assistantQRLogin(qr, name, phone);
-    }
+    // 统一走 assistant_login RPC 校验密码（无论是否已有用户）
+    const r = await assistantQRLogin(qr, name, phone);
 
     if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
     if (r.success) location.href = 'index.html';
