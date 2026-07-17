@@ -227,16 +227,23 @@
           <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-passwords">收起</button>
         </div>
         <div id="info-passwords" class="text-sm text-slate-600 mt-2 space-y-1">
-          <p>• 每天 08:00 自动生成第一批密码（5个楼层各1个），过期时间为当天 12:30。</p>
-          <p>• 每天 13:30 自动生成第二批密码（5个楼层各1个），过期时间为当天 17:30。</p>
+          <p class="font-medium text-slate-700">生成规则</p>
+          <p>• 每天 08:00 自动生成第一批普通密码（5个楼层各1个），过期时间为当天 12:30。</p>
+          <p>• 每天 13:30 自动生成第二批普通密码（5个楼层各1个），过期时间为当天 17:30。</p>
           <p>• 默认最大使用次数为 10 次，可在生成时修改。</p>
-          <p>• 手动生成的密码与自动生成的密码互不影响。</p>
+          <p>• 手动生成的普通密码与自动生成的密码互不影响。</p>
+          <p>• 手动生成时可选择创建"临时"密码：有效期完全由管理员指定（留空则默认当天 23:59:59），不受时段限制，适用于测试或特殊情况。</p>
+          <p class="mt-2 font-medium text-slate-700">使用与限制</p>
           <p>• 吊销密码后，已使用该密码登录的协作者权限立即降级为读者权限。</p>
-          <p>• 辅专可在 PWA 的设置中查看自己管辖楼层的当天协作密码二维码。</p>
-          <p class="mt-2 font-medium text-slate-700">扫码权限规则：</p>
-          <p>• 08:00～12:30 扫码 → 权限至当天 12:30 到期。</p>
-          <p>• 13:30～17:30 扫码 → 权限至当天 17:30 到期。</p>
-          <p>• 其他时间扫码 → 权限至当天 12:30 到期（兜底）。</p>
+          <p class="mt-2 font-medium text-slate-700">辅专获取方式</p>
+          <p>• 辅专可在 PWA 的"设置"→"协作密码"中，查看自己管辖楼层的当天协作密码二维码。</p>
+          <p>• 临时密码同样出现在 PWA 的"协作密码"页面中，位于五楼下方。</p>
+          <p class="mt-2 font-medium text-slate-700">扫码权限规则</p>
+          <p>• 普通密码在 08:00～12:30 扫码 → 权限至当天 12:30 到期</p>
+          <p>• 普通密码在 13:30～17:30 扫码 → 权限至当天 17:30 到期</p>
+          <p>• 普通密码在其他时间扫码 → 拒绝授权（不授予权限）</p>
+          <p>• 临时密码在有效期内任意时间扫码 → 按管理员设定的过期时间授予权限</p>
+          <p>• 临时密码超过有效期扫码 → 密码失效，无法使用</p>
         </div>
       </div>
       <!-- 生成新密码 -->
@@ -254,18 +261,31 @@
             </select>
           </div>
           <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">密码类型</label>
+            <select id="pwType" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+              <option value="normal">普通</option>
+              <option value="temporary">临时</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1.5">
             <label class="text-xs text-slate-400">最大使用次数</label>
             <input type="number" id="pwMaxUses" min="1" value="10" class="w-20 px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
           </div>
-          <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-slate-400">起始日期</label>
-            <input type="date" id="pwStartDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+          <div id="pwDateRangeGroup" class="flex items-end gap-4 flex-wrap">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs text-slate-400">起始日期</label>
+              <input type="date" id="pwStartDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs text-slate-400">结束日期</label>
+              <input type="date" id="pwEndDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+            </div>
           </div>
-          <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-slate-400">结束日期</label>
-            <input type="date" id="pwEndDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+          <div id="pwTempDateGroup" class="flex flex-col gap-1.5" style="display:none">
+            <label class="text-xs text-slate-400">有效期至（留空则当天 23:59:59）</label>
+            <input type="datetime-local" id="pwTempExpires" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
           </div>
-          <div class="flex flex-col gap-1.5">
+          <div id="pwNormalExpiresGroup" class="flex flex-col gap-1.5">
             <label class="text-xs text-slate-400">过期时间（可选，留空则按日期当天23:59:59）</label>
             <input type="datetime-local" id="pwExpires" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
           </div>
@@ -586,8 +606,18 @@ $$);</code>
       <!-- 手动生成报表 -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
         <h2 class="text-base font-semibold text-slate-800 mb-4">手动生成</h2>
-        <p class="text-sm text-slate-500 mb-3">手动触发生成今天的报表（系统会在每晚 21:30 自动生成）</p>
-        <button class="btn btn-primary" id="genReportBtn">📊 立即生成今日报表</button>
+        <p class="text-sm text-slate-500 mb-3">手动触发生成报表（系统会在每晚 21:30 自动生成今日报表）</p>
+        <div class="flex items-end gap-4 flex-wrap mb-3">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs text-slate-400">选择日期</label>
+            <select id="reportDateSelect" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+              <option value="0">今天</option>
+              <option value="-1">昨天</option>
+              <option value="-2">前天</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" id="genReportBtn">📊 手动生成报表</button>
+        </div>
         <div id="genReportStatus" class="mt-2 text-sm text-slate-500"></div>
       </div>
     </div>
@@ -687,7 +717,7 @@ $$);</code>
 <div class="fixed top-14 right-6 z-[9999] flex flex-col gap-2" id="toastContainer"></div>
 
 <!-- Supabase SDK -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
 <script>
 async function testConnection() {
   const key = document.getElementById('serviceKeyInput').value.trim();
@@ -1282,7 +1312,7 @@ async function testConnection() {
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${badgeHtml}</td>
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${pw.used_count} / ${pw.max_uses}</td>
         <td class="py-3 px-4 text-slate-600 border-b border-slate-100 whitespace-nowrap">${pw.generated_at ? fmtTime(pw.generated_at) : '—'}</td>
-        <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${pw.expires_at ? fmtTime(pw.expires_at) : '—'}</td>
+        <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${pw.expires_at ? fmtTime(pw.expires_at) : '—'}${pw.password_type === 'temporary' ? ' <span style="color:#e67e22;font-size:11px;font-weight:600">[临时]</span>' : ''}</td>
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">
           ${isActive ? `<button class="btn btn-danger btn-sm" data-revoke-id="${pw.id}">🚫 吊销</button>` : ''}
           <button class="btn btn-danger btn-sm" data-del-pw-id="${pw.id}">🗑️ 删除</button>
@@ -1322,19 +1352,28 @@ async function testConnection() {
   // 刷新按钮
   $('#refreshPwBtn').addEventListener('click', loadPasswords);
 
-  // 生成新密码（支持日期范围）
+  // 密码类型切换
+  $('#pwType').addEventListener('change', () => {
+    const isTemp = $('#pwType').value === 'temporary';
+    $('#pwDateRangeGroup').style.display = isTemp ? 'none' : '';
+    $('#pwNormalExpiresGroup').style.display = isTemp ? 'none' : '';
+    $('#pwTempDateGroup').style.display = isTemp ? '' : 'none';
+  });
+
+  // 生成新密码（支持日期范围 + 临时密码类型）
   $('#genPwBtn').addEventListener('click', async () => {
     if (!ensureClient()) return;
 
     const floorId = $('#pwFloor').value;
     const maxUses = parseInt($('#pwMaxUses').value) || 10;
-    const expiresVal = $('#pwExpires').value;
+    const passwordType = $('#pwType').value; // 'normal' 或 'temporary'
+    const isTemp = passwordType === 'temporary';
     const startDate = $('#pwStartDate').value;
     const endDate = $('#pwEndDate').value;
 
     // 确定日期范围
     let dates = [];
-    if (startDate && endDate) {
+    if (!isTemp && startDate && endDate) {
       let cur = new Date(startDate);
       const end = new Date(endDate);
       while (cur <= end) {
@@ -1352,9 +1391,16 @@ async function testConnection() {
     let failCount = 0;
 
     for (const date of dates) {
-      const expiresAt = expiresVal ? new Date(expiresVal).toISOString() : new Date(date + 'T23:59:59').toISOString();
+      let expiresAt;
+      if (isTemp) {
+        const tempExpires = $('#pwTempExpires').value;
+        expiresAt = tempExpires ? new Date(tempExpires).toISOString() : new Date(date + 'T23:59:59').toISOString();
+      } else {
+        const expiresVal = $('#pwExpires').value;
+        expiresAt = expiresVal ? new Date(expiresVal).toISOString() : new Date(date + 'T23:59:59').toISOString();
+      }
       const password = genPassword();
-      const record = { password, floor_id: floorId, date, max_uses: maxUses, used_count: 0, expires_at: expiresAt };
+      const record = { password, floor_id: floorId, date, max_uses: maxUses, used_count: 0, expires_at: expiresAt, password_type: passwordType };
 
       const { error } = await supabase.from('collab_passwords').insert(record);
       if (!error) {
@@ -1375,11 +1421,12 @@ async function testConnection() {
       }
     }
 
-    if (count > 0) toast(`已生成 ${count} 个密码` + (failCount > 0 ? `，${failCount} 个失败` : ''), 'success');
+    if (count > 0) toast(`已生成 ${count} 个${isTemp ? '临时' : ''}密码` + (failCount > 0 ? `，${failCount} 个失败` : ''), 'success');
     else toast('密码生成失败', 'error');
 
     // 清空过期时间输入
     $('#pwExpires').value = '';
+    $('#pwTempExpires').value = '';
     loadPasswords();
   });
 
@@ -1524,11 +1571,19 @@ async function testConnection() {
       }
 
       // 批量获取用户信息（含 assistant_expires_at）
+      // 【修复】同时收集 created_by 和 assistant_uid 来查找辅专姓名
+      // 还需额外加载所有 floor_manager，用于 created_by 为空时的兜底查找
       const uids = [...new Set([...pws.map(p => p.created_by), ...(logs || []).map(l => l.assistant_uid)].filter(Boolean))];
       let usersData = [];
       if (uids.length > 0) {
-        const { data: ud } = await supabase.from('users').select('uid, name, phone, assistant_expires_at').in('uid', uids);
+        const { data: ud } = await supabase.from('users').select('uid, name, phone, assistant_expires_at, role, managed_floors').in('uid', uids);
         usersData = ud || [];
+      }
+      // 额外加载所有 floor_manager/admin/owner，用于兜底查找辅专姓名
+      const { data: managers } = await supabase.from('users').select('uid, name, phone, assistant_expires_at, role, managed_floors').in('role', ['floor_manager', 'admin', 'owner']);
+      if (managers && managers.length > 0) {
+        const existingUids = new Set(usersData.map(u => u.uid));
+        managers.forEach(m => { if (!existingUids.has(m.uid)) usersData.push(m); });
       }
 
       // 构建映射
@@ -1546,16 +1601,32 @@ async function testConnection() {
       tbody.innerHTML = '';
       logs.forEach(row => {
         const pw = pwMap[row.password_id] || {};
-        const granter = userMap[pw.created_by] || {};
-        const assistant = userMap[row.assistant_uid] || {};
-        const expiresAt = assistant.assistant_expires_at ? fmtTime(assistant.assistant_expires_at) : '—';
+        // 【修复】辅专姓名：优先从 created_by 查找，若为空则尝试从该楼层 floor_manager 中查找
+        // 如果 created_by 有值但用户已被删除，显示"账号已删除"
+        let granterName = '—';
+        if (pw.created_by) {
+          if (userMap[pw.created_by]) {
+            granterName = userMap[pw.created_by].name || '—';
+          } else {
+            granterName = '账号已删除';
+          }
+        } else if (pw.floor_id) {
+          // 兜底：查找管辖该楼层的 floor_manager
+          const manager = usersData.find(u => (u.role === 'floor_manager' || u.role === 'admin' || u.role === 'owner') && (u.managed_floors || []).includes(String(pw.floor_id)));
+          if (manager) granterName = manager.name || '—';
+        }
+        // 【修复】协作者信息：如果 uid 有值但用户已被删除，显示"账号已删除"
+        const assistant = userMap[row.assistant_uid] || null;
+        const assistantName = row.assistant_uid ? (assistant ? (assistant.name || '—') : '账号已删除') : '—';
+        const assistantPhone = row.assistant_uid ? (assistant ? (assistant.phone || '—') : '账号已删除') : '—';
+        const expiresAt = row.assistant_uid ? (assistant ? (assistant.assistant_expires_at ? fmtTime(assistant.assistant_expires_at) : '—') : '账号已删除') : '—';
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="py-3 px-4 text-slate-700 border-b border-slate-100"><span class="pw-value">${esc(pw.password || '—')}</span></td>
           <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(pw.floor_id ? pw.floor_id + ' 楼' : '—')}</td>
-          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(granter.name || '—')}</td>
-          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(assistant.name || '—')}</td>
-          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(assistant.phone || '—')}</td>
+          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(granterName)}</td>
+          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(assistantName)}</td>
+          <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(assistantPhone)}</td>
           <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${expiresAt}</td>
           <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${fmtTime(row.activated_at)}</td>
         `;
@@ -2042,12 +2113,17 @@ async function testConnection() {
   $('#genReportBtn').addEventListener('click', async () => {
     if (!ensureClient()) return;
     const status = $('#genReportStatus');
-    status.textContent = '正在生成报表，请稍候…';
+    // 读取选择的日期偏移
+    const dateOffset = parseInt($('#reportDateSelect').value) || 0;
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + dateOffset);
+    const dateStr = targetDate.getFullYear() + '-' + String(targetDate.getMonth() + 1).padStart(2, '0') + '-' + String(targetDate.getDate()).padStart(2, '0');
+    status.textContent = `正在生成 ${dateStr} 的报表，请稍候…`;
     try {
       const resp = await fetch(REPORTS_EDGE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ANON_KEY, 'apikey': ANON_KEY },
-        body: JSON.stringify({ action: 'generate' })
+        body: JSON.stringify({ action: 'generate', date: dateStr })
       });
       const text = await resp.text();
       console.log('[reports] Edge Function response:', resp.status, text);
@@ -2201,6 +2277,10 @@ async function testConnection() {
           const { data: userList } = await supabase.auth.admin.listUsers();
           const existing = userList?.users?.find(u => u.email === fakeEmail);
           if (existing) {
+            // 【v2.7.8】同步更新 auth user_metadata.name
+            await supabase.auth.admin.updateUserById(existing.id, {
+              user_metadata: { name, card_number: cardNumber, phone: phone || '' }
+            });
             // 直接插入 users 表记录
             const { error: dbErr2 } = await supabase.from('users').upsert({
               uid: existing.id, name, card_number: cardNumber, role,

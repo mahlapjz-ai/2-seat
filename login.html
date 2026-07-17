@@ -65,7 +65,7 @@
 </style>
 </head>
 <body>
-<div class="login-container">
+<div class="login-wrapper">
   <div class="login-card">
     <!-- LOGO 占位区 -->
     <div class="login-logo">
@@ -83,34 +83,58 @@
     <!-- 证号登录 -->
     <div class="login-form active" id="form-card">
       <div id="card-login">
-        <div class="form-group">
+        <div class="form-group has-validation">
           <label class="form-label">读者证号</label>
-          <input class="form-input" type="text" id="card-number" placeholder="13-18位大写字母或数字" autocomplete="username">
+          <div class="input-wrap">
+            <input class="form-input" type="text" id="card-number" placeholder="请输入13-18位大写字母或数字" autocomplete="username">
+            <span class="status-icon" id="cardNumIcon"></span>
+          </div>
+          <small class="hint" id="cardNumHint"></small>
         </div>
-        <div class="form-group">
+        <div class="form-group has-validation">
           <label class="form-label">密码</label>
-          <input class="form-input" type="password" id="card-password" placeholder="请输入密码" autocomplete="current-password">
+          <div class="input-wrap">
+            <input class="form-input" type="password" id="card-password" placeholder="请输入密码" autocomplete="current-password">
+            <span class="status-icon" id="cardPwdIcon"></span>
+          </div>
+          <small class="hint" id="cardPwdHint"></small>
         </div>
         <button class="login-btn" id="btn-card-login">登录</button>
         <div class="login-error err" id="card-login-error"></div>
         <div class="login-switch">还没有账号？<a id="switch-to-register" disabled style="opacity:.5;pointer-events:auto;">注册</a></div>
       </div>
       <div id="card-register" style="display:none">
-        <div class="form-group">
+        <div class="form-group has-validation">
           <label class="form-label">姓名</label>
-          <input class="form-input" type="text" id="reg-name" placeholder="请输入姓名" autocomplete="name">
+          <div class="input-wrap">
+            <input class="form-input" type="text" id="reg-name" placeholder="请输入2-8个字符的姓名" autocomplete="name">
+            <span class="status-icon" id="regNameIcon"></span>
+          </div>
+          <small class="hint" id="regNameHint"></small>
         </div>
-        <div class="form-group">
+        <div class="form-group has-validation">
           <label class="form-label">读者证号</label>
-          <input class="form-input" type="text" id="reg-card" placeholder="13-18位大写字母或数字">
+          <div class="input-wrap">
+            <input class="form-input" type="text" id="reg-card" placeholder="请输入13-18位大写字母或数字" autocomplete="off">
+            <span class="status-icon" id="regCardIcon"></span>
+          </div>
+          <small class="hint" id="regCardHint"></small>
         </div>
-        <div class="form-group">
+        <div class="form-group has-validation">
           <label class="form-label">密码</label>
-          <input class="form-input" type="password" id="reg-password" placeholder="至少6位" autocomplete="new-password">
+          <div class="input-wrap">
+            <input class="form-input" type="password" id="reg-password" placeholder="请输入至少6位密码" autocomplete="new-password">
+            <span class="status-icon" id="regPwdIcon"></span>
+          </div>
+          <small class="hint" id="regPwdHint"></small>
         </div>
-        <div class="form-group">
+        <div class="form-group has-validation">
           <label class="form-label">确认密码</label>
-          <input class="form-input" type="password" id="reg-password-confirm" placeholder="请再次输入密码" autocomplete="new-password">
+          <div class="input-wrap">
+            <input class="form-input" type="password" id="reg-password-confirm" placeholder="请再次输入密码" autocomplete="new-password">
+            <span class="status-icon" id="regPwd2Icon"></span>
+          </div>
+          <small class="hint" id="regPwd2Hint"></small>
         </div>
         <button class="login-btn" id="btn-card-register">注册</button>
         <div class="login-error err" id="card-register-error"></div>
@@ -121,13 +145,21 @@
     <!-- 协作登录 -->
     <div class="login-form" id="form-collab">
       <div id="collab-step1">
-        <div class="form-group">
+        <div class="form-group has-validation">
           <label class="form-label">姓名</label>
-          <input class="form-input" type="text" id="collab-name" placeholder="请输入姓名">
+          <div class="input-wrap">
+            <input class="form-input" type="text" id="collab-name" placeholder="请输入2-8个字符的姓名">
+            <span class="status-icon" id="collabNameIcon"></span>
+          </div>
+          <small class="hint" id="collabNameHint"></small>
         </div>
-        <div class="form-group">
+        <div class="form-group has-validation">
           <label class="form-label">手机号</label>
-          <input class="form-input" type="tel" id="collab-phone" placeholder="11位手机号" inputmode="numeric">
+          <div class="input-wrap">
+            <input class="form-input" type="tel" id="collab-phone" placeholder="请输入11位手机号" inputmode="numeric">
+            <span class="status-icon" id="collabPhoneIcon"></span>
+          </div>
+          <small class="hint" id="collabPhoneHint"></small>
         </div>
         <button class="login-btn" id="btn-collab-relogin">快捷登录</button>
         <div class="login-divider">或</div>
@@ -150,7 +182,7 @@
   <button id="btnCloseScanner">取消</button>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4" onerror="window.__sbLoadFailed=true"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" onerror="window.__sbLoadFailed=true"></script>
 <script src="auth.js"></script>
 <script>
 (async function(){
@@ -260,9 +292,14 @@
 
   // 证号登录
   $('btn-card-login').onclick=async()=>{
+    // 【v2.7.14】提交前强制全量校验，显示所有错误提示
+    validateCardNum();
+    validateCardPwd();
+    if (!cardValidState.num || !cardValidState.pwd) {
+      show('card-login-error', '请检查输入项');
+      return;
+    }
     const c=$('card-number').value.trim(),p=$('card-password').value;
-    if(!c||!p){show('card-login-error','请输入证号和密码');return;}
-    if(!/^[A-Z0-9]{13,18}$/.test(c)){show('card-login-error','证号应为13-18位大写字母或数字');return;}
     const btn=$('btn-card-login');loading(btn,true);hide('card-login-error');
     try{const r=await signInWithCard(c,p);loading(btn,false);
       if(r.success)location.href='index.html';
@@ -273,9 +310,16 @@
   // 注册
   $('btn-card-register').onclick=async()=>{
     if(!registrationEnabled){show('card-register-error','注册功能未开放，请联系管理员');return;}
+    // 【v2.7.14】提交前强制全量校验，显示所有错误提示
+    validateRegName();
+    validateRegCard();
+    validateRegPwd();
+    validateRegPwd2();
+    if (!regValidState.name || !regValidState.card || !regValidState.pwd || !regValidState.pwd2) {
+      show('card-register-error', '请检查输入项');
+      return;
+    }
     const n=$('reg-name').value.trim(),c=$('reg-card').value.trim(),p=$('reg-password').value,p2=$('reg-password-confirm').value;
-    if(!n||!c||!p||!p2){show('card-register-error','请填写所有字段');return;}
-    if(p!==p2){show('card-register-error','两次密码不一致，请重新输入');return;}
     const btn=$('btn-card-register');loading(btn,true);hide('card-register-error');
     try{const r=await signUpWithCard(c,p,n);loading(btn,false);
       if(r.success){
@@ -285,10 +329,108 @@
     }catch(e){loading(btn,false);show('card-register-error','注册出错');}
   };
 
+  // 注册姓名实时过滤：仅允许中文、英文、数字
+  $('reg-name').addEventListener('input', function() {
+    this.value = this.value.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
+  });
+
+  // 【v2.7.1】注册表单实时校验
+  const regValidState = { name: false, card: false, pwd: false, pwd2: false };
+
+  function updateFieldStatus(inputEl, iconEl, hintEl, isValid, errMsg) {
+    const val = inputEl.value;
+    const hasInput = val.length > 0;
+    // 图标
+    iconEl.className = 'status-icon' + (hasInput ? (' show ' + (isValid ? 'valid' : 'invalid')) : '');
+    iconEl.textContent = hasInput ? (isValid ? '✓' : '✗') : '';
+    // 下方提示：仅不合法时显示红色错误，合法或为空时不显示
+    if (hasInput && !isValid) {
+      hintEl.className = 'hint error';
+      hintEl.textContent = errMsg;
+    } else {
+      hintEl.className = 'hint';
+      hintEl.textContent = '';
+    }
+    // 输入框边框
+    inputEl.classList.remove('is-valid', 'is-invalid');
+    if (hasInput) inputEl.classList.add(isValid ? 'is-valid' : 'is-invalid');
+  }
+
+  // 【v2.7.14】强制显示指定容器内所有未通过校验的输入框错误提示
+  // 通过 dispatch blur 事件触发已有的 validate* 校验函数，使红色错误文字与边框显示出来
+  function showAllHints(container) {
+    const root = container || document;
+    root.querySelectorAll('input').forEach(input => {
+      input.dispatchEvent(new Event('blur'));
+    });
+  }
+
+  function checkRegBtn() {
+    // 【v2.7.14】按钮不再置灰，提交时强制校验
+  }
+
+  function validateRegName() {
+    const val = $('reg-name').value.trim();
+    const valid = /^[\u4e00-\u9fa5a-zA-Z0-9]{2,8}$/.test(val);
+    regValidState.name = valid;
+    updateFieldStatus($('reg-name'), $('regNameIcon'), $('regNameHint'), valid, '请输入2-8个字符，仅限中英文和数字');
+    checkRegBtn();
+    if (val) hide('card-register-error');
+  }
+
+  function validateRegCard() {
+    const val = $('reg-card').value.trim();
+    const valid = /^[A-Z0-9]{13,18}$/.test(val);
+    regValidState.card = valid;
+    updateFieldStatus($('reg-card'), $('regCardIcon'), $('regCardHint'), valid, '请输入13-18位大写字母或数字');
+    checkRegBtn();
+    if (val) hide('card-register-error');
+  }
+
+  function validateRegPwd() {
+    const val = $('reg-password').value;
+    const valid = val.length >= 6;
+    regValidState.pwd = valid;
+    updateFieldStatus($('reg-password'), $('regPwdIcon'), $('regPwdHint'), valid, '密码至少6位');
+    // 同步校验确认密码
+    if ($('reg-password-confirm').value) {
+      const p2 = $('reg-password-confirm').value;
+      const p2Valid = p2 === val;
+      regValidState.pwd2 = p2Valid;
+      updateFieldStatus($('reg-password-confirm'), $('regPwd2Icon'), $('regPwd2Hint'), p2Valid, '两次密码不一致');
+    }
+    checkRegBtn();
+    if (val) hide('card-register-error');
+  }
+
+  function validateRegPwd2() {
+    const val = $('reg-password-confirm').value;
+    const valid = val.length > 0 && val === $('reg-password').value;
+    regValidState.pwd2 = valid;
+    updateFieldStatus($('reg-password-confirm'), $('regPwd2Icon'), $('regPwd2Hint'), valid, '两次密码不一致');
+    checkRegBtn();
+    if (val) hide('card-register-error');
+  }
+
+  $('reg-name').addEventListener('input', validateRegName);
+  $('reg-name').addEventListener('blur', validateRegName);
+  $('reg-card').addEventListener('input', validateRegCard);
+  $('reg-card').addEventListener('blur', validateRegCard);
+  $('reg-password').addEventListener('input', validateRegPwd);
+  $('reg-password').addEventListener('blur', validateRegPwd);
+  $('reg-password-confirm').addEventListener('input', validateRegPwd2);
+  $('reg-password-confirm').addEventListener('blur', validateRegPwd2);
+
   // 协作快捷登录
   $('btn-collab-relogin').onclick=async()=>{
+    // 【v2.7.14】提交前强制全量校验，显示所有错误提示
+    validateCollabName();
+    validateCollabPhone();
+    if (!collabValidState.name || !collabValidState.phone) {
+      show('collab-error', '请检查输入项');
+      return;
+    }
     const n=$('collab-name').value.trim(),ph=$('collab-phone').value.trim();
-    if(!ph||!/^1\d{10}$/.test(ph)){show('collab-error','请输入正确的手机号');return;}
     const btn=$('btn-collab-relogin');loading(btn,true);hide('collab-error');
     try{const r=await assistantReLogin(n,ph);loading(btn,false);
       if(r.success)location.href='index.html';
@@ -304,19 +446,102 @@
     startQrScanner();
   };
 
-  // 输入时自动清除对应错误提示
-  $('collab-name').addEventListener('input', () => { if ($('collab-name').value.trim()) hide('collab-error'); });
-  $('collab-phone').addEventListener('input', () => { if ($('collab-phone').value.trim()) hide('collab-error'); });
-  $('card-number').addEventListener('input', () => { if ($('card-number').value.trim()) hide('card-login-error'); });
-  $('card-password').addEventListener('input', () => { if ($('card-password').value) hide('card-login-error'); });
-  $('reg-name').addEventListener('input', () => { if ($('reg-name').value.trim()) hide('card-register-error'); });
-  $('reg-card').addEventListener('input', () => { if ($('reg-card').value.trim()) hide('card-register-error'); });
-  $('reg-password').addEventListener('input', () => { if ($('reg-password').value) hide('card-register-error'); });
-  $('reg-password-confirm').addEventListener('input', () => { if ($('reg-password-confirm').value) hide('card-register-error'); });
+  // 【v2.7.1】证号登录实时校验
+  const cardValidState = { num: false, pwd: false };
+
+  function checkCardLoginBtn() {
+    // 【v2.7.14】按钮不再置灰，提交时强制校验
+  }
+
+  function validateCardNum() {
+    const val = $('card-number').value.trim();
+    const valid = /^[A-Z0-9]{13,18}$/.test(val);
+    cardValidState.num = valid;
+    updateFieldStatus($('card-number'), $('cardNumIcon'), $('cardNumHint'), valid, '请输入13-18位大写字母或数字');
+    checkCardLoginBtn();
+    if (val) hide('card-login-error');
+  }
+
+  function validateCardPwd() {
+    const val = $('card-password').value;
+    const valid = val.length >= 6;
+    cardValidState.pwd = valid;
+    updateFieldStatus($('card-password'), $('cardPwdIcon'), $('cardPwdHint'), valid, '密码至少6位');
+    checkCardLoginBtn();
+    if (val) hide('card-login-error');
+  }
+
+  $('card-number').addEventListener('input', validateCardNum);
+  $('card-number').addEventListener('blur', validateCardNum);
+  $('card-password').addEventListener('input', validateCardPwd);
+  $('card-password').addEventListener('blur', validateCardPwd);
+
+  // 【v2.7.1】协作登录实时校验
+  const collabValidState = { name: false, phone: false };
+
+  function checkCollabBtns() {
+    // 【v2.7.14】按钮不再置灰，提交时强制校验
+  }
+
+  function validateCollabName() {
+    const val = $('collab-name').value.trim();
+    const valid = /^[\u4e00-\u9fa5a-zA-Z0-9]{2,8}$/.test(val);
+    collabValidState.name = valid;
+    updateFieldStatus($('collab-name'), $('collabNameIcon'), $('collabNameHint'), valid, '请输入2-8个字符，仅限中英文和数字');
+    checkCollabBtns();
+    if (val) hide('collab-error');
+  }
+
+  function validateCollabPhone() {
+    const val = $('collab-phone').value.trim();
+    const valid = /^1\d{10}$/.test(val);
+    collabValidState.phone = valid;
+    updateFieldStatus($('collab-phone'), $('collabPhoneIcon'), $('collabPhoneHint'), valid, '请输入正确的11位手机号');
+    checkCollabBtns();
+    if (val) hide('collab-error');
+  }
+
+  $('collab-name').addEventListener('input', validateCollabName);
+  $('collab-name').addEventListener('blur', validateCollabName);
+  $('collab-phone').addEventListener('input', validateCollabPhone);
+  $('collab-phone').addEventListener('blur', validateCollabPhone);
 
   $('card-password').addEventListener('keydown',e=>{if(e.key==='Enter')$('btn-card-login').click();});
   $('reg-password').addEventListener('keydown',e=>{if(e.key==='Enter')$('reg-password-confirm').focus();});
   $('reg-password-confirm').addEventListener('keydown',e=>{if(e.key==='Enter')$('btn-card-register').click();});
+
+  // 【键盘适配】动态调整 padding-bottom，防止输入框被键盘遮挡
+  let originalPaddingBottom = 0;
+  function handleKeyboard() {
+    const windowHeight = window.innerHeight;
+    const activeEl = document.activeElement;
+    if (!activeEl || activeEl.tagName !== 'INPUT') {
+      document.body.style.paddingBottom = originalPaddingBottom + 'px';
+      return;
+    }
+    const rect = activeEl.getBoundingClientRect();
+    const inputBottom = rect.bottom;
+    const targetBottom = windowHeight - 20; // 输入框底部距屏幕底部至少 20px
+    const offset = inputBottom - targetBottom;
+    if (offset > 0) {
+      document.body.style.paddingBottom = (originalPaddingBottom + offset) + 'px';
+      activeEl.scrollIntoView({ behavior: 'auto', block: 'center' });
+    } else {
+      document.body.style.paddingBottom = originalPaddingBottom + 'px';
+    }
+  }
+  window.addEventListener('load', () => {
+    originalPaddingBottom = parseInt(getComputedStyle(document.body).paddingBottom) || 20;
+  });
+  document.querySelectorAll('.login-card input').forEach(input => {
+    input.addEventListener('focus', () => { setTimeout(handleKeyboard, 200); });
+    input.addEventListener('blur', () => { setTimeout(handleKeyboard, 200); });
+  });
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(handleKeyboard, 100);
+  });
 })();
 </script>
 </body>

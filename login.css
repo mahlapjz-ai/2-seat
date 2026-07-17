@@ -4,30 +4,36 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
-  height: 100%;
+  height: auto;
+  min-height: 100vh;
+  overflow: visible; /* 允许正常滚动 */
+  margin: 0;
+  padding: 0;
+  background: #f5f5f5; /* 与页面背景一致，防止灰色间隙 */
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", sans-serif;
   font-size: 15px;
   color: #1d2129;
-  background: #f7f8fa;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ===== 容器 ===== */
-.login-container {
+/* ===== 页面容器 ===== */
+.login-wrapper {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  padding: 24px 16px;
+  padding: 20px;
+  box-sizing: border-box;
   background: linear-gradient(160deg, #f0f7f4 0%, #f7f8fa 40%, #f2f4f8 100%);
 }
 
 /* ===== 卡片 ===== */
 .login-card {
   width: 100%;
-  max-width: 380px;
+  max-width: 400px;
+  margin-top: auto;
+  margin-bottom: auto;
   background: #fff;
   border-radius: 20px;
   padding: 40px 32px 32px;
@@ -150,6 +156,59 @@ html, body {
   border-color: #2e8b7a;
   box-shadow: 0 0 0 3px rgba(46,139,122,.1);
   background: #fff;
+}
+
+/* ===== 注册表单实时校验 ===== */
+.input-wrap {
+  position: relative;
+}
+.input-wrap .form-input {
+  padding-right: 36px;
+}
+.input-wrap .status-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 16px;
+  font-weight: 700;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .2s;
+}
+.input-wrap .status-icon.show { opacity: 1; }
+.input-wrap .status-icon.valid { color: #00b42a; }
+.input-wrap .status-icon.invalid { color: #f53f3f; }
+
+.has-validation .hint {
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+  line-height: 1.4;
+  color: #f53f3f;
+  min-height: 0;
+  transition: min-height .2s;
+}
+.has-validation .hint:not(.error) {
+  min-height: 0;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+.has-validation .hint.error {
+  min-height: 17px;
+}
+
+.form-input.is-invalid {
+  border-color: #f53f3f;
+}
+.form-input.is-valid {
+  border-color: #00b42a;
+}
+
+.login-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
 }
 
 /* ===== 按钮 ===== */
@@ -443,5 +502,5 @@ html, body {
 }
 
 @media (min-height: 800px) {
-  .login-container { padding: 40px 16px; }
+  .login-wrapper { padding: 40px 16px; }
 }

@@ -4,6 +4,179 @@
 
 const STORAGE_BUCKET = 'seat-photos';
 
+// ---- 腾讯云 COS 配置 ----
+const COS_BASE_URL = 'https://seat-photos-1410629582.cos.ap-guangzhou.myqcloud.com';
+const COS_PRESIGNED_URL_ENDPOINT = 'https://cuejslqxatzkortnkdsf.supabase.co/functions/v1/get-cos-presigned-url';
+
+// ---- 缩略图 Cache Storage 缓存 ----
+const THUMB_CACHE_NAME = 'seat-thumbnails-v1';
+
+/** 从缓存获取缩略图，返回 blob URL 或 null */
+async function getCachedThumb(url) {
+  try {
+    const cache = await caches.open(THUMB_CACHE_NAME);
+    const response = await cache.match(url);
+    if (response) {
+      return URL.createObjectURL(await response.blob());
+    }
+  } catch (e) { /* Cache API 不可用时静默降级 */ }
+  return null;
+}
+
+/** 将缩略图存入缓存（后台执行，不阻塞） */
+async function cacheThumb(url, response) {
+  try {
+    const cache = await caches.open(THUMB_CACHE_NAME);
+    cache.put(url, response.clone());
+  } catch (e) { /* 缓存写入失败不影响显示 */ }
+}
+
+/** 从缓存中删除指定 URL */
+async function removeCachedThumb(url) {
+  try {
+    const cache = await caches.open(THUMB_CACHE_NAME);
+    await cache.delete(url);
+  } catch (e) { /* 静默 */ }
+}
+
+/** 清空所有缓存（缩略图 + Service Worker 缓存的图片等） */
+async function clearAllThumbCache() {
+  try {
+    // 清除所有 Cache Storage（包括 SW 的 seat-cache-v* 和缩略图缓存）
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => caches.delete(k)));
+  } catch (e) { /* 静默 */ }
+}
+
+// 【v2.7.8 并发控制】缩略图下载并发队列，最多 4 个同时下载
+const MAX_CONCURRENT_DOWNLOADS = 4;
+let _activeDownloads = 0;
+const _downloadQueue = [];
+
+/** 将下载任务加入并发队列，返回 Promise<{response, fromCache}> */
+function enqueueDownload(url, priority = false) {
+  return new Promise((resolve, reject) => {
+    const task = { url, resolve, reject };
+    if (priority) {
+      // 高优先级（可见区域）插队到队首
+      _downloadQueue.unshift(task);
+    } else {
+      _downloadQueue.push(task);
+    }
+    _processDownloadQueue();
+  });
+}
+
+async function _processDownloadQueue() {
+  if (_activeDownloads >= MAX_CONCURRENT_DOWNLOADS || _downloadQueue.length === 0) return;
+
+  const { url, resolve, reject } = _downloadQueue.shift();
+  _activeDownloads++;
+
+  try {
+    // 先查缓存
+    const cachedUrl = await getCachedThumb(url);
+    if (cachedUrl) {
+      resolve({ blobUrl: cachedUrl, fromCache: true });
+    } else {
+      const response = await fetch(url, { mode: 'cors' });
+      if (response.ok) {
+        // 延迟写入缓存，不阻塞主线程
+        const cloned = response.clone();
+        if (typeof requestIdleCallback === 'function') {
+          requestIdleCallback(() => { cacheThumb(url, cloned); });
+        } else {
+          setTimeout(() => { cacheThumb(url, cloned); }, 0);
+        }
+        const blob = await response.blob();
+        resolve({ blobUrl: URL.createObjectURL(blob), fromCache: false });
+      } else {
+        reject(new Error('HTTP ' + response.status));
+      }
+    }
+  } catch (e) {
+    reject(e);
+  } finally {
+    _activeDownloads--;
+    _processDownloadQueue();
+  }
+}
+
+/** 获取 COS 预签名 URL
+ *  @param {'upload'|'delete'|'get'} action - 操作类型
+ *  @param {string} key - COS 对象路径（如 '1/1104/xxx.jpg'）
+ *  @returns {Promise<string|null>} 预签名 URL，失败返回 null
+ */
+async function getCOSPresignedUrl(action, key) {
+  try {
+    const resp = await fetch(COS_PRESIGNED_URL_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ action, key })
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      throw new Error('HTTP ' + resp.status + (body ? ': ' + body.slice(0, 200) : ''));
+    }
+    const data = await resp.json();
+    if (!data.url) throw new Error('返回数据缺少 url');
+    console.log('[COS] 预签名URL获取成功:', action, key);
+    return data.url;
+  } catch (e) {
+    console.error('[COS] 获取预签名URL失败:', e.message);
+    return null;
+  }
+}
+
+/** 获取 COS 图片的预签名读取 URL（用于全屏预览，解决 CORS 问题）
+ *  @param {string} url - COS 原始 URL（如 https://seat-photos-xxx.cos.ap-guangzhou.myqcloud.com/1/1104/xxx.jpg）
+ *  @returns {Promise<string>} 预签名 URL，失败则返回原始 URL
+ */
+async function getCOSReadUrl(url) {
+  if (!url || !url.includes('.myqcloud.com')) return url;
+  const key = extractStoragePath(url);
+  if (!key) return url;
+  const presigned = await getCOSPresignedUrl('get', key);
+  return presigned || url;
+}
+
+// ---- 【v2.7.15】预签名 URL 内存缓存（全屏预览优化：消除实时获取预签名 URL 的网络等待） ----
+const presignedUrlCache = new Map(); // key: 原始URL, value: 预签名URL
+
+/** 异步预生成图片列表的预签名 URL（后台执行，不阻塞 UI）
+ *  在展开座位/打开预览时调用，预签名 URL 提前就绪后预览可瞬间打开
+ */
+async function preloadPresignedUrls(images) {
+  if (!images || !images.length) return;
+  // 串行预生成（避免并发请求过多冲击 Edge Function）
+  for (const img of images) {
+    if (!img || !img.url) continue;
+    if (presignedUrlCache.has(img.url)) continue; // 已缓存跳过
+    try {
+      const presignedUrl = await getCOSReadUrl(img.url);
+      presignedUrlCache.set(img.url, presignedUrl);
+    } catch (e) {
+      // 预生成失败不影响预览，预览时再实时获取
+    }
+  }
+}
+
+/** 同步获取已缓存的预签名 URL，未命中返回 null */
+function getPresignedUrlCached(url) {
+  if (!url) return null;
+  return presignedUrlCache.get(url) || null;
+}
+
+/** 清空预签名 URL 缓存（日期切换/登出时调用） */
+function clearPresignedUrlCache() {
+  presignedUrlCache.clear();
+}
+
+/** 从预签名 URL 缓存中移除单个条目（删除图片时调用） */
+function removePresignedUrl(url) {
+  if (url) presignedUrlCache.delete(url);
+}
+
 /** 区域名称/前缀 → 安全英文文件夹名映射（避免中文路径导致 InvalidKey） */
 const REGION_MAP = {
   '中': 'zhong', '报': 'bao', '东': 'dong', '南': 'nan',
@@ -35,6 +208,22 @@ const _seatNamesCache = {};
 const _extraSeatsCache = {};
 const _deletedSeatsCache = new Set();
 const _deletedPhotoIds = new Set(); // 【v2.3.0】已删除的 photo_id，防止增量合并恢复
+const _userNameCache = new Map(); // uid → name 缓存
+
+/** 批量获取用户姓名（缓存 + 按需查询） */
+async function batchGetUserNames(uids) {
+  if (!uids || !uids.length) return {};
+  const missing = uids.filter(uid => uid && !_userNameCache.has(uid));
+  if (missing.length) {
+    try {
+      const { data } = await _sb.from('users').select('uid, name').in('uid', missing);
+      if (data) data.forEach(r => { if (r.name) _userNameCache.set(r.uid, r.name); });
+    } catch (e) { console.warn('[dl] 批量查询用户姓名失败:', e); }
+  }
+  const result = {};
+  uids.forEach(uid => { if (uid) result[uid] = _userNameCache.get(uid) || ''; });
+  return result;
+}
 
 // ---- 网络重试 + 本地缓存 ----
 const SUPABASE_HOST = 'https://cuejslqxatzkortnkdsf.supabase.co';
@@ -146,8 +335,10 @@ function safeDeleteCache(ck, reason) {
 /** 【修复二】上传后校验：1秒后检查缓存是否被意外清空，若丢失则从数据库恢复 */
 function verifyUploadCache(ck, expectedCount) {
   setTimeout(async () => {
-    // 【v2.5.1】如果该 cell 正在删除中，跳过校验（避免恢复已删图片）
+    // 如果该 cell 正在删除中，跳过校验
     if (typeof _deletingCells !== 'undefined' && _deletingCells.has(ck)) return;
+    // 如果该 cell 正在上传中，跳过校验（避免覆盖 _uploading 状态的缓存）
+    if (typeof isUploading === 'function' && isUploading(ck)) return;
     const cached = _cellDataCache.get(ck);
     if (cached && cached.length >= expectedCount) return; // 缓存完好
     console.warn('[dl] 上传后校验：缓存丢失，从数据库恢复', ck);
@@ -202,7 +393,16 @@ function getAreaConfig(fid, aname) {
 }
 
 function extractStoragePath(url) {
-  try { const m = new URL(url).pathname.match(/\/object\/public\/seat-photos\/(.+)/); return m ? m[1] : null; } catch (e) { return null; }
+  try {
+    // 腾讯云 COS URL: https://seat-photos-1410629582.cos.ap-guangzhou.myqcloud.com/xxx/yyy.jpg
+    if (url.includes('.myqcloud.com')) {
+      const u = new URL(url);
+      return u.pathname.startsWith('/') ? u.pathname.slice(1) : u.pathname;
+    }
+    // 旧 Supabase Storage URL: https://xxx.supabase.co/object/public/seat-photos/xxx
+    const m = new URL(url).pathname.match(/\/object\/public\/seat-photos\/(.+)/);
+    return m ? m[1] : null;
+  } catch (e) { return null; }
 }
 
 function dataURLtoBlob(dataURL) {
@@ -227,7 +427,7 @@ async function dbGet(storeName, key) {
 // ============================================================
 
 /** 获取单个单元格的图片数据（按 cell_key 精确查询） */
-async function getCellData(ck) {
+async function getCellData(ck, dateRange) {
   if (_cellDataCache.has(ck)) {
     // 【v2.5.1】过滤掉已被删除的图片（防止缓存残留）
     const cached = _cellDataCache.get(ck);
@@ -252,13 +452,17 @@ async function getCellData(ck) {
   }
 
   // 策略一：使用 fetchWithRetry 重试
-  const { data, error } = await fetchWithRetry(() =>
-    _sb.from('seat_photos')
+  const { data, error } = await fetchWithRetry(() => {
+    let q = _sb.from('seat_photos')
       .select('id, url, status, uploaded_by, created_at, time_slot')
       .eq('cell_key', ck)
       .order('created_at', { ascending: true })
-      .limit(3)
-  );
+      .limit(3);
+    if (dateRange && dateRange.start && dateRange.end) {
+      q = q.gte('created_at', dateRange.start.toISOString()).lt('created_at', dateRange.end.toISOString());
+    }
+    return q;
+  });
   if (error) {
     console.warn('[dl] getCellData error (after retry):', error);
     const memCached = _cellDataCache.get(ck);
@@ -274,16 +478,21 @@ async function getCellData(ck) {
       uploaded_by: p.uploaded_by, created_at: p.created_at,
       thumbnail: p.url, time_slot: p.time_slot
     }));
-  // 【修复二】使用安全缓存更新：空数组不覆盖非空缓存
+  // 【v2.5.4修复】空结果也要缓存，否则轮询无法同步删除操作
   if (freshImages.length > 0) {
     safeSetCache(ck, freshImages, 'getCellData');
-    setLocalCache(ck, freshImages); // 【v2.5.1】同步更新 localStorage
+    setLocalCache(ck, freshImages);
+  } else {
+    // 空结果：直接写缓存（绕过 safeSetCache 的空数组保护）
+    _cellDataCache.set(ck, []);
+    _imageCountCache.set(ck, 0);
+    clearLocalCache(ck);
   }
   return { key: ck, images: _cellDataCache.get(ck) || freshImages };
 }
 
 /** 批量获取（按 cell_key 批量查询） */
-async function getCellDataBatch(cellKeys) {
+async function getCellDataBatch(cellKeys, dateRange) {
   if (!cellKeys || !cellKeys.length) return {};
   const result = {};
   const missing = [];
@@ -294,12 +503,16 @@ async function getCellDataBatch(cellKeys) {
   if (!missing.length) return result;
 
   // 策略一：使用 fetchWithRetry 重试
-  const { data, error } = await fetchWithRetry(() =>
-    _sb.from('seat_photos')
+  const { data, error } = await fetchWithRetry(() => {
+    let q = _sb.from('seat_photos')
       .select('id, url, status, cell_key, uploaded_by, created_at, time_slot')
       .in('cell_key', missing)
-      .order('created_at', { ascending: true })
-  );
+      .order('created_at', { ascending: true });
+    if (dateRange && dateRange.start && dateRange.end) {
+      q = q.gte('created_at', dateRange.start.toISOString()).lt('created_at', dateRange.end.toISOString());
+    }
+    return q;
+  });
   if (error) {
     missing.forEach(ck => {
       const memCached = _cellDataCache.get(ck);
@@ -428,28 +641,49 @@ async function dlUploadPhoto(ck, img) {
 
   // 2. 构造安全路径（彻底去中文）+ 语义化文件名
   const folder = getSafeFolder(floor, seatLabel);
-  // 文件名格式：{座位编号}_{时段序号}_{随机字符}.jpg
-  // 加随机字符串确保删除后再上传不会重名，避免浏览器缓存旧图
   const seatNum = seatLabel.replace(/\D/g, '') || '0';
   const timeIdx = String(tidx + 1).padStart(2, '0');
   const randSuffix = Math.random().toString(36).slice(2, 10);
   const fileName = `${seatNum}_${timeIdx}_${randSuffix}.jpg`;
   const filePath = `${folder}/${fileName}`;
 
-  // 3. 上传到 Storage
-  const { data: uploadData, error: uploadErr } = await _sb.storage.from(STORAGE_BUCKET)
-    .upload(filePath, fullBlob, { contentType: 'image/jpeg', upsert: true });
-  if (uploadErr) {
-    console.error('[dl] Storage 上传失败:', uploadErr);
-    return { success: false, error: 'Storage上传失败: ' + uploadErr.message };
+  // 3. 上传到腾讯云 COS（预签名 URL 方式，失败时回退 Supabase Storage）
+  let imageUrl;
+  let usedCOS = false;
+  const presignedUrl = await getCOSPresignedUrl('upload', filePath);
+  if (presignedUrl) {
+    try {
+      const putResp = await fetch(presignedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: fullBlob
+      });
+      if (!putResp.ok) throw new Error('PUT ' + putResp.status);
+      imageUrl = `${COS_BASE_URL}/${filePath}`;
+      usedCOS = true;
+    } catch (uploadErr) {
+      console.error('[dl] COS 预签名上传失败，回退 Supabase Storage:', uploadErr);
+    }
+  } else {
+    console.warn('[dl] 获取预签名URL失败，回退 Supabase Storage');
   }
-
-  // 4. 获取公开 URL
-  const { data: publicUrlData } = _sb.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
-  const imageUrl = publicUrlData?.publicUrl;
+  if (!usedCOS) {
+    // 兜底：上传到 Supabase Storage
+    const { data: uploadData, error: uploadErr } = await _sb.storage.from(STORAGE_BUCKET)
+      .upload(filePath, fullBlob, { contentType: 'image/jpeg', upsert: true });
+    if (uploadErr) {
+      console.error('[dl] Supabase Storage 上传也失败:', uploadErr);
+      return { success: false, error: '上传失败: ' + uploadErr.message };
+    }
+    const { data: publicUrlData } = _sb.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
+    imageUrl = publicUrlData?.publicUrl;
+    if (!imageUrl || !imageUrl.startsWith('https://')) {
+      return { success: false, error: '获取公开URL失败' };
+    }
+  }
   if (!imageUrl || !imageUrl.startsWith('https://')) {
-    console.error('[dl] 获取公开URL失败, publicUrlData:', publicUrlData);
-    return { success: false, error: '获取公开URL失败: ' + (imageUrl || '空') };
+    console.error('[dl] URL拼接异常:', imageUrl);
+    return { success: false, error: 'URL拼接异常' };
   }
 
   // 5. 确保座位记录
@@ -508,6 +742,8 @@ async function dlUploadPhoto(ck, img) {
 /** 删除单张照片（Storage + DB + 缓存三步，Storage 失败仍清 DB 和缓存）
  *  返回 { success: boolean, error?: string }
  */
+// 【v2.7.11】_deletingCells 在 scripts.js 中声明，此处直接使用
+
 async function dlDeletePhoto(photoId, url, ck) {
   let storageOk = true;
   // 0. 如果没有传 ck，先从数据库查询该图片的 cell_key（删除前查询）
@@ -517,41 +753,65 @@ async function dlDeletePhoto(photoId, url, ck) {
       if (data) ck = data.cell_key;
     } catch (e) {}
   }
-  // 1. 删除 Storage 文件（失败不阻断后续）
-  if (url) {
-    const path = extractStoragePath(url);
-    if (path) {
-      const { error: rmErr } = await _sb.storage.from(STORAGE_BUCKET).remove([path]);
-      if (rmErr) { console.warn('[dl] Storage删除失败，继续清DB:', rmErr.message); storageOk = false; }
-    }
-  }
-  // 2. 删除数据库记录（即使 Storage 失败也要删）
-  const { error: dbErr } = await _sb.from('seat_photos').delete().eq('id', photoId);
-  if (dbErr) return { success: false, error: '数据库删除失败: ' + dbErr.message };
 
-  // 3. 【v2.3.0】增量删除缓存：仅移除被删除的图片，不清空整个 cell 缓存
-  if (ck) {
-    const cached = _cellDataCache.get(ck);
-    if (cached) {
-      const filtered = cached.filter(img => img.photo_id !== photoId);
-      if (filtered.length > 0) {
-        // 【v2.5.2】删除操作直接写缓存，绕过 safeSetCache 的空数组保护
-        _cellDataCache.set(ck, filtered);
-        _imageCountCache.set(ck, filtered.length);
-        setLocalCache(ck, filtered);
+  try {
+    // 1. 删除 COS 文件（失败不阻断后续）
+    if (url) {
+      const path = extractStoragePath(url);
+      if (path) {
+        if (url.includes('.myqcloud.com')) {
+          const presignedUrl = await getCOSPresignedUrl('delete', path);
+          if (presignedUrl) {
+            try {
+              const delResp = await fetch(presignedUrl, { method: 'DELETE' });
+              if (!delResp.ok) console.warn('[dl] COS预签名删除返回:', delResp.status);
+            } catch (e) { console.warn('[dl] COS预签名删除失败，继续清DB:', e.message); storageOk = false; }
+          } else {
+            console.warn('[dl] 获取删除预签名URL失败，跳过COS删除，仅清DB');
+          }
+        } else {
+          const { error: rmErr } = await _sb.storage.from(STORAGE_BUCKET).remove([path]);
+          if (rmErr) { console.warn('[dl] Storage删除失败，继续清DB:', rmErr.message); storageOk = false; }
+        }
+      }
+    }
+    // 2. 删除数据库记录（即使 Storage 失败也要删）
+    const { error: dbErr } = await _sb.from('seat_photos').delete().eq('id', photoId);
+    if (dbErr) return { success: false, error: '数据库删除失败: ' + dbErr.message };
+
+    // 3. 增量删除缓存：仅移除被删除的图片，不清空整个 cell 缓存
+    if (ck) {
+      const cached = _cellDataCache.get(ck);
+      if (cached) {
+        const filtered = cached.filter(img => img.photo_id !== photoId);
+        if (filtered.length > 0) {
+          _cellDataCache.set(ck, filtered);
+          _imageCountCache.set(ck, filtered.length);
+          setLocalCache(ck, filtered);
+        } else {
+          _cellDataCache.delete(ck);
+          _imageCountCache.delete(ck);
+          clearLocalCache(ck);
+        }
       } else {
-        // 全部删完了，直接清空缓存，绕过 safeDeleteCache 的上传锁保护
-        _cellDataCache.delete(ck);
-        _imageCountCache.delete(ck);
+        const currentCount = _imageCountCache.get(ck) || 0;
+        if (currentCount > 1) {
+          _imageCountCache.set(ck, currentCount - 1);
+        } else {
+          _imageCountCache.delete(ck);
+        }
         clearLocalCache(ck);
       }
-    } else {
-      clearLocalCache(ck); // 缓存中无数据也清除 localStorage
+      _deletedPhotoIds.add(photoId);
+      // 同步清除缩略图 + 原图 Cache Storage 条目（两者共用原始 URL 作为 key）
+      if (url) removeCachedThumb(url);
+      // 【v2.7.15】同步清除预签名 URL 内存缓存
+      if (url) removePresignedUrl(url);
     }
-    // 标记该 photo_id 为已删除，防止 saveCellData 增量合并时恢复
-    _deletedPhotoIds.add(photoId);
+    return { success: true, storageOk };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
-  return { success: true, storageOk };
 }
 
 /** 确保座位记录存在 */
@@ -566,11 +826,16 @@ async function ensureSeatRecord(seatId, fid, aname) {
 }
 
 // ---- 图片计数 ----
-async function dbGetImageCounts() {
+async function dbGetImageCounts(dateRange) {
   // 【修复】按 cell_key 查询并分组，返回 Map<cellKey, count>
   // 旧版按 seat_id 查询返回 seatKey 格式的键（3段），与 imageCountCache 的 cellKey 格式（4段）不匹配，
   // 导致页面刷新后所有 cell 级计数查询返回 0，蓝色/橙色指示器全部消失
-  const { data, error } = await _sb.from('seat_photos').select('cell_key');
+  let query = _sb.from('seat_photos').select('cell_key');
+  // 日期过滤：如果传入了日期范围，只查询该范围内的记录
+  if (dateRange && dateRange.start && dateRange.end) {
+    query = query.gte('created_at', dateRange.start.toISOString()).lt('created_at', dateRange.end.toISOString());
+  }
+  const { data, error } = await query;
   if (error) { console.warn('[dl] dbGetImageCounts error:', error); return new Map(); }
   if (!data || data.length === 0) {
     // 【修复二】网络返回空时不覆盖已有计数缓存
@@ -583,6 +848,7 @@ async function dbGetImageCounts() {
     }
   });
   _imageCountCache.clear();
+  result.forEach((cnt, ck) => _imageCountCache.set(ck, cnt));
   return result;
 }
 
@@ -591,13 +857,14 @@ async function dbGetImageCounts() {
  *  @param {string} aname 区域名称
  *  @returns {Map<string, number>} Map<cellKey, count>
  */
-async function dbGetAreaImageCounts(fid, aname) {
+async function dbGetAreaImageCounts(fid, aname, dateRange) {
   const prefix = `${fid}-${aname}-`;
   // 使用 like 查询匹配该区域所有 cell_key
-  const { data, error } = await _sb
-    .from('seat_photos')
-    .select('cell_key')
-    .like('cell_key', `${prefix}%`);
+  let query = _sb.from('seat_photos').select('cell_key').like('cell_key', `${prefix}%`);
+  if (dateRange && dateRange.start && dateRange.end) {
+    query = query.gte('created_at', dateRange.start.toISOString()).lt('created_at', dateRange.end.toISOString());
+  }
+  const { data, error } = await query;
   if (error) { console.warn('[dl] dbGetAreaImageCounts error:', error); return new Map(); }
   const result = new Map();
   (data || []).forEach(r => {
@@ -652,11 +919,49 @@ async function dlDeletePhotosByAreaAndTime(ak, tidxs) {
   const ids = data.map(p => p.id);
   const paths = data.map(p => extractStoragePath(p.url)).filter(Boolean);
   if (paths.length) {
-    for (let i = 0; i < paths.length; i += 1000) await _sb.storage.from(STORAGE_BUCKET).remove(paths.slice(i, i+1000)).catch(()=>{});
+    // 分离 COS 和旧 Supabase Storage 路径
+    const cosPaths = [], sbPaths = [];
+    data.forEach(p => {
+      if (!p.url) return;
+      const path = extractStoragePath(p.url);
+      if (!path) return;
+      if (p.url.includes('.myqcloud.com')) cosPaths.push(path);
+      else sbPaths.push(path);
+    });
+    // 批量删除 COS 文件（预签名 URL 逐个删除）
+    if (cosPaths.length) {
+      for (const cosPath of cosPaths) {
+        const presignedUrl = await getCOSPresignedUrl('delete', cosPath);
+        if (presignedUrl) {
+          try {
+            await fetch(presignedUrl, { method: 'DELETE' });
+          } catch (e) { console.warn('[dl] COS批量删除单个失败:', e.message); }
+        }
+      }
+    }
+    // 批量删除旧 Supabase Storage 文件（兼容旧数据）
+    if (sbPaths.length) {
+      for (let i = 0; i < sbPaths.length; i += 1000) await _sb.storage.from(STORAGE_BUCKET).remove(sbPaths.slice(i, i+1000)).catch(()=>{});
+    }
   }
   for (let i = 0; i < ids.length; i += 500) await _sb.from('seat_photos').delete().in('id', ids.slice(i,i+500));
   console.warn('[CACHE] CLEAR ALL (dlDeletePhotosByAreaAndTime)'); _cellDataCache.clear(); _imageCountCache.clear();
   return data.length;
+}
+
+/** 批量删除 COS 文件（供 scripts.js 清除图片功能调用，预签名 URL 逐个删除）
+ *  @param {string[]} paths - COS 文件路径列表
+ */
+async function cosDeleteBatch(paths) {
+  if (!paths || !paths.length) return;
+  for (const path of paths) {
+    const presignedUrl = await getCOSPresignedUrl('delete', path);
+    if (presignedUrl) {
+      try {
+        await fetch(presignedUrl, { method: 'DELETE' });
+      } catch (e) { console.warn('[dl] COS批量删除单个失败:', e.message); }
+    }
+  }
 }
 
 // ---- 协作密码 ----
@@ -684,62 +989,4 @@ async function dlCreateCollabPassword(floorId, maxUses, expiresAt) {
 function dlClearCache() { console.warn('[CACHE] CLEAR ALL (dlClearCache)'); _imageCountCache.clear(); _cellDataCache.clear(); clearLocalCache(); }
 function dlInvalidateCell(ck) { safeDeleteCache(ck, 'dlInvalidateCell'); clearLocalCache(ck); }
 
-// ---- 报表自动生成（客户端兜底）----
-/**
- * 检查是否需要自动生成今日报表，如果需要则触发生成
- * 条件：当前北京时间 >= 21:30 且今日报表尚未生成
- * 调用时机：init 完成后 + 每隔 5 分钟检查
- */
-async function autoGenerateReport() {
-  try {
-    // 当前北京时间
-    const now = new Date();
-    const bjMs = now.getTime() + 8 * 60 * 60 * 1000;
-    const bjDate = new Date(bjMs);
-    const bjHour = bjDate.getUTCHours();
-    const bjMin = bjDate.getUTCMinutes();
-    const bjMinutes = bjHour * 60 + bjMin;
-
-    // 未到 21:30 不触发
-    if (bjMinutes < 1290) return; // 21:30 = 21*60+30 = 1290
-
-    // 今日日期字符串
-    const y = bjDate.getUTCFullYear();
-    const m = String(bjDate.getUTCMonth() + 1).padStart(2, '0');
-    const d = String(bjDate.getUTCDate()).padStart(2, '0');
-    const todayStr = `${y}-${m}-${d}`;
-    const reportFileName = `report_${todayStr}.xlsx`;
-
-    // 检查今日报表是否已存在
-    const { data, error } = await _sb.storage.from('reports').list('', {
-      search: reportFileName,
-      limit: 1
-    });
-    if (error) { console.warn('[auto-report] 检查报表失败:', error.message); return; }
-    if (data && data.length > 0 && data[0].name === reportFileName) {
-      return; // 报表已存在
-    }
-
-    // 今日报表不存在，触发生成
-    console.log('[auto-report] 触发自动生成今日报表:', reportFileName);
-    const { data: sessionData } = await _sb.auth.getSession();
-    const token = sessionData?.session?.access_token || '';
-    const resp = await fetch(SUPABASE_HOST + '/functions/v1/generate-report', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (token || SUPABASE_ANON_KEY),
-        'apikey': SUPABASE_ANON_KEY
-      },
-      body: JSON.stringify({ action: 'generate' })
-    });
-    const result = await resp.json();
-    if (result.success) {
-      console.log('[auto-report] 生成成功:', result.filename);
-    } else {
-      console.warn('[auto-report] 生成失败:', result.error);
-    }
-  } catch (e) {
-    console.warn('[auto-report] 自动生成异常:', e);
-  }
-}
+// ---- 报表自动生成已移除，改由 Supabase pg_cron 定时任务每天21:30调用 Edge Function ----

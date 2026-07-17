@@ -6,7 +6,7 @@
 //   外部 CDN（jszip）→ Network-First（网络优先，离线回退缓存）
 
 // 【v2.0.1】更新缓存版本号（每次发布新版本时必须递增，否则浏览器不会检测到 SW 更新）
-const CACHE_NAME = 'seat-cache-v93';
+const CACHE_NAME = 'seat-cache-v101';
 
 // 预缓存资源列表（安装时一次性缓存）
 const PRECACHE_ASSETS = [
@@ -28,9 +28,10 @@ const CACHE_FIRST_URLS = [
 ];
 
 // ===== 安装事件 =====
-// 预缓存核心资源，不自动 skipWaiting（等用户确认更新提示后再激活）
-// 【v1.2.0 iOS兼容】添加 try-catch 防止 iOS 缓存失败导致 SW 安装中断
+// 预缓存核心资源，立即激活新版本（skipWaiting）
 self.addEventListener('install', e => {
+  console.log('[SW] 安装新版本:', CACHE_NAME);
+  self.skipWaiting(); // 立即激活，不等待旧 SW 释放
   e.waitUntil(
     caches.open(CACHE_NAME).then(c => c.addAll(PRECACHE_ASSETS)).catch(err => {
       console.warn('SW 预缓存失败（iOS 可能限制），继续安装:', err);
@@ -39,7 +40,6 @@ self.addEventListener('install', e => {
 });
 
 // ===== 消息事件 =====
-// 用户点击"有新版本可用，点击刷新"后，新 SW 立即激活
 self.addEventListener('message', e => {
   if (e.data && e.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
@@ -47,14 +47,18 @@ self.addEventListener('message', e => {
 });
 
 // ===== 激活事件 =====
-// 清理旧版本缓存，立即接管所有客户端
+// 清理旧版本缓存，保留缩略图缓存，立即接管所有页面
 self.addEventListener('activate', e => {
+  console.log('[SW] 激活新版本:', CACHE_NAME);
+  const cacheWhitelist = [CACHE_NAME, 'seat-thumbnails-v1']; // 保留当前SW缓存和缩略图缓存
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+      Promise.all(keys.filter(k => !cacheWhitelist.includes(k)).map(k => {
+        console.log('[SW] 删除旧缓存:', k);
+        return caches.delete(k);
+      }))
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 // ===== 请求拦截 =====
@@ -62,6 +66,15 @@ self.addEventListener('fetch', e => {
   // 只处理 GET 请求
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
+
+  // --- 图片请求（原图/缩略图）：仅网络，不缓存到 SW Cache Storage ---
+  // 缩略图由 data-layer.js 单独缓存到 seat-thumbnails-v1，原图不缓存
+  if (url.pathname.includes('/object/public/') || url.pathname.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)(\?|$)/i)) {
+    e.respondWith(
+      fetch(e.request).catch(() => caches.match(e.request))
+    );
+    return;
+  }
 
   // --- 外部 CDN 资源（如 jszip）：网络优先，离线回退缓存 ---
   if (url.origin !== self.location.origin) {

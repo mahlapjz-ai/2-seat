@@ -67,7 +67,14 @@ async function handleQrLogin(
   }
 ) {
   const { qr_data, name, phone } = body;
-  const { password, floor_id, manager_uid } = qr_data;
+  // 兼容两种字段命名：granter_uid / manager_uid，granter_name / manager_name
+  const password = qr_data.password;
+  const floor_id = qr_data.floor_id;
+  const manager_uid = qr_data.manager_uid || qr_data.granter_uid;
+  const manager_name = qr_data.manager_name || qr_data.granter_name;
+
+  console.log('[handle-assistant-login] qr_data:', JSON.stringify(qr_data));
+  console.log('[handle-assistant-login] 解析后: password=%s, floor_id=%s, manager_uid=%s, manager_name=%s', password, floor_id, manager_uid, manager_name);
 
   // ---- 参数校验 ----
   if (!password || !floor_id || !manager_uid || !name || !phone) {
@@ -113,80 +120,111 @@ async function handleQrLogin(
     );
   }
 
-  // ---- 计算协作者权限过期时间 ----
-  const now = new Date();
-  let expiresAt: Date;
+  // ---- 判断密码类型 ----
+  const isTemporary = collab.password_type === 'temporary';
+  console.log('[handle-assistant-login] password_type:', collab.password_type, 'isTemporary:', isTemporary);
 
-  // 获取北京时间（UTC+8）的小时和分钟
+  // ---- 检查是否在授权时段内（仅普通密码需要） ----
+  // 规则：临时密码任何时间都可扫码；普通密码仅 08:00~12:30 和 13:30~17:30 可扫码授权
+  const now = new Date();
   const bjHours = (now.getUTCHours() + 8) % 24;
   const bjMinutes = now.getUTCMinutes();
-  const totalMinutes = bjHours * 60 + bjMinutes;
+  const timeValue = bjHours + bjMinutes / 60;
 
-  // 早班 08:00~12:30 → 过期 12:30 北京时间（UTC 04:30）
-  // 晚班 13:30~17:30 → 过期 17:30 北京时间（UTC 09:30）
-  // 其他时间 → 兜底 12:30 北京时间（UTC 04:30）
-  if (totalMinutes >= 480 && totalMinutes <= 750) {
-    // 北京时间 08:00 ~ 12:30，过期时间设为北京时间 12:30（UTC 04:30）
-    expiresAt = new Date(now);
-    expiresAt.setUTCHours(4, 30, 0, 0);
-  } else if (totalMinutes >= 810 && totalMinutes <= 1050) {
-    // 北京时间 13:30 ~ 17:30，过期时间设为北京时间 17:30（UTC 09:30）
-    expiresAt = new Date(now);
-    expiresAt.setUTCHours(9, 30, 0, 0);
-  } else {
-    // 其他时间，兜底北京时间 12:30（UTC 04:30）
-    expiresAt = new Date(now);
-    expiresAt.setUTCHours(4, 30, 0, 0);
+  const isMorning = timeValue >= 8 && timeValue <= 12.5;   // 08:00 ~ 12:30
+  const isAfternoon = timeValue >= 13.5 && timeValue <= 17.5; // 13:30 ~ 17:30
+
+  if (!isTemporary && !isMorning && !isAfternoon) {
+    console.log('[handle-assistant-login] 非授权时段，北京时间:', bjHours + ':' + String(bjMinutes).padStart(2, '0'));
+    return jsonResponse(
+      { success: false, error: "当前时间不在授权时段内，无法获取权限。请在 08:00-12:30 或 13:30-17:30 之间扫码。" },
+      400
+    );
   }
 
+  // ---- 计算协作者权限过期时间 ----
+  let expiresAt: Date;
+
+  if (isTemporary) {
+    // 临时密码：有效期完全由管理员设定，直接使用密码的 expires_at
+    expiresAt = new Date(collab.expires_at);
+    console.log('[handle-assistant-login] 临时密码，使用管理员设定的过期时间:', expiresAt.toISOString());
+  } else {
+    // 普通密码：根据扫码时段计算过期时间
+    if (isMorning) {
+      expiresAt = new Date(now);
+      expiresAt.setUTCHours(4, 30, 0, 0); // 北京时间 12:30
+    } else {
+      expiresAt = new Date(now);
+      expiresAt.setUTCHours(9, 30, 0, 0); // 北京时间 17:30
+    }
+  }
+
+  console.log('[handle-assistant-login] 北京时间:', bjHours + ':' + String(bjMinutes).padStart(2, '0'), '过期时间:', expiresAt.toISOString());
+
   // ---- 创建或更新 users 表中的协作者记录 ----
-  // 先查找是否已存在该手机号的用户
+  // 统一处理三种场景：新用户、已注册读者、协助者重新扫码
+  // 核心规则：无论哪种场景，都无条件覆盖为 assistant
+  let userId: string;
+  const assistantEmail = `${phone}@assistant.lib`;
+
+  // 1. 查找是否已存在该手机号的 public.users 记录
   const { data: existingUser } = await supabase
     .from("users")
-    .select("*")
+    .select("uid, role")
     .eq("phone", phone)
-    .single();
-
-  let userId: string;
+    .maybeSingle();
 
   if (existingUser) {
-    // 用户已存在，更新角色和权限
+    // 规则2 & 规则3：已注册用户（读者或协助者），无条件覆盖权限
     userId = existingUser.uid;
 
-    // 覆盖 managed_floors：只保留当前扫码楼层
-    const { error: updateError } = await supabase
+    console.log('[handle-assistant-login] 更新已存在用户 uid:', userId, '旧角色:', existingUser.role, '→ assistant');
+
+    // 【v2.7.8】同步更新 auth user_metadata.name
+    await supabase.auth.admin.updateUserById(userId, {
+      user_metadata: { name, phone },
+    });
+
+    const { data: updatedUser, error: updateError } = await supabase
       .from("users")
       .update({
         name,
         role: "assistant",
         managed_floors: [floor_id],
         assistant_expires_at: expiresAt.toISOString(),
+        phone,
+        updated_at: new Date().toISOString(),
       })
-      .eq("uid", userId);
+      .eq("uid", userId)
+      .select("role, managed_floors, assistant_expires_at")
+      .single();
 
     if (updateError) {
+      console.error('[handle-assistant-login] 更新失败:', updateError);
       return jsonResponse(
         { success: false, error: `更新用户信息失败: ${updateError.message}` },
         500
       );
     }
+    console.log('[handle-assistant-login] 更新后用户数据:', updatedUser);
   } else {
-    // 用户不存在，先创建 Auth 用户再插入 users 表
-    const assistantEmail = `${phone}@assistant.lib`;
-    const autoPassword = generateAutoPassword();
+    // 规则1：新用户，创建 Auth 用户 + public.users
+    console.log('[handle-assistant-login] 新用户创建:', phone);
 
-    // 创建 Supabase Auth 用户
+    const autoPassword = generateAutoPassword();
     const { data: authData, error: authError } =
       await supabase.auth.admin.createUser({
         email: assistantEmail,
         password: autoPassword,
-        email_confirm: true, // 自动确认邮箱
+        email_confirm: true,
+        user_metadata: { name, phone },
       });
 
     if (authError) {
-      // 如果邮箱已存在，尝试用已有用户
-      if (authError.message.includes("already registered")) {
-        // 查找已有 Auth 用户的 ID
+      if (authError.message.includes("already registered") || authError.message.includes("already been registered")) {
+        // auth.users 残留（public.users 被删但 auth.users 还在），复用
+        console.log('[handle-assistant-login] Auth 用户已存在，复用:', assistantEmail);
         const { data: userList } = await supabase.auth.admin.listUsers();
         const existingAuth = userList?.users?.find(
           (u) => u.email === assistantEmail
@@ -195,7 +233,7 @@ async function handleQrLogin(
           userId = existingAuth.id;
         } else {
           return jsonResponse(
-            { success: false, error: "Auth 用户已存在但无法找到" },
+            { success: false, error: "Auth 用户已存在但无法找到，请联系管理员" },
             500
           );
         }
@@ -207,24 +245,51 @@ async function handleQrLogin(
       }
     } else {
       userId = authData.user!.id;
+      console.log('[handle-assistant-login] 创建新 Auth 用户 uid:', userId);
     }
 
-    // 插入 users 表
-    const { error: insertError } = await supabase.from("users").insert({
+    // upsert public.users（ON CONFLICT DO UPDATE 确保覆盖 trigger 可能写入的 reader）
+    console.log('[handle-assistant-login] 新用户 upsert uid:', userId, 'role: assistant, floor_id:', floor_id);
+    const { data: upsertedUser, error: upsertError } = await supabase.from("users").upsert({
       uid: userId,
       name,
       phone,
+      card_number: phone,
       role: "assistant",
       managed_floors: [floor_id],
       assistant_expires_at: expiresAt.toISOString(),
       created_by: manager_uid,
-    });
+    }, { onConflict: 'uid' })
+    .select("role, managed_floors, assistant_expires_at")
+    .single();
 
-    if (insertError) {
+    if (upsertError) {
+      console.error('[handle-assistant-login] upsert 失败:', upsertError);
       return jsonResponse(
-        { success: false, error: `创建用户记录失败: ${insertError.message}` },
+        { success: false, error: `创建用户记录失败: ${upsertError.message}` },
         500
       );
+    }
+    console.log('[handle-assistant-login] upsert 后用户数据:', upsertedUser);
+
+    // 关键验证：确认 role 确实是 assistant（防止 handle_new_user trigger 并发覆盖）
+    if (!upsertedUser || upsertedUser.role !== 'assistant') {
+      console.error('[handle-assistant-login] 角色异常！upsert 后 role:', upsertedUser?.role, '，强制修正为 assistant');
+      const { data: fixedUser, error: fixError } = await supabase
+        .from("users")
+        .update({
+          role: "assistant",
+          managed_floors: [floor_id],
+          assistant_expires_at: expiresAt.toISOString(),
+        })
+        .eq("uid", userId)
+        .select("role, managed_floors, assistant_expires_at")
+        .single();
+      if (fixError) {
+        console.error('[handle-assistant-login] 强制修正失败:', fixError);
+      } else {
+        console.log('[handle-assistant-login] 强制修正后:', fixedUser);
+      }
     }
   }
 
@@ -274,6 +339,11 @@ async function handleQrLogin(
     success: true,
     access_token: sessionData.session.access_token,
     refresh_token: sessionData.session.refresh_token,
+    role: "assistant",
+    managed_floors: [floor_id],
+    assistant_expires_at: expiresAt.toISOString(),
+    name,
+    phone,
   });
 }
 
@@ -317,6 +387,10 @@ async function handleReLogin(
   // ---- 更新用户姓名（可能改名了） ----
   if (user.name !== name) {
     await supabase.from("users").update({ name }).eq("uid", user.uid);
+    // 【v2.7.8】同步更新 auth user_metadata.name
+    await supabase.auth.admin.updateUserById(user.uid, {
+      user_metadata: { name, phone: user.phone || phone },
+    });
   }
 
   // ---- 生成登录令牌 ----
@@ -356,6 +430,11 @@ async function handleReLogin(
     success: true,
     access_token: sessionData.session.access_token,
     refresh_token: sessionData.session.refresh_token,
+    role: user.role || "assistant",
+    managed_floors: user.managed_floors || [],
+    assistant_expires_at: user.assistant_expires_at,
+    name: user.name,
+    phone: user.phone,
   });
 }
 
@@ -421,10 +500,22 @@ async function handleGetSession(
     );
   }
 
+  // 查询 public.users 获取角色信息
+  const { data: userProfile } = await supabase
+    .from("users")
+    .select("role, managed_floors, assistant_expires_at, name, phone")
+    .eq("uid", uid)
+    .single();
+
   return jsonResponse({
     success: true,
     access_token: sessionData.session.access_token,
     refresh_token: sessionData.session.refresh_token,
+    role: userProfile?.role || "reader",
+    managed_floors: userProfile?.managed_floors || [],
+    assistant_expires_at: userProfile?.assistant_expires_at || null,
+    name: userProfile?.name || null,
+    phone: userProfile?.phone || null,
   });
 }
 

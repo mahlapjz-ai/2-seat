@@ -17,7 +17,9 @@ let _sbConfigured = false;
 
 try {
   if (window.supabase && typeof window.supabase.createClient === 'function') {
-    _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      realtime: { params: { eventsPerSecond: 10 } }
+    });
     _sbConfigured = true;
   } else { console.error('[auth] Supabase SDK 未加载'); }
 } catch (err) { console.error('[auth] 初始化失败:', err); }
@@ -85,11 +87,52 @@ async function signUpWithCard(cardNumber, password, name) {
   } catch (e) { return { success: false, error: '注册功能未开放，请联系管理员' }; }
   try {
     const fakeEmail = `${cardNumber}@lib.internal`;
+    const displayName = name || cardNumber || '用户'; // 【v2.7.8】统一 name 变量，确保 auth 和 public.users 一致
     const { data, error } = await _sb.auth.signUp({
       email: fakeEmail, password,
-      options: { data: { name: name || '', card_number: cardNumber } }
+      options: { data: { name: displayName, card_number: cardNumber } }
     });
-    if (error) return { success: false, error: extractErrMsg(error) || '注册失败' };
+    if (error) {
+      // 【修复】如果 auth 用户已存在（之前删除 public.users 但 auth.users 残留），尝试直接登录并补写 public.users
+      if (error.message && (error.message.includes('already') || error.message.includes('already registered') || error.message.includes('User already registered'))) {
+        console.log('[auth] signUp 报已注册，尝试直接登录并补写 public.users');
+        const signInResult = await _sb.auth.signInWithPassword({ email: fakeEmail, password });
+        if (signInResult.error) return { success: false, error: '该证号已注册，请直接登录' };
+        // 登录成功，检查 public.users 是否存在
+        const uid = signInResult.data.user?.id;
+        if (uid) {
+          // 【v2.7.8】同步更新 auth user_metadata.name
+          try { await _sb.auth.updateUser({ data: { name: displayName, card_number: cardNumber } }); } catch (e) { /* 静默 */ }
+          const { data: existingUser } = await _sb.from('users').select('uid').eq('uid', uid).maybeSingle();
+          if (!existingUser) {
+            // public.users 不存在，手动补写
+            console.log('[auth] public.users 缺失，补写 uid:', uid);
+            await _sb.from('users').upsert({
+              uid, name: displayName, card_number: cardNumber, role: 'reader',
+            }, { onConflict: 'uid' });
+          }
+        }
+        await loadUserProfile();
+        return { success: true, error: null, user: currentUser };
+      }
+      return { success: false, error: extractErrMsg(error) || '注册失败' };
+    }
+    // signUp 成功，显式确保 public.users 存在（不依赖 trigger）
+    const uid = data.user?.id;
+    if (uid) {
+      console.log('[注册] 准备确保 public.users 存在, uid:', uid);
+      const { data: existingUser } = await _sb.from('users').select('uid').eq('uid', uid).maybeSingle();
+      if (!existingUser) {
+        console.log('[注册] public.users 缺失，补写 uid:', uid);
+        const { error: insertError } = await _sb.from('users').upsert({
+          uid, name: displayName, card_number: cardNumber, role: 'reader',
+        }, { onConflict: 'uid' });
+        if (insertError) console.error('[注册] 插入 public.users 失败:', insertError);
+        else console.log('[注册] 插入 public.users 成功');
+      } else {
+        console.log('[注册] public.users 已存在（trigger 正常写入）');
+      }
+    }
     if (!data.session) return { success: true, error: null, needsEmailConfirm: true };
     await loadUserProfile();
     return { success: true, error: null, user: currentUser };
@@ -106,6 +149,19 @@ async function signInWithCard(cardNumber, password) {
       const msg = extractErrMsg(error);
       if (msg.includes('Invalid login credentials')) return { success: false, error: '证号或密码错误' };
       return { success: false, error: msg || '登录失败' };
+    }
+    // 【修复】登录成功后检查 public.users 是否存在（防止 auth 用户残留但 public.users 被删）
+    const uid = data.user?.id;
+    if (uid) {
+      const { data: existingUser } = await _sb.from('users').select('uid').eq('uid', uid).maybeSingle();
+      if (!existingUser) {
+        console.log('[auth] 登录时发现 public.users 缺失，补写 uid:', uid);
+        // name 有 NOT NULL 约束，从 auth user_metadata 或邮箱前缀取默认值
+        const authName = signInResult.data.user?.user_metadata?.name || cardNumber || signInResult.data.user?.email?.split('@')[0] || '用户';
+        await _sb.from('users').upsert({
+          uid, name: authName, card_number: cardNumber, role: 'reader',
+        }, { onConflict: 'uid' });
+      }
     }
     await loadUserProfile();
     return { success: true, error: null, user: currentUser };
@@ -128,58 +184,60 @@ async function fetchWithTimeout(url, opts, timeoutMs = 15000) {
 }
 
 // ---- 协作者扫码登录 ----
-// 策略：先用 RPC（数据库函数，无冷启动），如果返回"新用户需创建"再走 Edge Function
+// 直接调用 Edge Function handle-assistant-login 统一处理密码校验、用户创建/更新、session 生成
 async function assistantQRLogin(qrData, name, phone) {
   if (!isSupabaseReady()) return { success: false, error: 'Supabase 未配置' };
   try {
-    // 第一步：通过 RPC 调用数据库函数校验密码+获取用户信息
-    console.log('[auth] assistantQRLogin: 尝试 RPC...');
-    const { data: rpcResult, error: rpcError } = await _sb.rpc('assistant_login', {
-      p_password: qrData.password,
-      p_floor_id: String(qrData.floor_id),
-      p_name: name || '',
-      p_phone: phone
-    });
-    console.log('[auth] assistantQRLogin RPC result:', { rpcResult, rpcError });
+    // 直接调用 Edge Function 统一处理：密码校验 + 用户创建/更新 + session 生成
+    console.log('[auth] assistantQRLogin: 调用 Edge Function...');
+    const resp = await fetchWithTimeout(EDGE_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ action: 'qr_login', qr_data: qrData, name, phone })
+    }, 15000);
+    const result = await resp.json();
+    console.log('[auth] assistantQRLogin Edge Function result:', result.success ? '成功' : result.error);
 
-    if (rpcError) {
-      return { success: false, error: extractErrMsg(rpcError) || '密码验证失败' };
+    if (!result.success) return { success: false, error: result.error || '扫码登录失败' };
+
+    // 设置 session
+    if (result.access_token && result.refresh_token) {
+      await _sb.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token });
     }
-
-    const row = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult;
-    if (!row) {
-      return { success: false, error: '密码验证失败' };
-    }
-
-    // 如果是已有用户，RPC 返回了 uid → 直接用 Edge Function 获取 session
-    if (row.uid && row.msg === '登录成功') {
-      // 已有用户，通过 Edge Function 获取 session token
-      const result = await callEdgeFunctionForSession(row.uid, phone, qrData);
-      return result;
-    }
-
-    // 如果是新用户，需要 Edge Function 创建 Auth 账号
-    if (row.msg === '新用户需由Edge Function创建') {
-      console.log('[auth] 新用户，调用 Edge Function 创建账号...');
-      const resp = await fetchWithTimeout(EDGE_FUNCTION_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-        body: JSON.stringify({ action: 'qr_login', qr_data: qrData, name, phone })
-      }, 15000);
-      const result = await resp.json();
-      if (!result.success) return { success: false, error: result.error || '扫码登录失败' };
-      if (result.access_token && result.refresh_token) {
-        await _sb.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token });
+    // 【修复】优先使用 Edge Function 返回的角色信息，而非仅依赖 loadUserProfile
+    // 先从 session 获取 uid/email，再直接设置角色（不依赖 RLS 查询）
+    const savedRole = result.role || null;
+    const savedFloors = result.managed_floors || [];
+    const savedExpires = result.assistant_expires_at || null;
+    if (savedRole) {
+      const { data: { session: newSession } } = await _sb.auth.getSession();
+      if (newSession) {
+        currentUser.uid = newSession.user.id;
+        currentUser.email = newSession.user.email;
       }
-      await loadUserProfile();
-      try { localStorage.setItem('assistant_uid', currentUser.uid); localStorage.setItem('assistant_phone', phone); } catch (e) {}
-      // 写入激活日志
-      if (currentUser.uid) logCollabActivation(qrData, currentUser.uid);
-      return { success: true, error: null, user: currentUser };
+      currentUser.role = savedRole;
+      currentUser.managedFloors = savedFloors;
+      currentUser.assistantExpiresAt = savedExpires;
+      if (result.name) currentUser.name = result.name;
+      if (result.phone) currentUser.phone = result.phone;
+      currentUser.loaded = true;
+      console.log('[auth] 从 Edge Function 返回值设置角色:', savedRole, '楼层:', savedFloors, '过期:', savedExpires);
     }
-
-    // 其他错误消息
-    return { success: false, error: row.msg || '密码验证失败' };
+    // 调用 loadUserProfile 从数据库强制刷新，补充 card_number 等字段
+    await loadUserProfile();
+    console.log('[auth] loadUserProfile 后角色:', currentUser.role, '楼层:', currentUser.managedFloors);
+    // 如果 loadUserProfile 将角色错误地降级为 reader，恢复 Edge Function 返回的角色
+    if (savedRole === 'assistant' && currentUser.role !== 'assistant') {
+      console.warn('[auth] loadUserProfile 将角色降级为', currentUser.role, '，恢复为 assistant');
+      currentUser.role = 'assistant';
+      currentUser.managedFloors = savedFloors;
+      currentUser.assistantExpiresAt = savedExpires;
+    }
+    console.log('[auth] 最终角色:', currentUser.role, '楼层:', currentUser.managedFloors, '过期:', currentUser.assistantExpiresAt);
+    try { localStorage.setItem('assistant_uid', currentUser.uid); localStorage.setItem('assistant_phone', phone); } catch (e) {}
+    // 写入激活日志
+    if (currentUser.uid) logCollabActivation(qrData, currentUser.uid);
+    return { success: true, error: null, user: currentUser };
   } catch (err) {
     console.error('[auth] assistantQRLogin error:', err);
     return { success: false, error: extractErrMsg(err) || '扫码登录请求失败' };
@@ -192,7 +250,7 @@ async function logCollabActivation(qrData, assistantUid) {
     // 查询 collab_passwords 获取 password_id
     const today = getBjDateStr();
     const { data: cp } = await _sb.from('collab_passwords')
-      .select('id')
+      .select('id, created_by')
       .eq('password', qrData.password)
       .eq('floor_id', String(qrData.floor_id))
       .eq('date', today)
@@ -202,6 +260,11 @@ async function logCollabActivation(qrData, assistantUid) {
         password_id: cp.id,
         assistant_uid: assistantUid
       });
+      // 【修复】如果密码的 created_by 为空，用扫码的辅专 uid 补上
+      const granterUid = qrData.granter_uid || qrData.manager_uid || null;
+      if (granterUid && !cp.created_by) {
+        await _sb.from('collab_passwords').update({ created_by: granterUid }).eq('id', cp.id);
+      }
     }
   } catch (e) {
     console.warn('[auth] 写入激活日志失败:', e);
@@ -220,7 +283,32 @@ async function callEdgeFunctionForSession(uid, phone, qrData) {
   if (result.access_token && result.refresh_token) {
     await _sb.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token });
   }
+  // 优先使用 Edge Function 返回的角色信息
+  const savedRole = result.role || null;
+  const savedFloors = result.managed_floors || [];
+  const savedExpires = result.assistant_expires_at || null;
+  if (savedRole) {
+    const { data: { session: newSession } } = await _sb.auth.getSession();
+    if (newSession) {
+      currentUser.uid = newSession.user.id;
+      currentUser.email = newSession.user.email;
+    }
+    currentUser.role = savedRole;
+    currentUser.managedFloors = savedFloors;
+    currentUser.assistantExpiresAt = savedExpires;
+    if (result.name) currentUser.name = result.name;
+    if (result.phone) currentUser.phone = result.phone;
+    currentUser.loaded = true;
+    console.log('[auth] callEdgeFunctionForSession 设置角色:', savedRole, '楼层:', savedFloors);
+  }
   await loadUserProfile();
+  // 防止 loadUserProfile 降级角色
+  if (savedRole === 'assistant' && currentUser.role !== 'assistant') {
+    console.warn('[auth] loadUserProfile 降级角色，恢复为 assistant');
+    currentUser.role = 'assistant';
+    currentUser.managedFloors = savedFloors;
+    currentUser.assistantExpiresAt = savedExpires;
+  }
   try { localStorage.setItem('assistant_uid', currentUser.uid); localStorage.setItem('assistant_phone', phone); } catch (e) {}
   // 写入激活日志
   if (qrData && currentUser.uid) logCollabActivation(qrData, currentUser.uid);
@@ -260,7 +348,32 @@ async function assistantReLogin(name, phone) {
     if (result.access_token && result.refresh_token) {
       await _sb.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token });
     }
+    // 优先使用 Edge Function 返回的角色信息
+    const savedRole = result.role || null;
+    const savedFloors = result.managed_floors || [];
+    const savedExpires = result.assistant_expires_at || null;
+    if (savedRole) {
+      const { data: { session: newSession } } = await _sb.auth.getSession();
+      if (newSession) {
+        currentUser.uid = newSession.user.id;
+        currentUser.email = newSession.user.email;
+      }
+      currentUser.role = savedRole;
+      currentUser.managedFloors = savedFloors;
+      currentUser.assistantExpiresAt = savedExpires;
+      if (result.name) currentUser.name = result.name;
+      if (result.phone) currentUser.phone = result.phone;
+      currentUser.loaded = true;
+      console.log('[auth] assistantReLogin 设置角色:', savedRole, '楼层:', savedFloors);
+    }
     await loadUserProfile();
+    // 防止 loadUserProfile 降级角色
+    if (savedRole === 'assistant' && currentUser.role !== 'assistant') {
+      console.warn('[auth] loadUserProfile 降级角色，恢复为 assistant');
+      currentUser.role = 'assistant';
+      currentUser.managedFloors = savedFloors;
+      currentUser.assistantExpiresAt = savedExpires;
+    }
     try { localStorage.setItem('assistant_uid', currentUser.uid); localStorage.setItem('assistant_phone', phone); } catch (e) {}
     return { success: true, error: null, user: currentUser };
   } catch (err) { return { success: false, error: extractErrMsg(err) || '登录请求失败' }; }
@@ -275,14 +388,98 @@ async function assistantAutoLogin() {
   } catch (e) { return { success: false, error: '自动登录失败' }; }
 }
 
+// ---- 单设备登录：session_token 机制 ----
+let _sessionCheckTimer = null;
+
+/** 生成并写入 session_token 到数据库和 localStorage */
+async function initSessionToken() {
+  if (!currentUser.uid || !isSupabaseReady()) return;
+  const token = crypto.randomUUID();
+  try {
+    await _sb.from('users').update({ session_token: token }).eq('uid', currentUser.uid);
+    localStorage.setItem('seat_session_token', token);
+    console.log('[auth] session_token 已写入');
+  } catch (e) {
+    console.warn('[auth] session_token 写入失败:', e);
+  }
+}
+
+/** 启动定时检查 session_token（每 30 秒） */
+function startSessionCheck() {
+  stopSessionCheck();
+  _sessionCheckTimer = setInterval(async () => {
+    if (!currentUser.uid || !isSupabaseReady()) return;
+    if (document.visibilityState !== 'visible') return;
+    try {
+      const localToken = localStorage.getItem('seat_session_token');
+      if (!localToken) return; // 未登录状态
+      const { data } = await _sb.from('users').select('session_token').eq('uid', currentUser.uid).single();
+      if (data && data.session_token && data.session_token !== localToken) {
+        // session_token 不一致，说明账号在别处登录
+        console.warn('[auth] 检测到账号在其他设备登录，强制登出');
+        stopSessionCheck();
+        localStorage.clear();
+        sessionStorage.clear();
+        alert('您的账号已在其他设备登录');
+        window.location.href = 'login.html';
+      }
+    } catch (e) { /* 查询失败忽略 */ }
+  }, 30000);
+}
+
+/** 停止定时检查 */
+function stopSessionCheck() {
+  if (_sessionCheckTimer) {
+    clearInterval(_sessionCheckTimer);
+    _sessionCheckTimer = null;
+  }
+}
+
 // ---- 登出 ----
+let _authListener = null; // 保存监听器引用，登出时取消
+
 async function signOut() {
   try {
-    if (_sb) await _sb.auth.signOut();
+    // 1. 取消 auth 状态监听，防止 SIGNED_IN 事件触发自动恢复
+    if (_authListener) {
+      try { _authListener.subscription.unsubscribe(); } catch (e) {}
+      _authListener = null;
+    }
+    // 2. 停止轮询和 session 检查
+    if (typeof stopPolling === 'function') stopPolling();
+    stopSessionCheck();
+    // 3. 清除数据库中的 session_token
+    if (currentUser.uid && isSupabaseReady()) {
+      try { await _sb.from('users').update({ session_token: null }).eq('uid', currentUser.uid); } catch (e) {}
+    }
+    // 4. 调用 Supabase 登出
+    if (_sb) {
+      try { await _sb.auth.signOut(); } catch (e) { console.warn('[signOut] signOut 调用异常:', e); }
+    }
+    // 5. 重置用户状态
     resetCurrentUser();
-    try { sessionStorage.removeItem('seat_user_profile'); localStorage.removeItem('assistant_uid'); localStorage.removeItem('assistant_phone'); } catch (e) {}
+    // 6. 彻底清除所有 Supabase session 残留（sb-* 键）+ 业务缓存
+    try {
+      // 【v2.7.15】清空预签名 URL 内存缓存
+      if (typeof clearPresignedUrlCache === 'function') clearPresignedUrlCache();
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('sb-') || key.startsWith('supabase'))) {
+          localStorage.removeItem(key);
+        }
+      }
+      sessionStorage.removeItem('seat_user_profile');
+      localStorage.removeItem('assistant_uid');
+      localStorage.removeItem('assistant_phone');
+      localStorage.removeItem('seat_session_token');
+    } catch (e) {}
+    // 7. 跳转登录页
     window.location.href = 'login.html';
-  } catch (err) { console.error('登出失败:', err); }
+  } catch (err) {
+    console.error('登出失败:', err);
+    // 即使失败也强制跳转
+    window.location.href = 'login.html';
+  }
 }
 
 function resetCurrentUser() {
@@ -312,10 +509,11 @@ async function loadUserProfile() {
       .select('uid, role, managed_floors, assistant_expires_at, name, card_number, phone')
       .eq('uid', session.user.id);
     if (error || !profile || profile.length === 0) {
-      console.error('[auth] 查询用户角色失败:', error);
+      console.error('[auth] 查询用户角色失败:', error, 'uid:', session.user.id);
       currentUser.role = 'reader'; currentUser.managedFloors = [];
     } else {
       const p = profile[0]; // 取第一条
+      console.log('[auth] loadUserProfile 查到:', { role: p.role, managed_floors: p.managed_floors, assistant_expires_at: p.assistant_expires_at });
       currentUser.role = p.role || 'reader';
       currentUser.managedFloors = p.managed_floors || [];
       currentUser.assistantExpiresAt = p.assistant_expires_at;
@@ -327,6 +525,9 @@ async function loadUserProfile() {
 
   await checkAssistantExpiry();
   currentUser.loaded = true;
+  // 【v2.7.0】单设备登录：写入 session_token 并启动定时检查
+  await initSessionToken();
+  startSessionCheck();
   // 更新缓存
   try {
     sessionStorage.setItem('seat_user_profile', JSON.stringify({
@@ -452,8 +653,10 @@ const _btnCloseScanner = document.getElementById('btnCloseScanner');
 if (_btnCloseScanner) _btnCloseScanner.addEventListener('click', stopQrScanner);
 
 async function handleCollaborateLogin(decodedText) {
-  let qr; try { qr = JSON.parse(decodedText); } catch (e) { return; }
-  if (!qr.password || !qr.floor_id) return;
+  console.log('[auth] 扫码原始数据:', decodedText);
+  let qr; try { qr = JSON.parse(decodedText); } catch (e) { console.warn('[auth] 二维码解析失败:', e); return; }
+  console.log('[auth] 解析后参数:', qr);
+  if (!qr.password || !qr.floor_id) { console.warn('[auth] 缺少必要字段: password=%s, floor_id=%s', qr.password, qr.floor_id); return; }
   const name = document.getElementById('collab-name').value.trim();
   const phone = document.getElementById('collab-phone').value.trim();
   const btn = document.getElementById('btn-collab-scan');
@@ -461,7 +664,7 @@ async function handleCollaborateLogin(decodedText) {
   if (btn) { btn.classList.add('loading'); btn.disabled = true; btn.setAttribute('data-loading-text', '正在验证...'); }
   if (errEl) errEl.className = 'login-error err';
   try {
-    // 统一走 assistant_login RPC 校验密码（无论是否已有用户）
+    // 统一走 Edge Function 校验密码（无论是否已有用户）
     const r = await assistantQRLogin(qr, name, phone);
 
     if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
@@ -475,7 +678,7 @@ async function handleCollaborateLogin(decodedText) {
 
 // ---- Auth 状态监听 ----
 if (_sb) {
-  _sb.auth.onAuthStateChange((event, session) => {
+  _authListener = _sb.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session) loadUserProfile();
     else if (event === 'SIGNED_OUT') { resetCurrentUser(); try { sessionStorage.removeItem('seat_user_profile'); } catch (e) {} }
   });

@@ -1,4 +1,4 @@
-﻿// Supabase Edge Function: generate-report
+// Supabase Edge Function: generate-report
 // 使用 ExcelJS 保留原模板所有格式，只填充空单元格
 // 部署: npx supabase functions deploy generate-report --project-ref <ref>
 
@@ -71,12 +71,19 @@ function jsonResp(data: any, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 
-function getDateStrings() {
-  // 使用北京时间（UTC+8）确定日期
-  const now = new Date();
-  const bjMs = now.getTime() + 8 * 60 * 60 * 1000;
-  const bj = new Date(bjMs);
-  const y = bj.getUTCFullYear(); const m = bj.getUTCMonth()+1; const d = bj.getUTCDate(); const p = (x:number) => String(x).padStart(2,'0');
+function getDateStrings(dateStr?: string) {
+  // 如果传入 dateStr (如 '2026-07-13')，使用该日期；否则使用北京时间当前日期
+  let y: number, m: number, d: number;
+  if (dateStr) {
+    const parts = dateStr.split('-');
+    y = parseInt(parts[0]); m = parseInt(parts[1]); d = parseInt(parts[2]);
+  } else {
+    const now = new Date();
+    const bjMs = now.getTime() + 8 * 60 * 60 * 1000;
+    const bj = new Date(bjMs);
+    y = bj.getUTCFullYear(); m = bj.getUTCMonth() + 1; d = bj.getUTCDate();
+  }
+  const p = (x:number) => String(x).padStart(2,'0');
   return { sheetName: `${y}年${m}月${d}日`, fileName: `report_${y}-${p(m)}-${p(d)}.xlsx`, displayName: `${y}年${m}月${d}日座位管理统计表.xlsx`, datePath: `${y}-${p(m)}-${p(d)}` };
 }
 
@@ -149,7 +156,17 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
     const body = await req.json();
-    if (body.action === 'generate') return await handleGenerate(admin);
+    if (body.action === 'generate') {
+      // 【修复】增加 30 秒超时保护，防止长时间挂起导致定时任务停止
+      const timeoutMs = 30000;
+      const result = await Promise.race([
+        handleGenerate(admin, body.date),
+        new Promise<Response>((_, reject) =>
+          setTimeout(() => reject(new Error(`报表生成超时（${timeoutMs / 1000}秒）`)), timeoutMs)
+        )
+      ]);
+      return result as Response;
+    }
     if (body.action === 'ping') return jsonResp({ success: true, msg: 'pong' });
     return jsonResp({ success: false, error: '未知操作' }, 400);
   } catch (err) {
@@ -158,9 +175,9 @@ Deno.serve(async (req) => {
   }
 });
 
-async function handleGenerate(admin: any) {
-  console.log('[generate-report] 开始');
-  const { sheetName, fileName, displayName, datePath } = getDateStrings();
+async function handleGenerate(admin: any, dateStr?: string) {
+  console.log('[generate-report] 开始', dateStr ? `日期: ${dateStr}` : '(今天)');
+  const { sheetName, fileName, displayName, datePath } = getDateStrings(dateStr);
 
   // ---- 1. 下载模板（尝试多个可能的文件名）----
   const templateNames = ['seat-report-template.xlsx', '改-2026座位管理表格汇总.xlsx'];
@@ -186,24 +203,41 @@ async function handleGenerate(admin: any) {
   worksheet.name = sheetName;
   console.log('[generate-report] 工作表已重命名为:', sheetName);
 
-  // ---- 3. 查询当天照片数据 ----
-  const today = datePath;
-  const tmr = new Date(); tmr.setDate(tmr.getDate()+1);
-  const tmrStr = tmr.toISOString().split('T')[0];
-  console.log('[generate-report] 查询范围:', today, '~', tmrStr);
+  // ---- 3. 查询指定日期照片数据 ----
+  // 用北京时间确定日期范围，再转为 UTC 时间戳查询
+  let y: number, m: number, d: number;
+  if (dateStr) {
+    const parts = dateStr.split('-');
+    y = parseInt(parts[0]); m = parseInt(parts[1]) - 1; d = parseInt(parts[2]);
+  } else {
+    const now = new Date();
+    const bjMs = now.getTime() + 8 * 60 * 60 * 1000;
+    const bjDate = new Date(bjMs);
+    y = bjDate.getUTCFullYear(); m = bjDate.getUTCMonth(); d = bjDate.getUTCDate();
+  }
+  const p = (x:number) => String(x).padStart(2,'0');
+  // 北京时间 targetDate 00:00:00 = UTC (targetDate-8h)
+  const todayStart = new Date(Date.UTC(y, m, d, 0, 0, 0) - 8 * 60 * 60 * 1000);
+  // 北京时间 targetDate+1 00:00:00 = UTC (targetDate+1-8h)
+  const tomorrowStart = new Date(Date.UTC(y, m, d+1, 0, 0, 0) - 8 * 60 * 60 * 1000);
+  const todayStr = `${y}-${p(m+1)}-${p(d)}`;
+  const todayStartISO = todayStart.toISOString();
+  const tomorrowStartISO = tomorrowStart.toISOString();
+  console.log('[generate-report] 北京时间日期:', todayStr);
+  console.log('[generate-report] 查询UTC范围:', todayStartISO, '~', tomorrowStartISO);
 
   let photos: any[] = [];
   const { data: d1, error: e1 } = await admin.from('seat_photos')
-    .select('seat_id, uploaded_by, created_at, time_slot')
-    .gte('created_at', today)
-    .lt('created_at', tmrStr);
+    .select('seat_id, uploaded_by, created_at, time_slot, cell_key')
+    .gte('created_at', todayStartISO)
+    .lt('created_at', tomorrowStartISO);
   if (e1) {
     console.error('[generate-report] 查询出错:', e1.message);
     if (e1.message && e1.message.includes('does not exist')) {
       const { data: d2, error: e2 } = await admin.from('seat_photos')
         .select('seat_id, uploaded_by, created_at')
-        .gte('created_at', today)
-        .lt('created_at', tmrStr);
+        .gte('created_at', todayStartISO)
+        .lt('created_at', tomorrowStartISO);
       if (e2) return jsonResp({ success: false, error: '查询失败: ' + e2.message }, 500);
       photos = (d2 || []).map((p: any) => ({ ...p, time_slot: null }));
     } else {
@@ -243,27 +277,63 @@ async function handleGenerate(admin: any) {
   const earlyShiftPersons: Record<string, Set<string>> = {};
   const lateShiftPersons: Record<string, Set<string>> = {};
 
+  // 详细调试：打印前 10 条记录的时间判断和用户关联
+  const debugCount = Math.min(photos.length, 10);
+  for (let i = 0; i < debugCount; i++) {
+    const p = photos[i];
+    const bjMin = getBeijingMinutes(p.created_at);
+    const bjHour = Math.floor(bjMin / 60);
+    const bjMinute = bjMin % 60;
+    const bjTimeStr = `${String(bjHour).padStart(2,'0')}:${String(bjMinute).padStart(2,'0')}`;
+    const early = isEarlyShift(p.created_at);
+    const late = isLateShift(p.created_at);
+    const u = uMap[p.uploaded_by];
+    console.log(`[责任人调试] 记录#${i}: seat_id=${p.seat_id}, cell_key=${p.cell_key}, uploaded_by=${p.uploaded_by}, userName=${u?.name||'(未找到)'}, created_at(UTC)=${p.created_at}, 北京时间=${bjTimeStr}, 北京分钟=${bjMin}, 早班=${early}, 晚班=${late}`);
+  }
+
   for (const p of photos) {
     const seatId = p.seat_id;
     if (!seatId) continue;
-    // 用 seat_id 前缀判断所属区域（注意：先匹配长前缀如"东临"，再匹配短前缀如"东"）
-    let matchedMapping: AreaMapping | null = null;
-    for (const m of AREA_MAPPINGS) {
-      if (seatId.startsWith(m.seatPrefix)) {
-        // 长前缀优先（如"东临" > "东"）
-        if (!matchedMapping || m.seatPrefix.length > matchedMapping.seatPrefix.length) {
-          matchedMapping = m;
-        }
+
+    // 优先用 cell_key 判断区域归属（格式：fid-aname-sidx-tidx）
+    let areaKey: string | null = null;
+    if (p.cell_key && typeof p.cell_key === 'string') {
+      const ckParts = p.cell_key.split('-');
+      if (ckParts.length >= 2) {
+        const ckFloorId = parseInt(ckParts[0]);
+        const ckAreaName = ckParts[1];
+        areaKey = `${ckFloorId}-${ckAreaName}`;
       }
     }
-    if (!matchedMapping) {
-      console.warn('[责任人] seat_id 未匹配任何区域:', seatId);
-      continue;
+
+    // 回退：用 seat_id 前缀匹配（需结合楼层，只匹配 cell_key 中楼层的区域）
+    if (!areaKey) {
+      let matchedMapping: AreaMapping | null = null;
+      const ckFloorId = p.cell_key ? parseInt(p.cell_key.split('-')[0]) : 0;
+      for (const m of AREA_MAPPINGS) {
+        if (seatId.startsWith(m.seatPrefix)) {
+          // 如果有楼层信息，只匹配该楼层；否则选最长前缀
+          if (ckFloorId && m.floorId !== ckFloorId) continue;
+          if (!matchedMapping || m.seatPrefix.length > matchedMapping.seatPrefix.length) {
+            matchedMapping = m;
+          }
+        }
+      }
+      if (!matchedMapping) {
+        console.warn('[责任人] seat_id 未匹配任何区域:', seatId, 'cell_key:', p.cell_key);
+        continue;
+      }
+      areaKey = `${matchedMapping.floorId}-${matchedMapping.areaName}`;
     }
 
-    const areaKey = `${matchedMapping.floorId}-${matchedMapping.areaName}`;
     const u = uMap[p.uploaded_by];
-    if (!u || !u.name) continue;
+    if (!u || !u.name) {
+      // 详细日志：用户关联失败
+      if (p.uploaded_by && !u) {
+        console.warn('[责任人] uploaded_by 未在 users 表中找到:', p.uploaded_by, 'seat_id:', seatId);
+      }
+      continue;
+    }
 
     const bjMin = getBeijingMinutes(p.created_at);
     const early = isEarlyShift(p.created_at);
