@@ -78,8 +78,15 @@ async function handleQrLogin(
 
   // ---- 参数校验 ----
   if (!password || !floor_id || !manager_uid || !name || !phone) {
+    const missing = [];
+    if (!password) missing.push('password');
+    if (!floor_id) missing.push('floor_id');
+    if (!manager_uid) missing.push('manager_uid(二维码生成方未登录)');
+    if (!name) missing.push('name');
+    if (!phone) missing.push('phone');
+    console.error('[handle-assistant-login] 参数校验失败, 缺少:', missing.join(', '));
     return jsonResponse(
-      { success: false, error: "缺少必要参数" },
+      { success: false, error: `缺少必要参数: ${missing.join(', ')}` },
       400
     );
   }
@@ -303,6 +310,36 @@ async function handleQrLogin(
     console.error("更新密码使用次数失败:", incrementError.message);
     // 不阻断登录流程，仅记录日志
   }
+
+  // 【v2.7.36】写入激活记录（service_role 绕过 RLS，确保记录成功）
+  // 直接从二维码内容获取 granter_uid 和 granter_name，不依赖 collab_passwords.created_by
+  // 这样提供者字段准确反映"谁出示了二维码"，与手动生成密码的账号无关
+  // 【v2.7.39】同时写入 expires_at（激活时协助者的权限过期时间）
+  // 这样后续 users.assistant_expires_at 被降级清空后，历史记录仍能正确显示
+  const logRecord: Record<string, unknown> = {
+    password_id: collab.id,
+    assistant_uid: userId,
+    activated_at: new Date().toISOString(),
+    expires_at: expiresAt.toISOString(),
+  };
+  if (manager_uid) logRecord.granter_uid = manager_uid;
+  if (manager_name) logRecord.granter_name = manager_name; // 已 URL 编码的二维码原文
+
+  const { error: logError } = await supabase
+    .from("collab_activation_logs")
+    .insert(logRecord);
+
+  if (logError) {
+    console.error('[handle-assistant-login] 写入激活记录失败:', logError.message);
+    // 不阻断登录流程
+  } else {
+    console.log('[handle-assistant-login] 激活记录已写入, password_id:', collab.id,
+      'assistant_uid:', userId, 'granter_uid:', manager_uid, 'granter_name:', manager_name,
+      'expires_at:', expiresAt.toISOString());
+  }
+
+  // 【v2.7.36】移除补填 collab_passwords.created_by 的逻辑
+  // 提供者信息现在直接存储在 collab_activation_logs 中，不再依赖 collab_passwords.created_by
 
   // ---- 为协作者生成登录令牌 ----
   // 先获取用户真实邮箱，再重置密码获取 session

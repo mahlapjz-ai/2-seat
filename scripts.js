@@ -75,7 +75,7 @@ function updateCellButtonStates(cellKey) {
   });
 }
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v2.7.15';
+const APP_VERSION = 'v2.7.43';
 // 【v1.10.18】更新日志：记录次版本号和主版本号变更，修订号变更不记录，最多保留3条
 const UPDATE_LOG = [
   { date: '6月25日', text: '计时按钮改为纯图标+二次确认；新增骨架屏加载动画；更新固定文案' },
@@ -159,6 +159,10 @@ function unlockUploadingCell(ck) {
 
 /**
  * 【v2.2.0】打开文件选择器并加锁，自动检测取消操作
+ * 【v2.7.32】三重保障机制：
+ *   第一重：focus 监听（支持的浏览器立即释放锁）
+ *   第二重：3 秒超时兜底（微信 X5 等不触发 focus 的浏览器）
+ *   第三重：30 秒最终超时（极端情况兜底）
  * 核心原理：<input type="file"> 取消选择时不触发 change 事件，
  * 但窗口会重新获得焦点。通过 focus 事件 + 标志位检测取消，立即释放锁。
  * @param {string} ck - cellKey
@@ -170,6 +174,17 @@ function openFileInputAndLock(ck, inputEl, currentKeyVar) {
   const fid = parseInt(ck.split('-')[0]);
   if (!canEditFloor(fid)) { showToast('无该楼层操作权限'); return; }
   if (isUploading(ck)) { showToast('请等待当前上传完成'); return; }
+  // 【v2.7.39】协助者实时权限校验（防止过期/被吊销后仍能拍照/上传）
+  if (currentUser && currentUser.role === 'assistant') {
+    if (currentUser.assistantExpiresAt && new Date(currentUser.assistantExpiresAt) < new Date()) {
+      showToast('您的权限已到期，无法执行此操作');
+      // 异步刷新用户状态
+      if (typeof loadUserProfile === 'function') {
+        loadUserProfile().catch(() => {});
+      }
+      return;
+    }
+  }
 
   // 加锁
   lockUploadingCell(ck);
@@ -181,7 +196,19 @@ function openFileInputAndLock(ck, inputEl, currentKeyVar) {
   // 标志位：change 事件是否已触发
   let isInputTriggered = false;
 
-  // 焦点事件：检测用户取消文件选择
+  // 【v2.7.32】第二重：3 秒超时定时器（兼容微信 X5 等不触发 focus 的浏览器）
+  let cancelTimer = setTimeout(() => {
+    if (!isInputTriggered && _uploadingCells.has(ck)) {
+      _uploadingCells.delete(ck);
+      if (_uploadTimers.has(ck)) { clearTimeout(_uploadTimers.get(ck)); _uploadTimers.delete(ck); }
+      disableSeatButtons(ck, false);
+      console.log('[上传锁] 3秒超时，已自动释放锁:', ck);
+    }
+    window.removeEventListener('focus', onFocus);
+    cancelTimer = null;
+  }, 3000);
+
+  // 第一重：焦点事件检测用户取消文件选择
   const onFocus = () => {
     // 延迟 300ms，确保 change 事件（如果有）先触发
     setTimeout(() => {
@@ -189,14 +216,21 @@ function openFileInputAndLock(ck, inputEl, currentKeyVar) {
         // change 未触发 → 用户取消了选择，立即释放锁
         unlockUploadingCell(ck);
       }
+      // focus 已触发，清除 3 秒超时定时器
+      if (cancelTimer) { clearTimeout(cancelTimer); cancelTimer = null; }
       window.removeEventListener('focus', onFocus);
     }, 300);
   };
   window.addEventListener('focus', onFocus);
 
-  // 在 input 上存储 focus 清理函数，供 change 回调中移除监听
+  // 在 input 上存储清理函数，供 change 回调中移除监听和定时器
   inputEl._cancelFocusHandler = onFocus;
   inputEl._cancelTriggered = () => { isInputTriggered = true; };
+  inputEl._cancelTimer = cancelTimer; // 供 change 回调清理
+  // 包装清除函数：同时清除 3 秒定时器
+  inputEl._clearCancelTimer = () => {
+    if (cancelTimer) { clearTimeout(cancelTimer); cancelTimer = null; }
+  };
 
   // 清空旧值并触发文件选择
   inputEl.value = '';
@@ -227,8 +261,8 @@ function disableSeatButtons(ck, disabled) {
   if (statusEl) statusEl.textContent = disabled ? '处理中...' : '';
 }
 // 【v1.12.7】记录完成时间持久化：保存到 localStorage
-function saveCompletionRecords() { try { localStorage.setItem('completionRecords', JSON.stringify(state.completionRecords)); } catch(e) {} }
-function loadCompletionRecords() { try { const d = localStorage.getItem('completionRecords'); if (d) state.completionRecords = JSON.parse(d); } catch(e) {} }
+function saveCompletionRecords() { try { localStorage.setItem('shared_completionRecords', JSON.stringify(state.completionRecords)); } catch(e) {} }
+function loadCompletionRecords() { try { const d = localStorage.getItem('shared_completionRecords'); if (d) state.completionRecords = JSON.parse(d); } catch(e) {} }
 
 /** 生成区域 key */
 function areaKey(fid, aname) { return `${fid}-${aname}`; }
@@ -545,30 +579,30 @@ function refreshAllColors() {
     }
   });
 }
-function saveUIState() { try { localStorage.setItem('seat_ui_state', JSON.stringify({ f: [...state.expandedFloors], a: [...state.expandedAreas], s: [...state.expandedSeats] })); } catch (e) {} }
-function loadUIState() { try { const o = JSON.parse(localStorage.getItem('seat_ui_state')); if (o.f) state.expandedFloors = new Set(o.f); if (o.a) state.expandedAreas = new Set(o.a); if (o.s) state.expandedSeats = new Set(o.s); } catch (e) {} }
+function saveUIState() { try { localStorage.setItem('shared_seat_ui_state', JSON.stringify({ f: [...state.expandedFloors], a: [...state.expandedAreas], s: [...state.expandedSeats] })); } catch (e) {} }
+function loadUIState() { try { const o = JSON.parse(localStorage.getItem('shared_seat_ui_state')); if (o.f) state.expandedFloors = new Set(o.f); if (o.a) state.expandedAreas = new Set(o.a); if (o.s) state.expandedSeats = new Set(o.s); } catch (e) {} }
 // 拍照后分享开关状态持久化
-function saveAutoShareState() { try { localStorage.setItem('seat_auto_share', state.autoShare ? '1' : '0'); } catch (e) {} }
-function loadAutoShareState() { try { state.autoShare = localStorage.getItem('seat_auto_share') === '1'; } catch (e) {} }
+function saveAutoShareState() { try { localStorage.setItem('shared_seat_auto_share', state.autoShare ? '1' : '0'); } catch (e) {} }
+function loadAutoShareState() { try { state.autoShare = localStorage.getItem('shared_seat_auto_share') === '1'; } catch (e) {} }
 // 【修改1】允许删除座位开关状态持久化
-function saveAllowDeleteState() { try { localStorage.setItem('seat_allow_delete', state.allowDeleteSeat ? '1' : '0'); } catch (e) {} }
-function loadAllowDeleteState() { try { state.allowDeleteSeat = localStorage.getItem('seat_allow_delete') === '1'; } catch (e) {} }
+function saveAllowDeleteState() { try { localStorage.setItem('shared_seat_allow_delete', state.allowDeleteSeat ? '1' : '0'); } catch (e) {} }
+function loadAllowDeleteState() { try { state.allowDeleteSeat = localStorage.getItem('shared_seat_allow_delete') === '1'; } catch (e) {} }
 // 【v1.13.5】删除保护开关状态持久化
-function saveDeleteProtectionState() { try { localStorage.setItem('seat_delete_protection', state.deleteProtection ? '1' : '0'); } catch (e) {} }
-function loadDeleteProtectionState() { try { state.deleteProtection = localStorage.getItem('seat_delete_protection') === '1'; } catch (e) {} }
+function saveDeleteProtectionState() { try { localStorage.setItem('shared_seat_delete_protection', state.deleteProtection ? '1' : '0'); } catch (e) {} }
+function loadDeleteProtectionState() { try { state.deleteProtection = localStorage.getItem('shared_seat_delete_protection') === '1'; } catch (e) {} }
 // 【v1.3.9 新功能1】上传图片加水印开关状态持久化
-function saveUploadWatermarkState() { try { localStorage.setItem('seat_upload_watermark', state.uploadWatermark ? '1' : '0'); } catch (e) {} }
-function loadUploadWatermarkState() { try { state.uploadWatermark = localStorage.getItem('seat_upload_watermark') === '1'; } catch (e) {} }
+function saveUploadWatermarkState() { try { localStorage.setItem('shared_seat_upload_watermark', state.uploadWatermark ? '1' : '0'); } catch (e) {} }
+function loadUploadWatermarkState() { try { state.uploadWatermark = localStorage.getItem('shared_seat_upload_watermark') === '1'; } catch (e) {} }
 // 【v1.6.0】主题状态持久化
-function saveThemeState() { try { localStorage.setItem('app_theme', state.currentTheme); } catch (e) {} }
+function saveThemeState() { try { localStorage.setItem('shared_app_theme', state.currentTheme); } catch (e) {} }
 function loadThemeState() {
   try {
-    let t = localStorage.getItem('app_theme');
+    let t = localStorage.getItem('shared_app_theme');
     // 【v1.6.2】如果存储的是已删除的主题，重置为默认
     if (t && t !== 'default' && t !== 'normal' && t !== 'yiban' && t !== 'pixel') {
       t = 'default';
       state.currentTheme = 'default';
-      localStorage.setItem('app_theme', 'default');
+      localStorage.setItem('shared_app_theme', 'default');
     }
     if (t) { state.currentTheme = t; applyTheme(t); }
   } catch (e) {}
@@ -583,10 +617,11 @@ function applyTheme(theme) {
 }
 
 // 【v1.3.18 修复】筛选状态 localStorage 键名（隔离旧键名，避免被旧数据污染）
-const FILTER_KEY_MAIN = 'seat_filter_timeslots_v2_main';
-const FILTER_KEY_BACKUP = 'seat_filter_timeslots_v2_backup';
+// 【v2.7.34】添加 shared_ 前缀，切断与离线版 localStorage 的关联
+const FILTER_KEY_MAIN = 'shared_seat_filter_timeslots_v2_main';
+const FILTER_KEY_BACKUP = 'shared_seat_filter_timeslots_v2_backup';
 // 【v2.7.14】用户手动设置标记键：区分"用户手动调整"与"程序自动保存的默认"
-const FILTER_KEY_MANUAL = 'seat_filter_manual_v1';
+const FILTER_KEY_MANUAL = 'shared_seat_filter_manual_v1';
 
 /** 【v1.3.18 深度修复】保存时段筛选设置到 localStorage（双重备份 + 写入校验 + 版本标记）
  *  【v2.7.14】新增 isManual 参数：true 表示用户手动调整，会设置 manual 标记
@@ -619,22 +654,11 @@ function loadFilterState() {
     let raw = localStorage.getItem(FILTER_KEY_MAIN);
     // 2. 主键失败，尝试备用键
     if (!raw) raw = localStorage.getItem(FILTER_KEY_BACKUP);
-    // 3. 新键都为空，尝试读取旧键名（兼容 v1.3.17 及之前的数据）
-    if (!raw) {
-      const oldRaw = localStorage.getItem('seat_time_filter') || localStorage.getItem('seat_time_filter_bak');
-      if (oldRaw) {
-        // 迁移旧数据到新键名
-        try {
-          const oldObj = JSON.parse(oldRaw);
-          if (oldObj && Array.isArray(oldObj.slots)) {
-            raw = JSON.stringify({ v: 2, slots: oldObj.slots, none: !!oldObj.none, ts: Date.now() });
-            localStorage.setItem(FILTER_KEY_MAIN, raw);
-            localStorage.setItem(FILTER_KEY_BACKUP, raw);
-            console.log('[筛选持久化] 旧键数据已迁移到新键名');
-          }
-        } catch (migrateErr) { /* 迁移失败忽略 */ }
-      }
-    }
+    // 3. 新键都为空，不再读取离线版的旧键名（v2.7.34 切断离线版与在线版 localStorage 关联）
+    // if (!raw) {
+    //   const oldRaw = localStorage.getItem('seat_time_filter') || localStorage.getItem('seat_time_filter_bak');
+    //   ...
+    // }
     if (raw) {
       const o = JSON.parse(raw);
       if (o && Array.isArray(o.slots)) {
@@ -834,10 +858,10 @@ async function renderMain() {
     html += '</div>';
   });
   // 【v1.12.6】底部信息：使用说明 + 近期优化记录 + 致谢 + 免责声明 + 联系小字
-  const lastVer = localStorage.getItem('lastShownVersion');
+  const lastVer = localStorage.getItem('shared_lastShownVersion');
   const showContact = lastVer !== APP_VERSION;
-  const optExpanded = localStorage.getItem('footer-opt-expanded') === '1';
-  const thxExpanded = localStorage.getItem('footer-thx-expanded') === '1';
+  const optExpanded = localStorage.getItem('shared_footer-opt-expanded') === '1';
+  const thxExpanded = localStorage.getItem('shared_footer-thx-expanded') === '1';
   html += `<div class="app-footer">`
     + `<div class="footer-title">使用说明</div>`
     + `<div class="usage-guide">·座位如有单张图片且当前时段未隐藏，座位显示蓝色；若时段隐藏，则不显示颜色<br>·座位的同一时段有多张图片且未隐藏，座位显示橙色；若时段隐藏，则不显示颜色<br>·隐藏时段内若存在图片，座位按钮左上角显示"闭眼"图标<br>·若区域存在图片，区域按钮显示绿色<br>·通过"时段筛选"选定某一时段后，若该时段有图片，座位按钮右上角显示"图片"图标</div>`
@@ -859,7 +883,7 @@ async function renderMain() {
   if (scrollY > 0) window.scrollTo(0, scrollY);
   // 【v1.2.5】联系小字：版本更新后显示2秒再淡出
   if (showContact) {
-    localStorage.setItem('lastShownVersion', APP_VERSION);
+    localStorage.setItem('shared_lastShownVersion', APP_VERSION);
     setTimeout(() => {
       const el = document.querySelector('.app-footer .contact');
       if (el) el.classList.add('hidden');
@@ -1086,10 +1110,9 @@ function adjustFloorCompletion() {
 
 // 【v1.17.0】区域排列顺序持久化
 function loadAreaOrder(fid) {
-  try { const d = localStorage.getItem(`area_order_${fid}`); return d ? JSON.parse(d) : null; } catch (e) { return null; }
-}
+  try { const d = localStorage.getItem(`shared_area_order_${fid}`); return d ? JSON.parse(d) : null; } catch (e) { return null; } }
 function saveAreaOrder(fid, names) {
-  try { localStorage.setItem(`area_order_${fid}`, JSON.stringify(names)); } catch (e) {}
+  try { localStorage.setItem(`shared_area_order_${fid}`, JSON.stringify(names)); } catch (e) {}
 }
 function applyAreaOrder(areas, savedNames) {
   const map = new Map(areas.map(a => [a.name, a]));
@@ -1288,7 +1311,7 @@ function toggleAreaExpand(fid, aname) {
       if (k !== ak && k.startsWith(fid + '-')) state.expandedAreas.delete(k);
     }
   }
-  try { localStorage.setItem('expandedAreas', JSON.stringify([...state.expandedAreas])); } catch (e) {}
+  try { localStorage.setItem('shared_expandedAreas', JSON.stringify([...state.expandedAreas])); } catch (e) {}
   renderMain();
 }
 
@@ -1443,18 +1466,26 @@ function _renderThumbnailsHtml(ck, images, canEditThisFloor) {
 
 /** 【v2.7.0】异步为历史图片缩略图叠加上传者姓名水印 */
 async function _applyHistoryWatermarks(container) {
-  if (!isHistoricalDate()) return;
+  if (!isHistoricalDate()) {
+    console.log('[水印] 跳过: 非历史日期');
+    return;
+  }
   const wraps = container.querySelectorAll('.thumb-wrap[data-uploaded-by]');
+  console.log('[水印] 开始渲染水印, 带uploaded_by的缩略图数量:', wraps.length);
   if (!wraps.length) return;
   // 收集所有 uid
   const uids = [...new Set([...wraps].map(w => w.dataset.uploadedBy).filter(Boolean))];
+  console.log('[水印] 需查询的 uid 列表:', uids);
   if (!uids.length) return;
   // 批量查询姓名
   const nameMap = await batchGetUserNames(uids);
+  console.log('[水印] batchGetUserNames 返回:', nameMap);
   // 为每个缩略图叠加姓名水印
+  let addedCount = 0;
   wraps.forEach(wrap => {
     const uid = wrap.dataset.uploadedBy;
     const name = nameMap[uid];
+    console.log('[水印] uploaded_by:', uid, 'name:', name || '(空)');
     if (!name) return;
     // 如果已存在水印，跳过
     if (wrap.querySelector('.history-wm')) return;
@@ -1462,7 +1493,10 @@ async function _applyHistoryWatermarks(container) {
     wm.className = 'history-wm';
     wm.textContent = name;
     wrap.appendChild(wm);
+    console.log('[水印] 水印DOM已添加:', name, '到元素:', wrap);
+    addedCount++;
   });
+  console.log('[水印] 渲染完成, 新增水印数:', addedCount);
 }
 
 /** 【v2.7.6 性能优化】渲染代际，折叠座位时递增以中止未完成的渲染任务 */
@@ -2662,6 +2696,8 @@ captureInput.addEventListener('change', async (e) => {
   // 【v2.2.0】通知 focus 检测：change 已触发，用户选择了文件（非取消）
   if (captureInput._cancelTriggered) captureInput._cancelTriggered();
   if (captureInput._cancelFocusHandler) { window.removeEventListener('focus', captureInput._cancelFocusHandler); captureInput._cancelFocusHandler = null; }
+  // 【v2.7.32】清除 3 秒超时定时器
+  if (captureInput._clearCancelTimer) { captureInput._clearCancelTimer(); }
 
   const file = e.target.files[0];
   if (!file || !currentCaptureCellKey) {
@@ -2894,6 +2930,8 @@ uploadInput.addEventListener('change', async (e) => {
   // 【v2.2.0】通知 focus 检测：change 已触发，用户选择了文件（非取消）
   if (uploadInput._cancelTriggered) uploadInput._cancelTriggered();
   if (uploadInput._cancelFocusHandler) { window.removeEventListener('focus', uploadInput._cancelFocusHandler); uploadInput._cancelFocusHandler = null; }
+  // 【v2.7.32】清除 3 秒超时定时器
+  if (uploadInput._clearCancelTimer) { uploadInput._clearCancelTimer(); }
 
   const file = e.target.files[0];
   if (!file || !currentUploadCellKey) {
@@ -3193,23 +3231,58 @@ function _waitForDownloadStart() {
   });
 }
 
+// 【v2.7.33】从云端 URL 获取 Blob（下载别人上传的图片时使用）
+// COS URL 需用预签名 URL（避免 CORS），其他 URL 直接 fetch
+async function _fetchBlobFromUrl(url) {
+  if (!url || !url.startsWith('http')) return null;
+  let fetchUrl = url;
+  // 【v2.7.39】COS URL 需要使用预签名 URL（避免 CORS 错误）
+  // 优先使用缓存中的预签名 URL（避免每次下载都请求 Edge Function）
+  if (url.includes('.myqcloud.com') && typeof getCOSReadUrl === 'function') {
+    // 优先使用已缓存的预签名 URL
+    const cached = (typeof getPresignedUrlCached === 'function') ? getPresignedUrlCached(url) : null;
+    if (cached) {
+      fetchUrl = cached;
+    } else {
+      try {
+        const presigned = await getCOSReadUrl(url);
+        if (presigned) fetchUrl = presigned;
+      } catch (e) { /* 使用原 URL 兜底 */ }
+    }
+  }
+  const resp = await fetch(fetchUrl, { mode: 'cors' });
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  return await resp.blob();
+}
+
 async function downloadSelectedImages() {
   if (state.selectedCells.length === 0) return;
 
   // 【v1.10.8】每次点击从头开始：清除所有旧状态
   _clearDlState();
 
-  const cellDataMap = await getCellDataBatch(state.selectedCells, _getDateRange());
+  // 【v2.7.42】过滤无权限区域的图片（floor_manager/assistant 仅可下载自己管辖楼层的图片）
+  const hasPerm = typeof canEditFloor === 'function';
+  const filteredCells = hasPerm
+    ? state.selectedCells.filter(ck => canEditFloor(parseInt(ck.split('-')[0])))
+    : state.selectedCells;
+  if (filteredCells.length === 0) {
+    showToast('您没有权限下载该区域的图片');
+    return;
+  }
+
+  const cellDataMap = await getCellDataBatch(filteredCells, _getDateRange());
 
   const allImgs = [];
-  for (const ck of state.selectedCells) {
+  for (const ck of filteredCells) {
     const cellData = cellDataMap[ck];
     if (cellData && cellData.images) allImgs.push(...cellData.images);
   }
-  if (allImgs.some(img => !img._fullBlob && !img._fullBlobURL && (!img.data || !img.data.startsWith('data:') || img.data.split(',')[1].length <= 10))) { showToast('图片处理中，请稍后重试'); return; }
+  // 【v2.7.33】移除"图片处理中"预检查：该检查会拦截别人上传的图片（仅有 url 字段，无本地 blob/data）
+  // 实际下载时通过 _fetchBlobFromUrl 兜底从云端拉取，不再需要前置拦截
 
   const items = [];
-  for (const ck of state.selectedCells) {
+  for (const ck of filteredCells) {
     const cellData = cellDataMap[ck];
     if (!cellData || !cellData.images || cellData.images.length === 0) continue;
     const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]), tidx = parseInt(parts[3]);
@@ -3222,6 +3295,10 @@ async function downloadSelectedImages() {
       }
       if (!blob && cellData.images[i].data) {
         try { blob = dataURLtoBlob(cellData.images[i].data); } catch (e) { blob = null; }
+      }
+      // 【v2.7.33】兜底：从云端 URL 通过 fetch 获取 blob（下载别人上传的图片时使用）
+      if (!blob && cellData.images[i].url) {
+        try { blob = await _fetchBlobFromUrl(cellData.images[i].url); } catch (e) { blob = null; }
       }
       if (!blob || blob.size === 0) continue;
       const safeTimeSlot = timeSlot.replace(/:/g, '');
@@ -3766,11 +3843,11 @@ let batchPacking = false; // 【v1.14.0】打包进行中标志
 
 // 【v1.15.0】选择状态持久化
 function saveBatchSelection() {
-  try { localStorage.setItem('batch_download_selection', JSON.stringify({ areas: [...batchSelectedAreas], times: [...batchSelectedTimes] })); } catch (e) {}
+  try { localStorage.setItem('shared_batch_download_selection', JSON.stringify({ areas: [...batchSelectedAreas], times: [...batchSelectedTimes] })); } catch (e) {}
 }
 function loadBatchSelection() {
   try {
-    const data = JSON.parse(localStorage.getItem('batch_download_selection'));
+    const data = JSON.parse(localStorage.getItem('shared_batch_download_selection'));
     if (data) { batchSelectedAreas = new Set(data.areas || []); batchSelectedTimes = new Set(data.times || []); }
   } catch (e) {}
 }
@@ -3784,11 +3861,16 @@ function applyBatchSelectionToUI() {
 }
 
 async function initBatchModal() {
+  // 【v2.7.42】根据 currentUser.managedFloors 过滤区域（owner/admin 可见所有，floor_manager/assistant 仅可见管辖楼层）
+  const hasPerm = typeof canEditFloor === 'function';
   let ahtml = '';
+  let hasAnyArea = false;
   FLOORS.forEach(floor => {
+    if (hasPerm && !canEditFloor(floor.id)) return; // 跳过无权限的楼层
     floor.areas.forEach(area => {
       const ak = areaKey(floor.id, area.name);
       ahtml += `<div class="batch-chip" data-ak="${ak}">${floor.name}${area.name}</div>`;
+      hasAnyArea = true;
     });
   });
   batchAreasDiv.innerHTML = ahtml;
@@ -3799,7 +3881,24 @@ async function initBatchModal() {
   batchTimesDiv.innerHTML = thtml;
   // 【v1.15.0】恢复上次的选中状态
   loadBatchSelection();
+  // 【v2.7.42】清理持久化中已无权限的区域（防止切换账号后残留旧选择）
+  if (hasPerm) {
+    const toRemove = [];
+    for (const ak of batchSelectedAreas) {
+      const parts = ak.split('-');
+      const fid = parseInt(parts[0]);
+      if (!canEditFloor(fid)) toRemove.push(ak);
+    }
+    if (toRemove.length > 0) {
+      toRemove.forEach(ak => batchSelectedAreas.delete(ak));
+      saveBatchSelection();
+    }
+  }
   applyBatchSelectionToUI();
+  // 【v2.7.42】无任何权限区域时提示
+  if (!hasAnyArea) {
+    showToast('您没有权限下载任何区域的图片', 2500);
+  }
 }
 
 batchModal.addEventListener('click', (e) => {
@@ -3940,7 +4039,70 @@ function setBatchPackingUI(packing) {
   }
 }
 
-// 【v1.15.0】收集指定区域中指定座位的图片 Blob（seatIndices 为空则收集全部座位）
+// 【v2.7.39】并行下载 + 实时进度提示
+// 【v2.7.41】改造：分批下载（每批5张+200ms间隔+释放Blob引用）解决 iOS Safari 内存溢出
+// 修改点：
+// 1. 改为分批并行下载：每批最多 _batchDownloadConcurrency 张，批次间隔 200ms 让浏览器回收内存
+// 2. 预签名 URL 复用（_fetchBlobFromUrl 内已实现）
+// 3. 每完成一张图就更新进度提示（圆点 + X / Y 格式）
+// 4. 捕获 WebKitBlobResource / 内存错误，友好提示
+const _batchDownloadConcurrency = 5; // 每批最多 5 张
+const _batchInterBatchDelay = 200; // 每批间隔 200ms
+const _batchMaxImagesLimit = 30; // 单区域单次下载图片数软上限（提示用，不强制拦截）
+let _batchProgressDone = 0;
+let _batchProgressTotal = 0;
+let _batchProgressHideTimer = null;
+
+function _updateBatchProgress(done, total) {
+  _batchProgressDone = done;
+  _batchProgressTotal = total;
+  if (!batchProgress) return;
+  // 取消之前的"2秒后隐藏"计时器
+  if (_batchProgressHideTimer) { clearTimeout(_batchProgressHideTimer); _batchProgressHideTimer = null; }
+  if (total > 0 && done < total) {
+    // 运行中：呼吸圆点 + X / Y
+    batchProgress.innerHTML = `<span class="progress-dot"></span>${done} / ${total}`;
+  } else if (total > 0 && done >= total) {
+    // 完成：绿色对勾 + "已完成"，2秒后自动清空
+    batchProgress.innerHTML = `<span class="progress-dot progress-done"></span>已完成`;
+    _batchProgressHideTimer = setTimeout(() => {
+      if (batchProgress) batchProgress.innerHTML = '';
+      _batchProgressHideTimer = null;
+    }, 2000);
+  } else {
+    batchProgress.innerHTML = '';
+  }
+}
+
+// 检测 iOS Safari WebKitBlobResource / 内存错误
+function _isWebKitMemoryError(err) {
+  if (!err) return false;
+  const msg = (typeof err === 'string' ? err : (err.message || String(err))).toLowerCase();
+  return /webkitblobresource|webkit encountered an internal error|quota exceeded|out of memory|blob could not be loaded/i.test(msg);
+}
+
+// 【v2.7.42】区域交替间隙的循环点动画：`. ` → `.. ` → `... `
+let _switchingAnimTimer = null;
+let _switchingAnimPhase = 0;
+function _showSwitchingProgress(text) {
+  if (!batchProgress) return;
+  if (_batchProgressHideTimer) { clearTimeout(_batchProgressHideTimer); _batchProgressHideTimer = null; }
+  if (_switchingAnimTimer) { clearInterval(_switchingAnimTimer); _switchingAnimTimer = null; }
+  _switchingAnimPhase = 0;
+  const baseText = text || '切换区域中';
+  function tick() {
+    const dots = ['&nbsp;', '. ', '.. ', '... '][_switchingAnimPhase % 4];
+    batchProgress.innerHTML = `<span class="progress-dot"></span>${baseText}${dots}`;
+    _switchingAnimPhase++;
+  }
+  tick();
+  _switchingAnimTimer = setInterval(tick, 400);
+}
+function _stopSwitchingProgress() {
+  if (_switchingAnimTimer) { clearInterval(_switchingAnimTimer); _switchingAnimTimer = null; }
+  _switchingAnimPhase = 0;
+}
+
 async function collectAreaBlobs(ak, seatIndices) {
   const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
   const seatCount = getAreaSeatCount(fid, aname);
@@ -3955,8 +4117,12 @@ async function collectAreaBlobs(ak, seatIndices) {
       neededKeys.push(cellKey(fid, aname, sidx, tIdx));
     }
   }
+  console.log('[批量下载] 区域', ak, '需查询 cell 数:', neededKeys.length, '日期范围:', _getDateRange());
   const cellDataMap = await getCellDataBatch(neededKeys, _getDateRange());
-  const blobs = []; // [{ blob, filename, date }]
+
+  // 构建所有图片任务列表（每个任务独立下载一张图）
+  const tasks = []; // [{ ck, img, imgIdx, sName, tIdx }]
+  let totalImagesFound = 0;
   for (const sidx of targetSeats) {
     if (sidx >= seatCount) continue;
     const sk = seatKey(fid, aname, sidx);
@@ -3966,26 +4132,99 @@ async function collectAreaBlobs(ak, seatIndices) {
       const tIdx = parseInt(tidx);
       const ck = cellKey(fid, aname, sidx, tIdx);
       const cellData = cellDataMap[ck];
-      if (!cellData) continue;
+      if (!cellData || !cellData.images) continue;
       for (let i = 0; i < cellData.images.length; i++) {
-        const img = cellData.images[i];
-        let blob = null;
-        if (img._fullBlob) blob = img._fullBlob;
-        if (!blob) { const memBlob = getMemoryBlobURL(ck, i); if (memBlob && memBlob.fullBlob) blob = memBlob.fullBlob; }
-        if (!blob && img.data && img.data.startsWith('data:') && img.data.indexOf(',') > 0 && img.data.split(',')[1].length > 10) {
-          try { blob = dataURLtoBlob(img.data); } catch (e) { blob = null; }
-        }
-        if (!blob && img.original && img.original.startsWith('data:')) {
-          try { blob = dataURLtoBlob(img.original); } catch (e) { blob = null; }
-        }
-        if (!blob || blob.size === 0) continue;
-        const safeTimeSlot = TIME_SLOTS[tIdx].replace(/:/g, '');
-        const safeSName = getCleanSeatName(sName).replace(/[^\w]/g, '_');
-        const fileDate = new Date('2024-01-01T12:00:00');
-        blobs.push({ blob, filename: `${safeSName}_${safeTimeSlot}_${i + 1}.jpg`, date: fileDate });
+        tasks.push({ ck, img: cellData.images[i], imgIdx: i, sName, tIdx });
+        totalImagesFound++;
       }
     }
   }
+  console.log('[批量下载] 区域', ak, '找到图片数:', totalImagesFound, '需下载任务数:', tasks.length);
+
+  // 【v2.7.42】停止切换动画，恢复正常数字进度显示
+  _stopSwitchingProgress();
+
+  // 【v2.7.41】软上限提示：单区域超过 30 张时提示用户（不强制拦截）
+  if (totalImagesFound > _batchMaxImagesLimit) {
+    showToast(`当前区域 ${totalImagesFound} 张图片，iOS 设备建议分批下载或使用电脑端`, 3500);
+  }
+
+  // 立即显示进度 0 / total
+  _updateBatchProgress(0, tasks.length);
+
+  const blobs = []; // [{ blob, filename, date }]
+  let completed = 0;
+  let failed = 0;
+
+  // 预签名 URL 预热（并行预生成所有图片的预签名 URL，避免下载时串行获取）
+  if (typeof preloadPresignedUrls === 'function') {
+    try {
+      await preloadPresignedUrls(tasks.map(t => t.img).filter(i => i && i.url));
+    } catch (e) { /* 预热失败不影响下载 */ }
+  }
+
+  // 下载单张图片（含所有兜底逻辑）
+  async function _downloadOne(task) {
+    const { ck, img, imgIdx, sName, tIdx } = task;
+    let blob = null;
+    try {
+      if (img._fullBlob) blob = img._fullBlob;
+      if (!blob) { const memBlob = getMemoryBlobURL(ck, imgIdx); if (memBlob && memBlob.fullBlob) blob = memBlob.fullBlob; }
+      if (!blob && img.data && img.data.startsWith('data:') && img.data.indexOf(',') > 0 && img.data.split(',')[1].length > 10) {
+        try { blob = dataURLtoBlob(img.data); } catch (e) { blob = null; }
+      }
+      if (!blob && img.original && img.original.startsWith('data:')) {
+        try { blob = dataURLtoBlob(img.original); } catch (e) { blob = null; }
+      }
+      // 兜底：从云端 URL 通过 fetch 获取 blob（下载别人上传的图片时使用）
+      if (!blob && img.url) {
+        try { blob = await _fetchBlobFromUrl(img.url); } catch (e) { blob = null; }
+      }
+    } catch (e) { blob = null; }
+
+    let result = null;
+    if (blob && blob.size > 0) {
+      const safeTimeSlot = TIME_SLOTS[tIdx].replace(/:/g, '');
+      const safeSName = getCleanSeatName(sName).replace(/[^\w]/g, '_');
+      const fileDate = new Date('2024-01-01T12:00:00');
+      result = { blob, filename: `${safeSName}_${safeTimeSlot}_${imgIdx + 1}.jpg`, date: fileDate };
+    } else {
+      failed++;
+    }
+    // 【v2.7.41】释放 task 内部引用（仅释放临时变量，原 img 对象由 cellDataMap 持有，
+    // 但下载完一张后该 blob 引用已转移到 blobs 数组，可以放心置空以利 GC）
+    blob = null;
+    return result;
+  }
+
+  // 【v2.7.41】分批处理：每批最多 _batchDownloadConcurrency 张并行，批次间隔 200ms
+  try {
+    for (let i = 0; i < tasks.length; i += _batchDownloadConcurrency) {
+      if (!batchPacking) break; // 用户取消
+      const batch = tasks.slice(i, i + _batchDownloadConcurrency);
+      const results = await Promise.all(batch.map(t => _downloadOne(t)));
+      for (const r of results) { if (r) blobs.push(r); }
+      completed += batch.length;
+      _updateBatchProgress(completed, tasks.length);
+      // 释放本批引用，给浏览器时间回收内存
+      batch.length = 0;
+      // 批次间隔（最后一批不需要）
+      if (i + _batchDownloadConcurrency < tasks.length && batchPacking) {
+        await new Promise(r => setTimeout(r, _batchInterBatchDelay));
+      }
+    }
+  } catch (err) {
+    // 捕获 WebKitBlobResource / 内存错误，友好提示
+    if (_isWebKitMemoryError(err)) {
+      console.error('[批量下载] iOS 内存错误:', err);
+      showToast('图片过多，建议分批下载或使用电脑端操作', 3500);
+    } else {
+      console.error('[批量下载] 错误:', err);
+    }
+    throw err;
+  }
+
+  console.log('[批量下载] 区域', ak, '汇总：找到图片', totalImagesFound, '成功收集', blobs.length, '下载失败', failed);
   return blobs;
 }
 
@@ -4001,10 +4240,48 @@ safeOn('batch-exec', 'click', async () => {
   if (batchSelectedAreas.size === 0 || batchSelectedTimes.size === 0) { showToast('请选择区域和时段'); return; }
   if (batchSelectedAreas.size > 4) { showToast('最多选择4个区域'); return; }
 
+  // 【v2.7.42】二次过滤：防止持久化 batchSelectedAreas 中残留无权限区域
+  if (typeof canEditFloor === 'function') {
+    const toRemove = [];
+    for (const ak of batchSelectedAreas) {
+      const fid = parseInt(ak.split('-')[0]);
+      if (!canEditFloor(fid)) toRemove.push(ak);
+    }
+    if (toRemove.length > 0) {
+      toRemove.forEach(ak => batchSelectedAreas.delete(ak));
+      saveBatchSelection();
+      if (batchSelectedAreas.size === 0) {
+        showToast('您没有权限下载这些区域的图片');
+        return;
+      }
+    }
+  }
+
   // 【v1.15.4】强制清除上一次下载的所有残留状态
   _clearDlState();
   batchPacking = false;
   setBatchPackingUI(false);
+
+  // 【v2.7.38】强制刷新选中区域的图片计数缓存
+  // 修复"批量下载提示无图片可下载"问题：
+  // 之前 imageCountCache 可能为空（未展开过该区域），导致统计 cnt=0 误判为"无图片"
+  // 现在每次点击批量下载时，先从数据库查询选中区域的最新图片计数
+  console.log('[批量下载] 开始刷新选中区域的图片计数缓存', [...batchSelectedAreas]);
+  await Promise.all([...batchSelectedAreas].map(ak => {
+    const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+    return preloadAreaImageCounts(fid, aname);
+  }));
+  // preloadAreaImageCounts 会复用缓存（_preloadedAreas 标记），但日期切换后需要强制刷新
+  // 这里再强制调用 dbGetAreaImageCounts 更新当前日期范围内的计数
+  await Promise.all([...batchSelectedAreas].map(async (ak) => {
+    const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+    try {
+      const counts = await dbGetAreaImageCounts(fid, aname, _getDateRange());
+      counts.forEach((cnt, ck) => imageCountCache.set(ck, cnt));
+    } catch (e) {
+      console.warn('[批量下载] 刷新区域计数失败:', ak, e);
+    }
+  }));
 
   // 第一步：统计每个区域的图片数量
   const areaCounts = new Map();
@@ -4020,6 +4297,7 @@ safeOn('batch-exec', 'click', async () => {
         cnt += imageCountCache.get(cellKey(fid, aname, sidx, tIdx)) || 0;
       }
     }
+    console.log('[批量下载] 区域', ak, '统计图片数:', cnt);
     areaCounts.set(ak, cnt);
   }
 
@@ -4051,8 +4329,18 @@ safeOn('batch-exec', 'click', async () => {
   try {
     // 第二步：按区域顺序、座位编号从小到大收集所有图片
     const allBlobs = []; // [{ blob, path, date, ak }]
-    for (const ak of orderedAreas) {
+    for (let ai = 0; ai < orderedAreas.length; ai++) {
       if (!batchPacking) break;
+      const ak = orderedAreas[ai];
+      // 【v2.7.42】区域交替间隙显示切换动画（首个区域前也显示，给用户即时反馈）
+      if (ai > 0) {
+        _showSwitchingProgress('切换区域中');
+        // 给 UI 一帧时间渲染动画
+        await new Promise(r => setTimeout(r, 60));
+      } else {
+        // 首个区域立即显示呼吸圆点，避免空白
+        _showSwitchingProgress('准备下载');
+      }
       const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
       const floorObj = FLOORS.find(f => f.id === fid);
       const folder = `${floorObj.name}_${aname}`;
@@ -4061,6 +4349,8 @@ safeOn('batch-exec', 'click', async () => {
         allBlobs.push({ blob: b.blob, path: `${folder}/${b.filename}`, date: b.date, ak });
       });
     }
+    // 所有区域处理完毕，停止切换动画
+    _stopSwitchingProgress();
 
     if (!batchPacking) {
       _clearDlState(); batchPacking = false; setBatchPackingUI(false);
@@ -4101,7 +4391,11 @@ safeOn('batch-exec', 'click', async () => {
       if (!batchPacking) break;
       const batchItems = batches[bi];
       const globalLabel = bi === 0 ? '第一批' : '第二批';
-      batchProgress.textContent = `正在打包${globalLabel}（${bi + 1}/${batches.length}），请稍候…`;
+      // 【v2.7.41】保留批次提示但使用圆点样式（覆盖 collectAreaBlobs 的"已完成"文案）
+      if (batchProgress) {
+        if (_batchProgressHideTimer) { clearTimeout(_batchProgressHideTimer); _batchProgressHideTimer = null; }
+        batchProgress.innerHTML = `<span class="progress-dot"></span>正在打包${globalLabel}（${bi + 1}/${batches.length}）`;
+      }
 
       // 为跨批次区域的文件夹添加批次后缀
       const finalBlobs = batchItems.map(item => {
@@ -4130,6 +4424,9 @@ safeOn('batch-exec', 'click', async () => {
     _clearDlState();
     batchPacking = false;
     setBatchPackingUI(false);
+
+    // 【v2.7.41】所有批次打包完成后，显示"已完成"并 2 秒后清空进度提示
+    _updateBatchProgress(_batchProgressTotal > 0 ? _batchProgressTotal : 1, _batchProgressTotal > 0 ? _batchProgressTotal : 1);
 
     // 已下载的区域：仅当该区域所有图片都在批次内时才取消勾选
     const allAreaKeys = [...new Set(allBlobs.map(b => b.ak))];
@@ -4160,10 +4457,19 @@ safeOn('batch-exec', 'click', async () => {
 
   } catch (err) {
     console.error('批量下载出错:', err);
-    showToast('打包失败，请重试', 3000);
+    // 【v2.7.41】iOS Safari 内存错误友好提示
+    if (_isWebKitMemoryError(err)) {
+      showToast('图片过多，建议分批下载或使用电脑端操作', 3500);
+    } else {
+      showToast('打包失败，请重试', 3000);
+    }
     _clearDlState();
     batchPacking = false;
     setBatchPackingUI(false);
+    // 【v2.7.42】停止切换动画 + 清空进度提示
+    _stopSwitchingProgress();
+    if (_batchProgressHideTimer) { clearTimeout(_batchProgressHideTimer); _batchProgressHideTimer = null; }
+    if (batchProgress) batchProgress.innerHTML = '';
   }
 });
 
@@ -4244,6 +4550,25 @@ function pvShowSaveBtn() {
 }
 function pvHideSaveBtnNow() {
   previewSaveBtn.classList.add('faded');
+}
+
+// 【v2.7.43】全屏预览保存按钮的日期限制：历史日期置灰，今天恢复可用
+// 与"底部下载按钮"、"打包下载（ZIP）"、"批量下载"保持一致
+function updatePreviewSaveBtnState() {
+  if (!previewSaveBtn) return;
+  // 功能开关关闭时直接隐藏（保持原有逻辑）
+  if (!isFeatureEnabled('feat_preview_save')) {
+    previewSaveBtn.style.display = 'none';
+    previewSaveBtn.classList.add('pv-save-disabled');
+    return;
+  }
+  previewSaveBtn.style.display = '';
+  // 历史日期置灰
+  if (isHistoricalDate()) {
+    previewSaveBtn.classList.add('pv-save-disabled');
+  } else {
+    previewSaveBtn.classList.remove('pv-save-disabled');
+  }
 }
 
 // 双击检测
@@ -4731,8 +5056,8 @@ async function showPreview(cellKeyStr, imgIdx) {
     pvApplySlideOffset();
     pvUpdateIndicator();
     pvShowSaveBtn();
-    // 【功能开关】全屏预览保存按钮可见性
-    previewSaveBtn.style.display = isFeatureEnabled('feat_preview_save') ? '' : 'none';
+    // 【v2.7.43】全屏预览保存按钮可见性 + 日期限制（历史日期置灰）
+    updatePreviewSaveBtnState();
 
     // 【性能优化-深度】后台异步：对当前图和相邻图，如果不是高清源则异步加载高清替换
     requestAnimationFrame(() => {
@@ -4774,8 +5099,8 @@ function showPreviewFromDataURL(dataURL, title) {
   pvApplySlideOffset();
   pvUpdateIndicator();
   pvShowSaveBtn(); // 【修改4】打开预览后启动保存按钮淡出计时
-  // 【功能开关】全屏预览保存按钮可见性
-  previewSaveBtn.style.display = isFeatureEnabled('feat_preview_save') ? '' : 'none';
+  // 【v2.7.43】全屏预览保存按钮可见性 + 日期限制（历史日期置灰）
+  updatePreviewSaveBtnState();
 }
 
 /** 【修复拼接预览模糊】使用 Blob URL 显示预览，避免超大 dataURL 导致浏览器降质渲染 */
@@ -4802,8 +5127,8 @@ function showPreviewFromBlobURL(blobURL, blob, title) {
   pvApplySlideOffset();
   pvUpdateIndicator();
   pvShowSaveBtn();
-  // 【功能开关】全屏预览保存按钮可见性
-  previewSaveBtn.style.display = isFeatureEnabled('feat_preview_save') ? '' : 'none';
+  // 【v2.7.43】全屏预览保存按钮可见性 + 日期限制（历史日期置灰）
+  updatePreviewSaveBtnState();
 }
 
 function closePreview() {
@@ -5183,6 +5508,11 @@ previewSaveBtn.addEventListener('click', async (e) => {
   e.stopPropagation();
   pvShowSaveBtn(); // 【修改4】点击保存后重新显示按钮
   if (pvImages.length === 0) return;
+  // 【v2.7.43】全屏预览保存图片仅可保存今日图片，与批量下载/底部下载/打包下载规则一致
+  if (isHistoricalDate()) {
+    showToast('仅支持下载今日图片');
+    return;
+  }
   // 【v1.5.9】点击保存立即提示"准备下载"，失败时提示"保存失败"
   showToast('准备下载');
   const img = pvImages[pvIndex];
@@ -5594,6 +5924,27 @@ function showToast(msg, duration) {
   _activeToastEl = t;
   _activeToastTimer = setTimeout(() => { t.remove(); if (_activeToastEl === t) _activeToastEl = null; }, d + 100);
 }
+
+// 【v2.7.29】自定义确认弹窗：返回 Promise<boolean>，适配所有主题
+function showCustomConfirm(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'custom-confirm-overlay';
+    overlay.innerHTML = `<div class="custom-confirm-box"><div class="custom-confirm-text">${message}</div><div class="custom-confirm-btns"><button class="custom-confirm-cancel">取消</button><button class="custom-confirm-ok">确认</button></div></div>`;
+    document.body.appendChild(overlay);
+    // 强制回流后显示，触发过渡动画
+    overlay.offsetHeight;
+    overlay.classList.add('show');
+    const close = (result) => {
+      overlay.classList.remove('show');
+      setTimeout(() => overlay.remove(), 200);
+      resolve(result);
+    };
+    overlay.querySelector('.custom-confirm-cancel').onclick = () => close(false);
+    overlay.querySelector('.custom-confirm-ok').onclick = () => close(true);
+    overlay.onclick = (e) => { if (e.target === overlay) close(false); };
+  });
+}
 const bottomBar = document.getElementById('bottom-bar'), selectedCount = document.getElementById('selected-count');
 function updateBottomBar() {
   if (state.selectedCells.length > 0) {
@@ -5643,13 +5994,13 @@ document.addEventListener('click', async (e) => {
   const target = e.target;
   // 【v1.13.0】底部折叠区域：标题切换展开/收起，内容区只展开不收起
   const footerOpt = target.closest('[data-action="toggle-footer-opt"]');
-  if (footerOpt) { const key = 'footer-opt-expanded', cur = localStorage.getItem(key) === '1'; localStorage.setItem(key, cur ? '0' : '1'); renderMain(); return; }
+  if (footerOpt) { const key = 'shared_footer-opt-expanded', cur = localStorage.getItem(key) === '1'; localStorage.setItem(key, cur ? '0' : '1'); renderMain(); return; }
   const footerOptBody = target.closest('[data-action="expand-footer-opt"]');
-  if (footerOptBody && !footerOptBody.classList.contains('expanded')) { localStorage.setItem('footer-opt-expanded', '1'); renderMain(); return; }
+  if (footerOptBody && !footerOptBody.classList.contains('expanded')) { localStorage.setItem('shared_footer-opt-expanded', '1'); renderMain(); return; }
   const footerThx = target.closest('[data-action="toggle-footer-thx"]');
-  if (footerThx) { const key = 'footer-thx-expanded', cur = localStorage.getItem(key) === '1'; localStorage.setItem(key, cur ? '0' : '1'); renderMain(); return; }
+  if (footerThx) { const key = 'shared_footer-thx-expanded', cur = localStorage.getItem(key) === '1'; localStorage.setItem(key, cur ? '0' : '1'); renderMain(); return; }
   const footerThxBody = target.closest('[data-action="expand-footer-thx"]');
-  if (footerThxBody && !footerThxBody.classList.contains('expanded')) { localStorage.setItem('footer-thx-expanded', '1'); renderMain(); return; }
+  if (footerThxBody && !footerThxBody.classList.contains('expanded')) { localStorage.setItem('shared_footer-thx-expanded', '1'); renderMain(); return; }
   const floorBtn = target.closest('[data-action="toggle-floor"]');
   if (floorBtn) {
     const fid = parseInt(floorBtn.dataset.floor);
@@ -5878,10 +6229,23 @@ document.addEventListener('click', async (e) => {
   }
   // 【修改2】删除图片：调用 dlDeletePhoto(Storage+DB+缓存)，即时刷新UI
   if (delBtn) {
+    // 【v2.7.29】删除保护关闭时，弹出屏幕中央的自定义确认框
+    const confirmed = await showCustomConfirm('确定删除该图片吗？');
+    if (!confirmed) return;
     if (isHistoricalDate()) { showToast('历史日期仅可查看'); return; }
     const ck = delBtn.dataset.cellKey, imgIdx = parseInt(delBtn.dataset.imgIdx);
     const fid = parseInt(ck.split('-')[0]);
     if (!canEditFloor(fid)) { showToast('无该楼层操作权限'); return; }
+    // 【v2.7.39】协助者实时权限校验（防止过期/被吊销后仍能删除）
+    if (currentUser && currentUser.role === 'assistant') {
+      if (currentUser.assistantExpiresAt && new Date(currentUser.assistantExpiresAt) < new Date()) {
+        showToast('您的权限已到期，无法执行此操作');
+        if (typeof loadUserProfile === 'function') {
+          loadUserProfile().catch(() => {});
+        }
+        return;
+      }
+    }
     // 删除加锁：同一 cell 正在删除或上传中时忽略后续点击
     if (_deletingCells.has(ck)) { return; }
     if (isUploading(ck)) { showToast('请等待当前上传完成'); return; }
@@ -6041,7 +6405,11 @@ document.addEventListener('click', async (e) => {
   const cleanupBtn = target.closest('[data-action="open-cleanup"]');
   if (cleanupBtn) { initCleanupModal(); cleanupModal.classList.add('show'); return; }
   const batchDlBtn = target.closest('[data-action="open-batch-dl"]');
-  if (batchDlBtn) { initBatchModal(); batchModal.classList.add('show'); return; }
+  if (batchDlBtn) {
+    // 【v2.7.40】批量下载仅可下载今日图片
+    if (isHistoricalDate()) { showToast('仅支持下载今日图片'); return; }
+    initBatchModal(); batchModal.classList.add('show'); return;
+  }
   const filterBtn = target.closest('[data-action="open-filter"]');
   if (filterBtn) { openFilterSheet(); return; }
   // 【修改3】功能面板入口
@@ -6226,17 +6594,18 @@ filterBody.addEventListener('click', (e) => {
     state.visibleTimeSlots = new Set();
     state._filterNone = false;
     selectAllActive = true;
-    toggleButtonActive('filter-select-all', true);
+    defaultModeActive = false;
     // 全选时其他按钮熄灭
     hidePassedActive = false;
     showWithImagesActive = false;
     toggleButtonActive('filter-hide-passed', false);
     toggleButtonActive('filter-show-with-images', false);
   } else {
-    // 非全选状态
+    // 非全选状态：按钮熄灭
     selectAllActive = false;
-    toggleButtonActive('filter-select-all', false);
+    defaultModeActive = false;
   }
+  updateSelectAllButton();
   saveFilterState(true);
   scheduleRefreshExpandedSeats();
   refreshOverviewIfActive();
@@ -6245,11 +6614,47 @@ filterBody.addEventListener('click', (e) => {
 let hidePassedActive = false;
 let showWithImagesActive = false;
 let selectAllActive = false;
+// 【v2.7.16】默认模式亮起（与 selectAllActive 互斥，两者皆 false 时按钮熄灭）
+let defaultModeActive = false;
 
 /** 切换按钮亮起/熄灭样式 */
 function toggleButtonActive(id, active) {
   const el = document.getElementById(id);
   if (el) el.classList.toggle('primary', active);
+}
+
+/** 【v2.7.16】同步"默认/全选"按钮视觉状态
+ *  - selectAllActive=true  → 亮起 + all-mode（"全选"加粗）
+ *  - defaultModeActive=true → 亮起（"默认"加粗）
+ *  - 两者皆 false → 熄灭（文字均不加粗）
+ */
+function updateSelectAllButton() {
+  const btn = document.getElementById('filter-select-all');
+  if (!btn) return;
+  const active = selectAllActive || defaultModeActive;
+  btn.classList.toggle('primary', active);
+  btn.classList.toggle('all-mode', selectAllActive);
+}
+
+/** 【v2.7.16】根据当前 state 同步按钮初始模式
+ *  - 全选（size=0 且 _filterNone=false）→ 全选模式
+ *  - 清空（_filterNone=true）→ 熄灭
+ *  - 部分时段 → 默认模式亮起
+ */
+function syncSelectAllButtonState() {
+  const isAllSelected = state.visibleTimeSlots.size === 0 && !state._filterNone;
+  const isNone = state._filterNone;
+  if (isAllSelected) {
+    selectAllActive = true;
+    defaultModeActive = false;
+  } else if (isNone) {
+    selectAllActive = false;
+    defaultModeActive = false;
+  } else {
+    selectAllActive = false;
+    defaultModeActive = true;
+  }
+  updateSelectAllButton();
 }
 
 /** 获取根据登录时间确定的默认时段索引 */
@@ -6361,9 +6766,10 @@ safeOn('filter-hide-passed', 'click', () => {
   hidePassedActive = !hidePassedActive;
   toggleButtonActive('filter-hide-passed', hidePassedActive);
   if (hidePassedActive) {
-    // 激活时，其他按钮同步
+    // 激活时，默认/全选按钮熄灭
     selectAllActive = false;
-    toggleButtonActive('filter-select-all', false);
+    defaultModeActive = false;
+    updateSelectAllButton();
   }
   applyFilters();
 });
@@ -6373,28 +6779,29 @@ safeOn('filter-show-with-images', 'click', () => {
   showWithImagesActive = !showWithImagesActive;
   toggleButtonActive('filter-show-with-images', showWithImagesActive);
   if (showWithImagesActive) {
-    // 激活时，全选按钮熄灭
+    // 激活时，默认/全选按钮熄灭
     selectAllActive = false;
-    toggleButtonActive('filter-select-all', false);
+    defaultModeActive = false;
+    updateSelectAllButton();
   }
   applyFilters();
 });
 
-/** 全选 */
+/** 默认/全选 */
 safeOn('filter-select-all', 'click', () => {
   if (selectAllActive) {
-    // 当前全选 → 恢复默认时段
+    // 当前全选 → 恢复默认时段（按钮保持亮起，切换为"默认"加粗）
     selectAllActive = false;
-    toggleButtonActive('filter-select-all', false);
+    defaultModeActive = true;
     restoreDefaultTimeslots();
     saveFilterState(true);
     renderFilterBody();
     scheduleRefreshExpandedSeats();
     refreshOverviewIfActive();
   } else {
-    // 全选所有时段
+    // 当前默认或熄灭 → 全选所有时段（按钮亮起，"全选"加粗）
     selectAllActive = true;
-    toggleButtonActive('filter-select-all', true);
+    defaultModeActive = false;
     // 隐藏已过和仅显示有图自动熄灭
     hidePassedActive = false;
     showWithImagesActive = false;
@@ -6402,6 +6809,7 @@ safeOn('filter-select-all', 'click', () => {
     toggleButtonActive('filter-show-with-images', false);
     applyFilters();
   }
+  updateSelectAllButton();
 });
 
 /** 清除所有勾选 */
@@ -6413,9 +6821,10 @@ safeOn('filter-clear', 'click', () => {
   state.visibleTimeSlots = new Set();
   state._filterNone = true;
   selectAllActive = false;
+  defaultModeActive = false;
   hidePassedActive = false;
   showWithImagesActive = false;
-  toggleButtonActive('filter-select-all', false);
+  updateSelectAllButton();
   toggleButtonActive('filter-hide-passed', false);
   toggleButtonActive('filter-show-with-images', false);
   saveFilterState(true);
@@ -6650,6 +7059,8 @@ function openFuncPanel() {
   document.body.style.overflow = 'hidden';
   // 【v2.7.9】打开面板时更新缓存用量
   updateCacheSizeDisplay();
+  // 【v2.7.40】面板打开后立即更新批量下载按钮状态（历史日期置灰）
+  setTimeout(updateBatchDownloadBtnState, 0);
   // 【v2.7.13】打开面板时更新版本号显示与红点
   const versionLabel = document.getElementById('version-label');
   if (versionLabel) versionLabel.textContent = '版本 ' + APP_VERSION;
@@ -6718,7 +7129,11 @@ funcPanelBody.addEventListener('click', (e) => {
   if (!item) return;
   const func = item.dataset.func;
   if (func === 'open-filter') { closeFuncPanel(); setTimeout(() => openFilterSheet(), 300); }
-  else if (func === 'open-batch-dl') { closeFuncPanel(); setTimeout(() => { initBatchModal(); batchModal.classList.add('show'); }, 300); }
+  else if (func === 'open-batch-dl') {
+    // 【v2.7.40】批量下载仅可下载今日图片
+    if (isHistoricalDate()) { showToast('仅支持下载今日图片'); return; }
+    closeFuncPanel(); setTimeout(() => { initBatchModal(); batchModal.classList.add('show'); }, 300);
+  }
   else if (func === 'open-cleanup') { closeFuncPanel(); setTimeout(() => { initCleanupModal(); cleanupModal.classList.add('show'); }, 300); }
   else if (func === 'show-collab-passwords') {
     // 协助者无权限查看
@@ -6751,10 +7166,13 @@ funcPanelBody.addEventListener('click', (e) => {
   }
   // 【v2.7.9】清除图片缓存
   else if (func === 'clear-cache') {
-    if (!confirm('确定要清除所有缓存吗？包括缩略图和预加载图片，下次查看时需要重新下载。')) return;
-    clearAllThumbCache().then(() => {
-      updateCacheSizeDisplay();
-      showToast('缓存已清除，存储空间可能需要几分钟释放');
+    // 【v2.7.29】使用自定义确认弹窗替代原生 confirm
+    showCustomConfirm('确定要清除所有图片缓存吗？下次查看图片时需要重新下载。').then(ok => {
+      if (!ok) return;
+      clearAllThumbCache().then(() => {
+        updateCacheSizeDisplay();
+        showToast('缓存已清除，存储空间可能需要几分钟释放');
+      });
     });
   }
   else if (func === 'toggle-auto-share') {
@@ -6968,6 +7386,7 @@ async function init() {
     await buildSeatHasImages();
     loadUIState();
     applyDefaultTimeslotFilter(); // 【v2.7.7】首次登录应用默认时段筛选，已有设置则保持
+    syncSelectAllButtonState(); // 【v2.7.16】同步"默认/全选"按钮初始模式
     loadAutoShareState();
     loadAllowDeleteState();    loadUploadWatermarkState(); // 【v1.3.9 新功能1】加载上传加水印开关状态
     loadDeleteProtectionState(); // 【v1.13.5】加载删除保护开关状态
@@ -7092,17 +7511,17 @@ async function loadCollabFloorList(forceRefresh = false) {
   list.innerHTML = '<div style="padding:12px;color:#999;text-align:center;font-size:13px">加载中...</div>';
 
   const cacheData = new Map();
+  const allTemporaryPasswords = []; // 【v2.7.22】单独收集临时密码
   for (const floor of FLOORS) {
     const fid = String(floor.id);
     const passwords = await dlGetCollabPasswords(fid);
-    cacheData.set(fid, passwords || []);
+    // 【v2.7.22】楼层列表只显示非 temporary（normal 或 null），临时密码单独收集
+    const normalPasswords = (passwords || []).filter(pw => pw.password_type !== 'temporary');
+    const tempPasswords = (passwords || []).filter(pw => pw.password_type === 'temporary');
+    cacheData.set(fid, normalPasswords);
+    allTemporaryPasswords.push(...tempPasswords);
   }
-  // 加载所有楼层的临时密码
-  const allPasswords = [];
-  for (const [, passwords] of cacheData) {
-    allPasswords.push(...(passwords || []));
-  }
-  const temporaryPasswords = allPasswords.filter(pw => pw.password_type === 'temporary');
+  const temporaryPasswords = allTemporaryPasswords;
 
   _collabPasswordCache = { timestamp: Date.now(), data: cacheData, temporary: temporaryPasswords };
   _collabCacheLoading = false;
@@ -7243,13 +7662,47 @@ async function showCollabPasswordsModal(floorIdOrTemp) {
   });
 }
 
-function showQRCodeForPassword(password, floorId) {
-  const qrData = JSON.stringify({
+async function showQRCodeForPassword(password, floorId) {
+  // 【v2.7.19】防御性校验：uid 为空时不生成二维码
+  if (!currentUser.uid) {
+    showToast('无法获取用户信息，请重新登录后再试');
+    console.error('[协作密码] 生成二维码失败: currentUser.uid 为空');
+    return;
+  }
+  // 【v2.7.23】强制从数据库读取最新姓名，避免使用前端缓存的乱码值
+  let granterName = currentUser.name;
+  let nameSource = 'currentUser缓存';
+  try {
+    const { data: profile, error: profileErr } = await _sb.from('users')
+      .select('name').eq('uid', currentUser.uid).single();
+    if (profileErr) {
+      console.warn('[协作密码] 查询 users 表失败:', profileErr.message);
+    } else if (profile?.name) {
+      granterName = profile.name;
+      nameSource = '数据库';
+      // 同步更新 currentUser 缓存，防止后续仍使用旧值
+      currentUser.name = profile.name;
+    }
+  } catch (e) {
+    console.warn('[协作密码] 查询 users 表异常:', e.message);
+  }
+  // 【v2.7.22】granter_name 乱码兜底：为空/过短/含非中文英数字字符时回退为"管理员"
+  if (!granterName || granterName.length < 2 || /[^\u4e00-\u9fa5a-zA-Z0-9\u0020]/.test(granterName)) {
+    console.warn('[协作密码] granter_name 异常，使用兜底值. 原值:', granterName, '来源:', nameSource);
+    granterName = '管理员';
+    nameSource = '兜底值';
+  }
+  // 【v2.7.24】对中文姓名进行 URL 编码，防止二维码编码/解码环节出现乱码
+  const qrObj = {
     password: password,
-    floor_id: floorId,
-    granter_name: currentUser.name || '',
-    granter_uid: currentUser.uid || ''
-  });
+    floor_id: String(floorId),
+    granter_name: encodeURIComponent(granterName),
+    granter_uid: currentUser.uid
+  };
+  const qrData = JSON.stringify(qrObj);
+  console.log('[协作密码] 生成二维码, granter_uid:', currentUser.uid, 'granter_name(原文):', granterName, 'floor_id:', floorId);
+  console.log('[协作密码] 最终 granter_name:', granterName, '来源:', nameSource);
+  console.log('[协作密码] 二维码内容:', qrData);
 
   const floorName = FLOORS.find(f => String(f.id) === String(floorId))?.name || (floorId + '楼');
 
@@ -7364,12 +7817,83 @@ if (typeof QRCode === 'undefined' && typeof qrcode === 'function') {
 let _pollingTimer = null;
 let _lastCountsJSON = ''; // 脏标记：上次计数的序列化字符串
 
+// 【v2.7.39】写操作前的实时权限校验
+// 防止协助者权限过期/被吊销后仍能执行写操作（currentUser 可能是缓存的旧角色）
+// 在拍照、上传、删除等操作前调用，返回 true 表示通过，false 表示权限已失效
+async function _checkWritePermission() {
+  if (!currentUser || !currentUser.uid) return false;
+  // 只有 assistant 角色需要实时校验（owner/admin/floor_manager 不会过期）
+  if (currentUser.role !== 'assistant') return true;
+  // 检查本地缓存的过期时间
+  if (currentUser.assistantExpiresAt && new Date(currentUser.assistantExpiresAt) < new Date()) {
+    showToast('您的权限已到期，无法执行此操作');
+    // 触发一次 loadUserProfile 刷新本地状态
+    if (typeof loadUserProfile === 'function') {
+      try { await loadUserProfile(); } catch (e) {}
+    }
+    return false;
+  }
+  return true;
+}
+
+// 【v2.7.39】轮询中检测角色变化（防止协助者被吊销/过期后前端不刷新）
+// 每 8 秒轮询时检查数据库中 currentUser 的角色，如果变为 reader 则提示并刷新
+let _lastCheckedRole = '';
+let _roleCheckTimestamp = 0;
+async function _pollingCheckRoleChange() {
+  if (!currentUser || !currentUser.uid) return;
+  if (typeof _sb === 'undefined' || !_sb) return;
+  // 每 30 秒检查一次角色变化（不要每 8 秒都查询，减少 DB 负担）
+  const now = Date.now();
+  if (now - _roleCheckTimestamp < 30000) return;
+  _roleCheckTimestamp = now;
+  try {
+    const { data: profile, error } = await _sb.from('users')
+      .select('role, managed_floors, assistant_expires_at')
+      .eq('uid', currentUser.uid)
+      .maybeSingle();
+    if (error || !profile) return;
+    const dbRole = profile.role || 'reader';
+    // 检测到角色从 assistant 变为 reader（被吊销或过期）
+    if (_lastCheckedRole === 'assistant' && dbRole === 'reader' && currentUser.role !== 'reader') {
+      console.warn('[轮询] 检测到角色被降级: assistant → reader');
+      // 更新本地 currentUser
+      currentUser.role = 'reader';
+      currentUser.managedFloors = null;
+      currentUser.assistantExpiresAt = null;
+      // 提示用户
+      showToast('您的权限已变更（可能已过期或被吊销），页面将刷新', 3000);
+      // 通知 UI 刷新
+      window.dispatchEvent(new CustomEvent('role-changed', { detail: { from: 'assistant', to: 'reader' } }));
+      // 1.5 秒后刷新页面，确保所有 UI 按读者视图重新渲染
+      setTimeout(() => location.reload(), 1500);
+      return;
+    }
+    _lastCheckedRole = dbRole;
+    // 同步过期时间变化（如重新扫码授权后过期时间延长）
+    if (dbRole === 'assistant' && profile.assistant_expires_at) {
+      const dbExpires = profile.assistant_expires_at;
+      if (currentUser.assistantExpiresAt !== dbExpires) {
+        console.log('[轮询] 检测到过期时间变更:', currentUser.assistantExpiresAt, '→', dbExpires);
+        currentUser.assistantExpiresAt = dbExpires;
+        currentUser.managedFloors = profile.managed_floors || [];
+      }
+    }
+  } catch (e) {
+    console.warn('[轮询] 角色检查失败:', e);
+  }
+}
+
 function startPolling() {
   stopPolling(); // 先停掉旧的，防止重复
+  // 初始化角色检查
+  if (currentUser) _lastCheckedRole = currentUser.role || '';
   _pollingTimer = setInterval(async () => {
     if (document.visibilityState !== 'visible') return;
     try {
       await refreshVisibleAreas();
+      // 【v2.7.39】轮询中检测角色变化（内部节流，每 30 秒实际查询一次）
+      await _pollingCheckRoleChange();
     } catch (e) {
       console.warn('[轮询] 刷新异常:', e);
     }
@@ -7498,7 +8022,7 @@ async function refreshVisibleAreas() {
       _imageCountCache.delete(ck);
       clearLocalCache(ck);
       // 同时清除 localStorage 中可能的旧数据
-      try { localStorage.removeItem('seat_' + ck); } catch(e) {}
+      try { localStorage.removeItem('shared_seat_' + ck); } catch(e) {}
 
       // 重新从数据库拉取最新数据
       const cd = await getCellData(ck, _getDateRange());
@@ -7588,6 +8112,34 @@ function isHistoricalDate() {
   return _selectedDateOffset < 0;
 }
 
+// 【v2.7.40】批量下载仅可下载今日图片，历史日期时置灰功能项
+// 在功能面板和主界面按钮上同步状态
+function updateBatchDownloadBtnState() {
+  const disabled = isHistoricalDate();
+  // 功能面板中的批量下载项
+  document.querySelectorAll('[data-func="open-batch-dl"]').forEach(el => {
+    if (disabled) {
+      el.classList.add('func-item-disabled');
+      el.style.opacity = '0.5';
+      el.style.pointerEvents = 'none';
+    } else {
+      el.classList.remove('func-item-disabled');
+      el.style.opacity = '';
+      el.style.pointerEvents = '';
+    }
+  });
+  // 主界面快捷按钮（如有 data-action="open-batch-dl"）
+  document.querySelectorAll('[data-action="open-batch-dl"]').forEach(el => {
+    if (disabled) {
+      el.style.opacity = '0.5';
+      el.style.pointerEvents = 'none';
+    } else {
+      el.style.opacity = '';
+      el.style.pointerEvents = '';
+    }
+  });
+}
+
 function formatDateMMDDYYYY(date) {
   const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(date.getUTCDate()).padStart(2, '0');
@@ -7652,6 +8204,11 @@ async function onDateOptionClick(offset) {
   dropdown.querySelectorAll('.date-option').forEach(el => {
     el.classList.toggle('active', parseInt(el.dataset.dateOffset) === offset);
   });
+
+  // 【v2.7.40】批量下载仅可下载今日图片，切换到历史日期时置灰按钮
+  updateBatchDownloadBtnState();
+  // 【v2.7.43】全屏预览保存按钮也跟随日期限制（历史日期置灰）
+  if (typeof updatePreviewSaveBtnState === 'function') updatePreviewSaveBtnState();
 
   // 清除所有缓存，重新加载
   if (typeof dlClearCache === 'function') dlClearCache();

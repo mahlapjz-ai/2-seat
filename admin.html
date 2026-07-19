@@ -49,7 +49,7 @@
     .pw-value { font-family: monospace; font-size: 13px; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; }
 
     /* 模态框 */
-    #addUserModal.show, #resetPwdModal.show { display: flex !important; }
+    #addUserModal.show, #resetPwdModal.show, #customConfirmModal.show { display: flex !important; }
 
     /* 楼层复选框组 */
     .floor-checkboxes { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -98,6 +98,59 @@
       max-width: 220px;
     }
     .photo-tooltip.visible { opacity: 1; }
+
+    /* 【v2.7.37】说明文案折叠样式由 JS 动态控制，此处不再定义静态 max-height */
+
+    /* 【v2.7.31】角色权限功能开关：表格化布局 */
+    .role-feature-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid #f1f5f9;
+      flex-wrap: wrap;
+    }
+    .role-feature-name {
+      flex: 0 0 200px;
+      min-width: 200px;
+    }
+    .role-feature-toggles {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+    .role-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      color: #475569;
+    }
+    .role-toggle input[type="checkbox"] { cursor: pointer; }
+    .role-toggle-label {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .role-toggle-label.fixed-on {
+      background: #dcfce7;
+      color: #16a34a;
+      cursor: default;
+    }
+    .role-toggle-label.fixed-off {
+      background: #f1f5f9;
+      color: #94a3b8;
+      cursor: default;
+    }
+    .role-toggle-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
   </style>
 </head>
 <body class="bg-slate-50 min-h-screen" style="font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;">
@@ -169,7 +222,6 @@
       <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
         <div class="flex items-center justify-between">
           <span class="text-sm font-medium text-blue-800">👥 用户管理说明</span>
-          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-users">收起</button>
         </div>
         <div id="info-users" class="text-sm text-slate-600 mt-2 space-y-1">
           <p>• 新注册用户默认角色为"读者"，需在后台审核并手动提升为辅专或管理者。</p>
@@ -182,37 +234,88 @@
         <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <h2 class="text-base font-semibold text-slate-800">用户列表</h2>
           <div class="flex items-center gap-3">
-            <div class="relative">
-              <input type="text" id="userSearchInput" placeholder="搜索姓名/证号/手机号" class="pl-3 pr-8 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 w-56">
-              <button id="userSearchClear" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs" style="display:none">&times;</button>
-            </div>
             <button id="btnAddUser" class="px-3 py-1.5 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 transition-colors">+ 新增用户</button>
           </div>
         </div>
         <div id="usersLoading" class="text-center py-10 text-slate-400 text-sm">加载中…</div>
         <div id="usersEmpty" class="text-center py-10 text-slate-400 text-sm" style="display:none">暂无用户数据</div>
-        <div id="usersTableWrap" style="display:none;overflow-x:auto" class="rounded-lg border border-slate-200">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="bg-slate-50 border-b border-slate-200">
-                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">姓名</th>
-                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">卡号</th>
-                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">手机号</th>
-                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">角色</th>
-                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">管理楼层</th>
-                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">操作</th>
-              </tr>
-            </thead>
-            <tbody id="usersBody"></tbody>
-          </table>
-        </div>
-        <!-- 用户分页 -->
-        <div id="usersPagination" class="flex items-center justify-between mt-4 text-sm" style="display:none">
-          <span id="usersPageInfo" class="text-slate-500"></span>
-          <div class="flex items-center gap-2">
-            <button id="usersPrevPage" class="px-3 py-1 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm">上一页</button>
-            <span id="usersPageNumbers" class="flex items-center gap-1"></span>
-            <button id="usersNextPage" class="px-3 py-1 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm">下一页</button>
+        <div id="usersTableWrap" style="display:none">
+          <!-- 卡片一：管理团队 -->
+          <div class="rounded-lg border border-slate-200 mb-6 overflow-hidden">
+            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-3 border-b border-slate-200">
+              <div class="flex items-center justify-between gap-3 flex-wrap">
+                <h3 class="text-sm font-semibold text-slate-800">🛡️ 管理团队 <span id="teamCount" class="text-slate-500 font-normal text-xs ml-1"></span></h3>
+                <div class="flex items-center gap-2">
+                  <div class="relative">
+                    <input type="text" id="teamSearchInput" placeholder="搜索本卡片姓名/证号/手机号" class="pl-3 pr-8 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 w-64">
+                    <button id="teamSearchClear" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs" style="display:none">&times;</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="bg-slate-50 border-b border-slate-200">
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">姓名</th>
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">卡号</th>
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">手机号</th>
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">角色</th>
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">管理楼层</th>
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="teamBody"></tbody>
+              </table>
+            </div>
+            <div id="teamPagination" class="flex items-center justify-between px-4 py-3 text-sm border-t border-slate-200" style="display:none">
+              <span id="teamPageInfo" class="text-slate-500"></span>
+              <div class="flex items-center gap-2">
+                <button id="teamPrevPage" class="px-3 py-1 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm">上一页</button>
+                <span id="teamPageNumbers" class="flex items-center gap-1"></span>
+                <button id="teamNextPage" class="px-3 py-1 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm">下一页</button>
+              </div>
+            </div>
+            <div id="teamEmpty" class="text-center py-6 text-slate-400 text-xs" style="display:none">暂无管理团队成员</div>
+          </div>
+
+          <!-- 卡片二：普通用户 -->
+          <div class="rounded-lg border border-slate-200 overflow-hidden">
+            <div class="bg-gradient-to-r from-slate-50 to-gray-50 px-4 py-3 border-b border-slate-200">
+              <div class="flex items-center justify-between gap-3 flex-wrap">
+                <h3 class="text-sm font-semibold text-slate-800">👤 普通用户 <span id="regularCount" class="text-slate-500 font-normal text-xs ml-1"></span></h3>
+                <div class="flex items-center gap-2">
+                  <div class="relative">
+                    <input type="text" id="regularSearchInput" placeholder="搜索本卡片姓名/证号/手机号" class="pl-3 pr-8 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 w-64">
+                    <button id="regularSearchClear" class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs" style="display:none">&times;</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="bg-slate-50 border-b border-slate-200">
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">姓名</th>
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">卡号</th>
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">手机号</th>
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">角色</th>
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">管理楼层</th>
+                    <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="regularBody"></tbody>
+              </table>
+            </div>
+            <div id="regularPagination" class="flex items-center justify-between px-4 py-3 text-sm border-t border-slate-200" style="display:none">
+              <span id="regularPageInfo" class="text-slate-500"></span>
+              <div class="flex items-center gap-2">
+                <button id="regularPrevPage" class="px-3 py-1 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm">上一页</button>
+                <span id="regularPageNumbers" class="flex items-center gap-1"></span>
+                <button id="regularNextPage" class="px-3 py-1 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm">下一页</button>
+              </div>
+            </div>
+            <div id="regularEmpty" class="text-center py-6 text-slate-400 text-xs" style="display:none">暂无普通用户</div>
           </div>
         </div>
       </div>
@@ -224,7 +327,6 @@
       <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
         <div class="flex items-center justify-between">
           <span class="text-sm font-medium text-blue-800">📌 协作密码规则</span>
-          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-passwords">收起</button>
         </div>
         <div id="info-passwords" class="text-sm text-slate-600 mt-2 space-y-1">
           <p class="font-medium text-slate-700">生成规则</p>
@@ -289,13 +391,14 @@
             <label class="text-xs text-slate-400">过期时间（可选，留空则按日期当天23:59:59）</label>
             <input type="datetime-local" id="pwExpires" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
           </div>
+          <!-- 【v2.7.36】移除"创建者选择"下拉框：提供者由扫码时二维码中的 granter_uid 决定 -->
           <button class="btn btn-primary" id="genPwBtn">🔑 生成密码</button>
         </div>
       </div>
 
       <!-- 今日密码列表 -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-        <h2 class="text-base font-semibold text-slate-800 mb-4">今日协作密码</h2>
+        <h2 class="text-base font-semibold text-slate-800 mb-4">协作密码列表</h2>
         <div class="flex items-center gap-3 mb-4 flex-wrap">
           <label class="text-xs text-slate-400">按楼层筛选：</label>
           <select id="pwFilterFloor" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
@@ -306,10 +409,11 @@
             <option value="4">4 楼</option>
             <option value="5">5 楼</option>
           </select>
+          <button class="btn btn-sm btn-primary" id="pwOnlyTodayBtn">📅 仅显示今日</button>
           <button class="btn btn-sm" id="refreshPwBtn">🔄 刷新</button>
         </div>
         <div id="pwLoading" class="text-center py-10 text-slate-400 text-sm">加载中…</div>
-        <div id="pwEmpty" class="text-center py-10 text-slate-400 text-sm" style="display:none">今日暂无协作密码</div>
+        <div id="pwEmpty" class="text-center py-10 text-slate-400 text-sm" style="display:none">暂无协作密码</div>
         <div id="pwTableWrap" style="display:none;overflow-x:auto" class="rounded-lg border border-slate-200">
           <table class="w-full text-sm">
             <thead>
@@ -326,6 +430,15 @@
             <tbody id="pwBody"></tbody>
           </table>
         </div>
+        <!-- 分页控件 -->
+        <div id="pwPagination" class="flex items-center justify-between mt-4 text-sm" style="display:none">
+          <span id="pwPageInfo" class="text-slate-500"></span>
+          <div class="flex items-center gap-2">
+            <button id="pwPrevPage" class="px-3 py-1 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm">上一页</button>
+            <span id="pwPageNumbers" class="flex items-center gap-1"></span>
+            <button id="pwNextPage" class="px-3 py-1 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-sm">下一页</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -335,7 +448,6 @@
       <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
         <div class="flex items-center justify-between">
           <span class="text-sm font-medium text-blue-800">⚙️ 全局设置说明</span>
-          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-settings">收起</button>
         </div>
         <div id="info-settings" class="text-sm text-slate-600 mt-2 space-y-1">
           <p>• "读者视图开关"：开启后，角色为"读者"的用户登录后可查看座位占用状态（无照片）；关闭后读者看不到任何内容。</p>
@@ -369,108 +481,166 @@
 
       <!-- 功能开关列表 -->
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-        <h2 class="text-base font-semibold text-slate-800 mb-4">功能开关（默认关闭，仅对非owner角色生效）</h2>
-        <div class="flex items-center justify-between py-4 border-b border-slate-100">
-          <div>
+        <h2 class="text-base font-semibold text-slate-800 mb-2">功能开关（按角色授权）</h2>
+        <p class="text-xs text-slate-400 mb-4">owner 永久开启，assistant / reader 永久不可用，仅 admin（管理者）和 floor_manager（辅专）可勾选授权。</p>
+        <!-- 表头 -->
+        <div class="role-feature-row" style="border-bottom:2px solid #e2e8f0;font-weight:600;color:#64748b;font-size:12px;">
+          <div class="role-feature-name">功能</div>
+          <div class="role-feature-toggles">
+            <span style="min-width:80px;text-align:center">所有者</span>
+            <span style="min-width:80px;text-align:center">管理者</span>
+            <span style="min-width:80px;text-align:center">辅专</span>
+            <span style="min-width:80px;text-align:center">协助者</span>
+            <span style="min-width:80px;text-align:center">读者</span>
+          </div>
+        </div>
+        <!-- 批量下载 -->
+        <div class="role-feature-row">
+          <div class="role-feature-name">
             <div class="text-sm font-medium text-slate-700">批量下载</div>
-            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可使用批量下载功能</div>
+            <div class="text-xs text-slate-400 mt-0.5">允许用户使用批量下载功能</div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="feat_batch_downloadToggle">
-            <span class="slider"></span>
-          </label>
+          <div class="role-feature-toggles">
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-on">永久开启</span></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_batch_download" data-role="admin"></label></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_batch_download" data-role="floor_manager"></label></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+          </div>
         </div>
-        <div class="flex items-center justify-between py-4 border-b border-slate-100">
-          <div>
+        <!-- 清除图片 -->
+        <div class="role-feature-row">
+          <div class="role-feature-name">
             <div class="text-sm font-medium text-slate-700">清除图片</div>
-            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可使用清除图片功能</div>
+            <div class="text-xs text-slate-400 mt-0.5">允许用户使用清除图片功能</div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="feat_clear_imagesToggle">
-            <span class="slider"></span>
-          </label>
+          <div class="role-feature-toggles">
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-on">永久开启</span></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_clear_images" data-role="admin"></label></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_clear_images" data-role="floor_manager"></label></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+          </div>
         </div>
-        <div class="flex items-center justify-between py-4 border-b border-slate-100">
-          <div>
+        <!-- 拍照后下载 -->
+        <div class="role-feature-row">
+          <div class="role-feature-name">
             <div class="text-sm font-medium text-slate-700">拍照后下载</div>
-            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可使用拍照后自动下载功能</div>
+            <div class="text-xs text-slate-400 mt-0.5">允许用户使用拍照后自动下载功能</div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="feat_photo_downloadToggle">
-            <span class="slider"></span>
-          </label>
+          <div class="role-feature-toggles">
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-on">永久开启</span></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_photo_download" data-role="admin"></label></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_photo_download" data-role="floor_manager"></label></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+          </div>
         </div>
-        <div class="flex items-center justify-between py-4 border-b border-slate-100">
-          <div>
+        <!-- 允许删除座位 -->
+        <div class="role-feature-row">
+          <div class="role-feature-name">
             <div class="text-sm font-medium text-slate-700">允许删除座位</div>
-            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可删除座位</div>
+            <div class="text-xs text-slate-400 mt-0.5">允许用户删除座位</div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="feat_delete_seatToggle">
-            <span class="slider"></span>
-          </label>
+          <div class="role-feature-toggles">
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-on">永久开启</span></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_delete_seat" data-role="admin"></label></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_delete_seat" data-role="floor_manager"></label></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+          </div>
         </div>
-        <div class="flex items-center justify-between py-4 border-b border-slate-100">
-          <div>
+        <!-- 重置应用 -->
+        <div class="role-feature-row">
+          <div class="role-feature-name">
             <div class="text-sm font-medium text-slate-700">重置应用</div>
-            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可使用重置应用功能</div>
+            <div class="text-xs text-slate-400 mt-0.5">允许用户使用重置应用功能</div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="feat_reset_appToggle">
-            <span class="slider"></span>
-          </label>
+          <div class="role-feature-toggles">
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-on">永久开启</span></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_reset_app" data-role="admin"></label></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_reset_app" data-role="floor_manager"></label></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+          </div>
         </div>
-        <div class="flex items-center justify-between py-4 border-b border-slate-100">
-          <div>
+        <!-- 修改座位编号名称 -->
+        <div class="role-feature-row">
+          <div class="role-feature-name">
             <div class="text-sm font-medium text-slate-700">修改座位编号名称</div>
-            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可修改座位编号名称</div>
+            <div class="text-xs text-slate-400 mt-0.5">允许用户修改座位编号名称</div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="feat_rename_seatToggle">
-            <span class="slider"></span>
-          </label>
+          <div class="role-feature-toggles">
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-on">永久开启</span></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_rename_seat" data-role="admin"></label></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_rename_seat" data-role="floor_manager"></label></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+          </div>
         </div>
-        <div class="flex items-center justify-between py-4 border-b border-slate-100">
-          <div>
+        <!-- 添加座位按钮 -->
+        <div class="role-feature-row">
+          <div class="role-feature-name">
             <div class="text-sm font-medium text-slate-700">添加座位按钮</div>
-            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可看到添加座位按钮</div>
+            <div class="text-xs text-slate-400 mt-0.5">允许用户看到添加座位按钮</div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="feat_add_seatToggle">
-            <span class="slider"></span>
-          </label>
+          <div class="role-feature-toggles">
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-on">永久开启</span></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_add_seat" data-role="admin"></label></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_add_seat" data-role="floor_manager"></label></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+          </div>
         </div>
-        <div class="flex items-center justify-between py-4 border-b border-slate-100">
-          <div>
+        <!-- 底部下载按钮 -->
+        <div class="role-feature-row">
+          <div class="role-feature-name">
             <div class="text-sm font-medium text-slate-700">底部下载按钮</div>
-            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可看到底部栏的下载按钮</div>
+            <div class="text-xs text-slate-400 mt-0.5">允许用户看到底部栏的下载按钮</div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="feat_bottom_downloadToggle">
-            <span class="slider"></span>
-          </label>
+          <div class="role-feature-toggles">
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-on">永久开启</span></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_bottom_download" data-role="admin"></label></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_bottom_download" data-role="floor_manager"></label></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+          </div>
         </div>
-        <div class="flex items-center justify-between py-4 border-b border-slate-100">
-          <div>
+        <!-- 打包下载（ZIP） -->
+        <div class="role-feature-row">
+          <div class="role-feature-name">
             <div class="text-sm font-medium text-slate-700">打包下载（ZIP）</div>
-            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可使用打包下载ZIP功能</div>
+            <div class="text-xs text-slate-400 mt-0.5">允许用户使用打包下载ZIP功能</div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="feat_zip_downloadToggle">
-            <span class="slider"></span>
-          </label>
+          <div class="role-feature-toggles">
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-on">永久开启</span></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_zip_download" data-role="admin"></label></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_zip_download" data-role="floor_manager"></label></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+          </div>
         </div>
-        <div class="flex items-center justify-between py-4 border-b border-slate-100">
-          <div>
+        <!-- 全屏预览保存图片 -->
+        <div class="role-feature-row">
+          <div class="role-feature-name">
             <div class="text-sm font-medium text-slate-700">全屏预览保存图片</div>
-            <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可在全屏预览时保存图片</div>
+            <div class="text-xs text-slate-400 mt-0.5">允许用户在全屏预览时保存图片</div>
           </div>
-          <label class="switch">
-            <input type="checkbox" id="feat_preview_saveToggle">
-            <span class="slider"></span>
-          </label>
+          <div class="role-feature-toggles">
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-on">永久开启</span></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_preview_save" data-role="admin"></label></span>
+            <span style="min-width:80px;text-align:center"><label class="role-toggle"><input type="checkbox" data-feat-key="feat_preview_save" data-role="floor_manager"></label></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+            <span style="min-width:80px;text-align:center"><span class="role-toggle-label fixed-off">不可用</span></span>
+          </div>
         </div>
-        <div class="flex items-center justify-between py-4">
+      </div>
+
+      <!-- 不按角色授权的开关（保留原 switch 样式） -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <h2 class="text-base font-semibold text-slate-800 mb-2">其他开关</h2>
+        <p class="text-xs text-slate-400 mb-4">以下开关为全局开关或仅影响自己设备，不区分角色。</p>
+        <div class="flex items-center justify-between py-4 border-b border-slate-100">
           <div>
             <div class="text-sm font-medium text-slate-700">区域按钮拖动调序</div>
             <div class="text-xs text-slate-400 mt-0.5">开启后非owner用户可拖动区域按钮调整顺序</div>
@@ -505,7 +675,6 @@ $$);</code>
       <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
         <div class="flex items-center justify-between">
           <span class="text-sm font-medium text-blue-800">📋 历史记录说明</span>
-          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-history">收起</button>
         </div>
         <div id="info-history" class="text-sm text-slate-600 mt-2 space-y-1">
           <p>• 记录辅专分享的协作密码激活了哪些协助者（姓名、手机号、激活时间、对应楼层）。</p>
@@ -538,7 +707,7 @@ $$);</code>
               <tr class="bg-slate-50 border-b border-slate-200">
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">密码</th>
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">楼层</th>
-                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">辅专姓名</th>
+                <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">提供者</th>
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">协作者姓名</th>
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">协作者手机</th>
                 <th class="text-left py-3 px-4 font-medium text-slate-500 whitespace-nowrap">权限失效时间</th>
@@ -557,7 +726,6 @@ $$);</code>
       <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
         <div class="flex items-center justify-between">
           <span class="text-sm font-medium text-blue-800">📊 报表规则</span>
-          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-reports">收起</button>
         </div>
         <div id="info-reports" class="text-sm text-slate-600 mt-2 space-y-1">
           <p>• 每天 21:30 自动生成当日报表，也可点击"手动生成今日报表"立即生成。</p>
@@ -628,7 +796,6 @@ $$);</code>
       <div class="bg-blue-50 border-l-4 border-blue-400 rounded-r-lg p-3 mb-6">
         <div class="flex items-center justify-between">
           <span class="text-sm font-medium text-blue-800">🖼️ 图片记录说明</span>
-          <button class="info-toggle text-xs text-blue-500 hover:text-blue-700" data-target="info-photos">收起</button>
         </div>
         <div id="info-photos" class="text-sm text-slate-600 mt-2 space-y-1">
           <p>• 以座位为单位展示，每个座位一行，按时段分列显示图片缩略图。</p>
@@ -716,14 +883,36 @@ $$);</code>
 <!-- toast 容器 -->
 <div class="fixed top-14 right-6 z-[9999] flex flex-col gap-2" id="toastContainer"></div>
 
-<!-- Supabase SDK -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<!-- Supabase SDK（双 CDN 容错：jsdelivr 加载失败自动回退到 unpkg） -->
+<script>
+  // 【v2.7.44】SDK 加载失败检测：CDN 加载失败时给出友好提示
+  window._supabaseSdkReady = false;
+  window._supabaseSdkError = null;
+  function _markSupabaseSdkReady(ok, err) {
+    window._supabaseSdkReady = ok;
+    window._supabaseSdkError = err || null;
+  }
+  function _loadScript(src, onload, onerror) {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = onload;
+    s.onerror = onerror;
+    s.async = false; // 保持顺序
+    document.head.appendChild(s);
+  }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" onerror="_loadScript('https://unpkg.com/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js', function(){_markSupabaseSdkReady(true)}, function(e){_markSupabaseSdkReady(false, 'unpkg 也加载失败')})" onload="_markSupabaseSdkReady(true)"></script>
 <script>
 async function testConnection() {
   const key = document.getElementById('serviceKeyInput').value.trim();
   if (!key) { alert('请先粘贴 Service Role Key'); return; }
+  // 【v2.7.44】SDK 加载状态检查
+  if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+    alert('Supabase SDK 加载失败，请检查网络后刷新页面。\n\n可能原因：\n1. cdn.jsdelivr.net 被墙或网络不通\n2. 浏览器拦截了第三方脚本\n\n建议：刷新页面重试，或更换网络环境');
+    return;
+  }
   try {
-    window.supabaseAdmin = supabase.createClient(
+    window.supabaseAdmin = window.supabase.createClient(
       'https://cuejslqxatzkortnkdsf.supabase.co',
       key
     );
@@ -755,7 +944,7 @@ async function testConnection() {
     </div>
     <div class="space-y-3">
       <div>
-        <label class="block text-xs text-slate-500 mb-1">姓名 *</label>
+        <label class="block text-xs text-slate-500 mb-1">姓名 *（2-8位中英文或数字）</label>
         <input id="addUserName" type="text" placeholder="请输入姓名" class="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none">
       </div>
       <div>
@@ -763,7 +952,7 @@ async function testConnection() {
         <input id="addUserCard" type="text" placeholder="如 ABC1234567890" class="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none">
       </div>
       <div>
-        <label class="block text-xs text-slate-500 mb-1">密码 *（至少6位）</label>
+        <label class="block text-xs text-slate-500 mb-1">密码 *（6-16位，需同时包含数字和字母）</label>
         <input id="addUserPassword" type="password" placeholder="请设置初始密码" class="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none">
       </div>
       <div>
@@ -773,14 +962,15 @@ async function testConnection() {
           <option value="assistant">assistant (协助者)</option>
           <option value="floor_manager">floor_manager (辅专)</option>
           <option value="admin">admin (管理者)</option>
+          <option value="owner">owner (所有者)</option>
         </select>
       </div>
       <div id="addUserFloorsWrap" style="display:none">
-        <label class="block text-xs text-slate-500 mb-1">管辖楼层（辅专用）</label>
+        <label class="block text-xs text-slate-500 mb-1">管辖楼层 *（辅专/协助者必选，至少一个）</label>
         <div id="addUserFloors" class="flex flex-wrap gap-3"></div>
       </div>
       <div>
-        <label class="block text-xs text-slate-500 mb-1">手机号（选填）</label>
+        <label class="block text-xs text-slate-500 mb-1">手机号（选填，11位数字且以1开头）</label>
         <input id="addUserPhone" type="text" placeholder="11位手机号" class="w-full px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none">
       </div>
     </div>
@@ -812,6 +1002,18 @@ async function testConnection() {
     <div class="flex justify-end gap-3 mt-5">
       <button id="resetPwdCancel" class="px-4 py-1.5 border border-slate-300 rounded-md text-sm hover:bg-slate-50">取消</button>
       <button id="resetPwdSubmit" class="px-4 py-1.5 bg-orange-500 text-white rounded-md text-sm hover:bg-orange-600">确认重置</button>
+    </div>
+  </div>
+</div>
+
+<!-- 【v2.7.44】通用确认弹窗（替代原生 confirm，确保异步操作的执行时机准确） -->
+<div id="customConfirmModal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.5);align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:400px;max-width:95vw;padding:24px">
+    <h3 id="customConfirmTitle" class="text-base font-semibold mb-3">确认操作</h3>
+    <p id="customConfirmMessage" class="text-sm text-slate-600 mb-5 whitespace-pre-line"></p>
+    <div class="flex justify-end gap-3">
+      <button id="customConfirmCancel" class="px-4 py-1.5 border border-slate-300 rounded-md text-sm hover:bg-slate-50">取消</button>
+      <button id="customConfirmOk" class="px-4 py-1.5 bg-red-500 text-white rounded-md text-sm hover:bg-red-600">确认</button>
     </div>
   </div>
 </div>
@@ -875,6 +1077,36 @@ async function testConnection() {
     setTimeout(() => el.remove(), 3000);
   }
 
+  /** 【v2.7.44】通用确认弹窗（替代原生 confirm）
+   *  返回 Promise<boolean>，true=确认，false=取消
+   *  使用自定义弹窗避免原生 confirm() 在某些浏览器/场景下的时序问题
+   */
+  function showCustomConfirm(message, title = '确认操作') {
+    return new Promise((resolve) => {
+      const modal = $('#customConfirmModal');
+      const okBtn = $('#customConfirmOk');
+      const cancelBtn = $('#customConfirmCancel');
+      const titleEl = $('#customConfirmTitle');
+      const msgEl = $('#customConfirmMessage');
+      if (!modal || !okBtn || !cancelBtn) { resolve(false); return; }
+      titleEl.textContent = title;
+      msgEl.textContent = message;
+      modal.classList.add('show');
+      // 防止重复绑定：每次打开重新设置 onclick
+      const close = (result) => {
+        modal.classList.remove('show');
+        okBtn.onclick = null;
+        cancelBtn.onclick = null;
+        modal.onclick = null;
+        resolve(result);
+      };
+      okBtn.onclick = () => close(true);
+      cancelBtn.onclick = () => close(false);
+      // 点击遮罩关闭 = 取消
+      modal.onclick = (e) => { if (e.target === modal) close(false); };
+    });
+  }
+
   /** 生成随机6位数字密码 */
   function genPassword() {
     return String(Math.floor(100000 + Math.random() * 900000));
@@ -897,6 +1129,11 @@ async function testConnection() {
 
   /** 确保有 Supabase 连接，未连接时提示并返回 false */
   function ensureClient() {
+    // 【v2.7.44】SDK 加载失败时也提示
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+      toast('Supabase SDK 加载失败，请刷新页面重试', 'error');
+      return false;
+    }
     if (!supabase) {
       toast('请先连接 Supabase', 'error');
       return false;
@@ -911,13 +1148,22 @@ async function testConnection() {
   if (savedKey) {
     srkInput.value = savedKey;
     try {
-      supabase = window.supabase.createClient(SUPABASE_URL, savedKey, {
-        auth: { autoRefreshToken: false, persistSession: false }
-      });
-      keyStatus.textContent = '已连接';
-      keyStatus.className = 'key-status connected';
+      // 【v2.7.44】SDK 加载状态检查
+      if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+        keyStatus.textContent = 'SDK 加载失败';
+        keyStatus.className = 'key-status';
+        toast('Supabase SDK 加载失败，请刷新页面重试', 'error');
+      } else {
+        supabase = window.supabase.createClient(SUPABASE_URL, savedKey, {
+          auth: { autoRefreshToken: false, persistSession: false }
+        });
+        keyStatus.textContent = '已连接';
+        keyStatus.className = 'key-status connected';
+      }
     } catch (e) {
       console.warn('自动初始化 Supabase 失败:', e);
+      keyStatus.textContent = '连接失败';
+      keyStatus.className = 'key-status';
     }
   }
 
@@ -933,6 +1179,13 @@ async function testConnection() {
     const key = srkInput.value.trim();
     if (!key) {
       toast('请输入 Service Role Key', 'error');
+      return;
+    }
+    // 【v2.7.44】SDK 加载状态检查：CDN 加载失败时给出友好提示，避免 "Cannot read properties of undefined" 报错
+    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+      toast('Supabase SDK 加载失败，请刷新页面重试（CDN 可能被墙）', 'error');
+      keyStatus.textContent = 'SDK 加载失败';
+      keyStatus.className = 'key-status';
       return;
     }
     try {
@@ -973,12 +1226,22 @@ async function testConnection() {
   });
 
   // ========== 选项卡切换 ==========
+  // 【v2.7.44】保存用户最后选择的标签到 localStorage，刷新后恢复
+  const ADMIN_TAB_KEY = 'shared_admin_active_tab';
+  function switchAdminTab(tabName) {
+    const btn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+    if (!btn) return false;
+    $$('.tab-btn').forEach(b => b.classList.remove('active'));
+    $$('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    const panel = $('#panel-' + tabName);
+    if (panel) panel.classList.add('active');
+    try { localStorage.setItem(ADMIN_TAB_KEY, tabName); } catch (e) {}
+    return true;
+  }
   $$('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      $$('.tab-btn').forEach(b => b.classList.remove('active'));
-      $$('.tab-panel').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      $('#panel-' + btn.dataset.tab).classList.add('active');
+      switchAdminTab(btn.dataset.tab);
       // 移动端点击导航后自动关闭侧边栏
       if (window.innerWidth < 768) {
         $('#sidebar').classList.add('-translate-x-full');
@@ -986,6 +1249,13 @@ async function testConnection() {
       }
     });
   });
+  // 【v2.7.44】页面初始化时恢复上次的标签（未保存或失效则保持默认"users"）
+  try {
+    const savedTab = localStorage.getItem(ADMIN_TAB_KEY);
+    if (savedTab && savedTab !== 'users' && document.querySelector(`.tab-btn[data-tab="${savedTab}"]`)) {
+      switchAdminTab(savedTab);
+    }
+  } catch (e) {}
 
   // ========== 清理过期协助者 ==========
   $('#btnCleanupExpired').addEventListener('click', async () => {
@@ -1015,9 +1285,14 @@ async function testConnection() {
 
   let allUsers = [];
   let allFloors = [];
-  let userPage = 1;
-  const USER_PAGE_SIZE = 20;
-  let userSearchKeyword = '';
+  // 【v2.7.35】用户列表拆为两个卡片，各独立分页和搜索
+  const USER_PAGE_SIZE = 10;
+  const TEAM_ROLES = ['owner', 'admin', 'floor_manager']; // 管理团队
+  // regular: assistant, reader
+  let teamPage = 1;
+  let teamSearchKeyword = '';
+  let regularPage = 1;
+  let regularSearchKeyword = '';
 
   /** 加载用户列表 */
   async function loadUsers() {
@@ -1044,106 +1319,153 @@ async function testConnection() {
 
       allUsers = uRes.data || [];
       allFloors = fRes.data || [];
+      // 【v2.7.30】按姓名拼音首字母排序（中文 localeCompare 'zh'，英文按字母顺序，数字/特殊字符排后）
+      allUsers.sort((a, b) => {
+        const na = (a.name || '').trim(), nb = (b.name || '').trim();
+        const aIsLetter = /^[a-zA-Z]/.test(na), bIsLetter = /^[a-zA-Z]/.test(nb);
+        const aIsCJK = /[\u4e00-\u9fa5]/.test(na), bIsCJK = /[\u4e00-\u9fa5]/.test(nb);
+        // 字母和中文按拼音/字典序排前，数字/特殊字符排后
+        if ((aIsLetter || aIsCJK) && !(bIsLetter || bIsCJK)) return -1;
+        if (!(aIsLetter || aIsCJK) && (bIsLetter || bIsCJK)) return 1;
+        return na.localeCompare(nb, 'zh');
+      });
 
       usersLoading.style.display = 'none';
       if (allUsers.length === 0) {
         usersEmpty.style.display = '';
-        return;
+      } else {
+        usersTableWrap.style.display = '';
+        teamPage = 1;
+        regularPage = 1;
+        renderUsers();
       }
-      usersTableWrap.style.display = '';
-      userPage = 1;
-      renderUsers();
     } catch (e) {
       usersLoading.style.display = 'none';
       toast('加载用户失败：' + e.message, 'error');
     }
   }
 
-  /** 获取过滤后的用户列表 */
-  function getFilteredUsers() {
-    if (!userSearchKeyword) return allUsers;
-    const kw = userSearchKeyword.toLowerCase();
-    return allUsers.filter(u =>
-      (u.name || '').toLowerCase().includes(kw) ||
-      (u.card_number || '').toLowerCase().includes(kw) ||
-      (u.phone || '').toLowerCase().includes(kw)
+  /** 按关键词过滤单个卡片的用户列表 */
+  function filterUserList(list, kw) {
+    if (!kw) return list;
+    const k = kw.toLowerCase();
+    return list.filter(u =>
+      (u.name || '').toLowerCase().includes(k) ||
+      (u.card_number || '').toLowerCase().includes(k) ||
+      (u.phone || '').toLowerCase().includes(k)
     );
   }
 
-  /** 渲染用户表格（带分页） */
-  function renderUsers() {
-    const tbody = $('#usersBody');
+  /** 生成单行用户表格 HTML */
+  function renderUserRow(user) {
+    const isOwner = user.role === 'owner';
+    return `
+      <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">${esc(user.name || '—')}</td>
+      <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors"><code>${esc(user.card_number || '—')}</code></td>
+      <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">${esc(user.phone || '—')}</td>
+      <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+        <select class="role-select px-2 py-1 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none" data-uid="${user.uid}" ${isOwner ? 'disabled title="owner 角色不可修改"' : ''}>
+          <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>owner (所有者)</option>
+          <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin (管理者)</option>
+          <option value="floor_manager" ${user.role === 'floor_manager' ? 'selected' : ''}>floor_manager (辅专)</option>
+          <option value="assistant" ${user.role === 'assistant' ? 'selected' : ''}>assistant (协助者)</option>
+          <option value="reader" ${user.role === 'reader' ? 'selected' : ''}>reader (读者)</option>
+        </select>
+      </td>
+      <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+        <div class="floor-checkboxes" data-uid="${user.uid}">
+          ${allFloors.map(f => `
+            <label>
+              <input type="checkbox" value="${f.id}" ${(user.managed_floors || []).includes(f.id) ? 'checked' : ''} ${isOwner ? 'disabled' : ''}>
+              ${esc(f.name)}
+            </label>
+          `).join('')}
+        </div>
+      </td>
+      <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+        <div class="flex items-center gap-2 flex-wrap">
+          <button class="btn btn-warning btn-sm" data-reset-pwd-uid="${user.uid}" data-reset-pwd-name="${esc(user.name || '')}">🔑 重置密码</button>
+          <button class="btn btn-danger btn-sm" data-delete-uid="${user.uid}" ${isOwner ? 'disabled title="owner 不可删除"' : ''}>🗑️ 删除</button>
+        </div>
+      </td>
+    `;
+  }
+
+  /** 渲染单个卡片：tbodyId/paginationId 等是 DOM id，pageRef 是 'team'|'regular' */
+  function renderCard(cardConfig, filtered, pageRef) {
+    const { tbodyId, paginationId, pageInfoId, prevBtnId, nextBtnId, pageNumbersId, emptyId } = cardConfig;
+    const tbody = $('#' + tbodyId);
     tbody.innerHTML = '';
-    const filtered = getFilteredUsers();
     const totalPages = Math.max(1, Math.ceil(filtered.length / USER_PAGE_SIZE));
-    if (userPage > totalPages) userPage = totalPages;
-    const start = (userPage - 1) * USER_PAGE_SIZE;
+    let currentPage = pageRef === 'team' ? teamPage : regularPage;
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (pageRef === 'team') teamPage = currentPage; else regularPage = currentPage;
+    const start = (currentPage - 1) * USER_PAGE_SIZE;
     const pageUsers = filtered.slice(start, start + USER_PAGE_SIZE);
 
-    pageUsers.forEach(user => {
-      const tr = document.createElement('tr');
-      const isOwner = user.role === 'owner';
-
-      tr.innerHTML = `
-        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">${esc(user.name || '—')}</td>
-        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors"><code>${esc(user.card_number || '—')}</code></td>
-        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">${esc(user.phone || '—')}</td>
-        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-          <select class="role-select px-2 py-1 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none" data-uid="${user.uid}" ${isOwner ? 'disabled title="owner 角色不可修改"' : ''}>
-            <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>owner (所有者)</option>
-            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin (管理者)</option>
-            <option value="floor_manager" ${user.role === 'floor_manager' ? 'selected' : ''}>floor_manager (辅专)</option>
-            <option value="assistant" ${user.role === 'assistant' ? 'selected' : ''}>assistant (协助者)</option>
-            <option value="reader" ${user.role === 'reader' ? 'selected' : ''}>reader (读者)</option>
-          </select>
-        </td>
-        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-          <div class="floor-checkboxes" data-uid="${user.uid}">
-            ${allFloors.map(f => `
-              <label>
-                <input type="checkbox" value="${f.id}" ${(user.managed_floors || []).includes(f.id) ? 'checked' : ''} ${isOwner ? 'disabled' : ''}>
-                ${esc(f.name)}
-              </label>
-            `).join('')}
-          </div>
-        </td>
-        <td class="py-3 px-4 text-slate-700 border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
-          <div class="flex items-center gap-2 flex-wrap">
-            <button class="btn btn-warning btn-sm" data-reset-pwd-uid="${user.uid}" data-reset-pwd-name="${esc(user.name || '')}">🔑 重置密码</button>
-            <button class="btn btn-danger btn-sm" data-delete-uid="${user.uid}" ${isOwner ? 'disabled title="owner 不可删除"' : ''}>🗑️ 删除</button>
-          </div>
-        </td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    // 分页控件
-    const pagination = $('#usersPagination');
-    if (filtered.length > USER_PAGE_SIZE) {
-      pagination.style.display = '';
-      $('#usersPageInfo').textContent = `共 ${filtered.length} 条，第 ${userPage}/${totalPages} 页`;
-      $('#usersPrevPage').disabled = userPage <= 1;
-      $('#usersNextPage').disabled = userPage >= totalPages;
-      // 页码按钮
-      const pnWrap = $('#usersPageNumbers');
-      pnWrap.innerHTML = '';
-      const maxShow = 5;
-      let pStart = Math.max(1, userPage - Math.floor(maxShow / 2));
-      let pEnd = Math.min(totalPages, pStart + maxShow - 1);
-      if (pEnd - pStart < maxShow - 1) pStart = Math.max(1, pEnd - maxShow + 1);
-      for (let p = pStart; p <= pEnd; p++) {
-        const btn = document.createElement('button');
-        btn.textContent = p;
-        btn.className = `px-2.5 py-1 rounded text-sm ${p === userPage ? 'bg-blue-500 text-white' : 'border border-slate-300 hover:bg-slate-50'}`;
-        btn.addEventListener('click', () => { userPage = p; renderUsers(); });
-        pnWrap.appendChild(btn);
-      }
+    if (filtered.length === 0) {
+      $('#' + emptyId).style.display = '';
+      $('#' + paginationId).style.display = 'none';
     } else {
-      pagination.style.display = 'none';
+      $('#' + emptyId).style.display = 'none';
+      pageUsers.forEach(user => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = renderUserRow(user);
+        tbody.appendChild(tr);
+      });
+      // 分页控件
+      const pagination = $('#' + paginationId);
+      if (filtered.length > USER_PAGE_SIZE) {
+        pagination.style.display = '';
+        $('#' + pageInfoId).textContent = `共 ${filtered.length} 条，第 ${currentPage}/${totalPages} 页`;
+        $('#' + prevBtnId).disabled = currentPage <= 1;
+        $('#' + nextBtnId).disabled = currentPage >= totalPages;
+        const pnWrap = $('#' + pageNumbersId);
+        pnWrap.innerHTML = '';
+        const maxShow = 5;
+        let pStart = Math.max(1, currentPage - Math.floor(maxShow / 2));
+        let pEnd = Math.min(totalPages, pStart + maxShow - 1);
+        if (pEnd - pStart < maxShow - 1) pStart = Math.max(1, pEnd - maxShow + 1);
+        for (let p = pStart; p <= pEnd; p++) {
+          const btn = document.createElement('button');
+          btn.textContent = p;
+          btn.className = `px-2.5 py-1 rounded text-sm ${p === currentPage ? 'bg-blue-500 text-white' : 'border border-slate-300 hover:bg-slate-50'}`;
+          btn.addEventListener('click', () => {
+            if (pageRef === 'team') teamPage = p; else regularPage = p;
+            renderUsers();
+          });
+          pnWrap.appendChild(btn);
+        }
+      } else {
+        pagination.style.display = 'none';
+      }
     }
+  }
 
-    // 绑定角色变更
-    tbody.querySelectorAll('.role-select').forEach(sel => {
+  /** 渲染用户表格（两个卡片） */
+  function renderUsers() {
+    // 拆分用户列表
+    const teamList = allUsers.filter(u => TEAM_ROLES.includes(u.role || ''));
+    const regularList = allUsers.filter(u => !TEAM_ROLES.includes(u.role || ''));
+
+    const teamFiltered = filterUserList(teamList, teamSearchKeyword);
+    const regularFiltered = filterUserList(regularList, regularSearchKeyword);
+
+    $('#teamCount').textContent = `（${teamFiltered.length} 人）`;
+    $('#regularCount').textContent = `（${regularFiltered.length} 人）`;
+
+    renderCard({
+      tbodyId: 'teamBody', paginationId: 'teamPagination', pageInfoId: 'teamPageInfo',
+      prevBtnId: 'teamPrevPage', nextBtnId: 'teamNextPage', pageNumbersId: 'teamPageNumbers', emptyId: 'teamEmpty'
+    }, teamFiltered, 'team');
+
+    renderCard({
+      tbodyId: 'regularBody', paginationId: 'regularPagination', pageInfoId: 'regularPageInfo',
+      prevBtnId: 'regularPrevPage', nextBtnId: 'regularNextPage', pageNumbersId: 'regularPageNumbers', emptyId: 'regularEmpty'
+    }, regularFiltered, 'regular');
+
+    // 绑定角色变更（两个表格）
+    document.querySelectorAll('.role-select').forEach(sel => {
       sel.addEventListener('change', async (e) => {
         const uid = e.target.dataset.uid;
         const newRole = e.target.value;
@@ -1161,7 +1483,7 @@ async function testConnection() {
     });
 
     // 绑定管理楼层变更
-    tbody.querySelectorAll('.floor-checkboxes').forEach(wrap => {
+    document.querySelectorAll('.floor-checkboxes').forEach(wrap => {
       wrap.addEventListener('change', async () => {
         const uid = wrap.dataset.uid;
         const checked = [...wrap.querySelectorAll('input:checked')].map(cb => cb.value);
@@ -1176,7 +1498,7 @@ async function testConnection() {
     });
 
     // 绑定删除
-    tbody.querySelectorAll('[data-delete-uid]').forEach(btn => {
+    document.querySelectorAll('[data-delete-uid]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const uid = btn.dataset.deleteUid;
         const user = allUsers.find(u => u.uid === uid);
@@ -1193,33 +1515,53 @@ async function testConnection() {
     });
 
     // 绑定重置密码
-    tbody.querySelectorAll('[data-reset-pwd-uid]').forEach(btn => {
+    document.querySelectorAll('[data-reset-pwd-uid]').forEach(btn => {
       btn.addEventListener('click', () => {
         openResetPasswordModal(btn.dataset.resetPwdUid, btn.dataset.resetPwdName);
       });
     });
   }
 
-  // 用户搜索
-  $('#userSearchInput').addEventListener('input', (e) => {
-    userSearchKeyword = e.target.value.trim();
-    $('#userSearchClear').style.display = userSearchKeyword ? '' : 'none';
-    userPage = 1;
+  // 管理团队搜索
+  $('#teamSearchInput').addEventListener('input', (e) => {
+    teamSearchKeyword = e.target.value.trim();
+    $('#teamSearchClear').style.display = teamSearchKeyword ? '' : 'none';
+    teamPage = 1;
     renderUsers();
   });
-  $('#userSearchClear').addEventListener('click', () => {
-    $('#userSearchInput').value = '';
-    userSearchKeyword = '';
-    $('#userSearchClear').style.display = 'none';
-    userPage = 1;
+  $('#teamSearchClear').addEventListener('click', () => {
+    $('#teamSearchInput').value = '';
+    teamSearchKeyword = '';
+    $('#teamSearchClear').style.display = 'none';
+    teamPage = 1;
     renderUsers();
   });
-  // 用户分页按钮
-  $('#usersPrevPage').addEventListener('click', () => { if (userPage > 1) { userPage--; renderUsers(); } });
-  $('#usersNextPage').addEventListener('click', () => {
-    const filtered = getFilteredUsers();
-    const totalPages = Math.ceil(filtered.length / USER_PAGE_SIZE);
-    if (userPage < totalPages) { userPage++; renderUsers(); }
+  // 普通用户搜索
+  $('#regularSearchInput').addEventListener('input', (e) => {
+    regularSearchKeyword = e.target.value.trim();
+    $('#regularSearchClear').style.display = regularSearchKeyword ? '' : 'none';
+    regularPage = 1;
+    renderUsers();
+  });
+  $('#regularSearchClear').addEventListener('click', () => {
+    $('#regularSearchInput').value = '';
+    regularSearchKeyword = '';
+    $('#regularSearchClear').style.display = 'none';
+    regularPage = 1;
+    renderUsers();
+  });
+  // 分页按钮
+  $('#teamPrevPage').addEventListener('click', () => { if (teamPage > 1) { teamPage--; renderUsers(); } });
+  $('#teamNextPage').addEventListener('click', () => {
+    const list = filterUserList(allUsers.filter(u => TEAM_ROLES.includes(u.role || '')), teamSearchKeyword);
+    const totalPages = Math.ceil(list.length / USER_PAGE_SIZE);
+    if (teamPage < totalPages) { teamPage++; renderUsers(); }
+  });
+  $('#regularPrevPage').addEventListener('click', () => { if (regularPage > 1) { regularPage--; renderUsers(); } });
+  $('#regularNextPage').addEventListener('click', () => {
+    const list = filterUserList(allUsers.filter(u => !TEAM_ROLES.includes(u.role || '')), regularSearchKeyword);
+    const totalPages = Math.ceil(list.length / USER_PAGE_SIZE);
+    if (regularPage < totalPages) { regularPage++; renderUsers(); }
   });
 
   /** HTML 转义 */
@@ -1236,23 +1578,34 @@ async function testConnection() {
   let allPasswords = [];
 
   /** 加载今日密码 */
+  // 【v2.7.28】协作密码列表：分页 + "仅显示今日"筛选
+  let pwOnlyToday = true; // 默认仅显示今日
+  let pwCurrentPage = 1;
+  const PW_PAGE_SIZE = 20;
+
   async function loadPasswords() {
     if (!ensureClient()) return;
     const pwLoading = $('#pwLoading');
     const pwEmpty = $('#pwEmpty');
     const pwTableWrap = $('#pwTableWrap');
+    const pwPagination = $('#pwPagination');
 
     pwLoading.style.display = '';
     pwEmpty.style.display = 'none';
     pwTableWrap.style.display = 'none';
+    pwPagination.style.display = 'none';
 
     try {
-      const today = todayStr();
-      const { data, error } = await supabase
+      // 【v2.7.28】取消默认 limit，按 pwOnlyToday 决定是否过滤今日
+      let query = supabase
         .from('collab_passwords')
         .select('*')
-        .eq('date', today)
         .order('created_at', { ascending: false });
+      if (pwOnlyToday) {
+        query = query.eq('date', todayStr());
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -1264,6 +1617,7 @@ async function testConnection() {
         return;
       }
       pwTableWrap.style.display = '';
+      pwCurrentPage = 1;
       renderPasswords();
     } catch (e) {
       pwLoading.style.display = 'none';
@@ -1271,11 +1625,11 @@ async function testConnection() {
     }
   }
 
-  /** 渲染密码表格 */
+  /** 渲染密码表格（含分页） */
   function renderPasswords() {
     const filter = $('#pwFilterFloor').value;
     const filtered = filter
-      ? allPasswords.filter(p => p.floor_id === filter)
+      ? allPasswords.filter(p => String(p.floor_id) === filter)
       : allPasswords;
 
     const tbody = $('#pwBody');
@@ -1283,23 +1637,34 @@ async function testConnection() {
 
     if (filtered.length === 0) {
       $('#pwTableWrap').style.display = 'none';
+      $('#pwPagination').style.display = 'none';
       $('#pwEmpty').style.display = '';
       return;
     }
     $('#pwTableWrap').style.display = '';
     $('#pwEmpty').style.display = 'none';
 
+    // 【v2.7.28】分页计算
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PW_PAGE_SIZE));
+    if (pwCurrentPage > totalPages) pwCurrentPage = totalPages;
+    if (pwCurrentPage < 1) pwCurrentPage = 1;
+    const startIdx = (pwCurrentPage - 1) * PW_PAGE_SIZE;
+    const endIdx = startIdx + PW_PAGE_SIZE;
+    const pageItems = filtered.slice(startIdx, endIdx);
+
     const now = Date.now();
 
-    filtered.forEach(pw => {
+    pageItems.forEach(pw => {
       const tr = document.createElement('tr');
       const expired = pw.expires_at && new Date(pw.expires_at).getTime() < now;
       const exhausted = pw.used_count >= pw.max_uses;
-      const isActive = !expired && !exhausted;
+      const revoked = pw.revoked === true;
+      const isActive = !expired && !exhausted && !revoked;
 
       // 状态徽章
       let badgeHtml;
-      if (expired) badgeHtml = '<span class="badge badge-expired">已过期</span>';
+      if (revoked) badgeHtml = '<span class="badge badge-expired">已吊销</span>';
+      else if (expired) badgeHtml = '<span class="badge badge-expired">已过期</span>';
       else if (exhausted) badgeHtml = '<span class="badge badge-exhausted">已用完</span>';
       else badgeHtml = '<span class="badge badge-active">有效</span>';
 
@@ -1311,7 +1676,7 @@ async function testConnection() {
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${esc(floorLabel)}</td>
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${badgeHtml}</td>
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${pw.used_count} / ${pw.max_uses}</td>
-        <td class="py-3 px-4 text-slate-600 border-b border-slate-100 whitespace-nowrap">${pw.generated_at ? fmtTime(pw.generated_at) : '—'}</td>
+        <td class="py-3 px-4 text-slate-600 border-b border-slate-100 whitespace-nowrap">${pw.generated_at ? fmtTime(pw.generated_at) : '—'}${pw.date ? ` <span style="color:#94a3b8;font-size:11px">(${esc(pw.date)})</span>` : ''}</td>
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">${pw.expires_at ? fmtTime(pw.expires_at) : '—'}${pw.password_type === 'temporary' ? ' <span style="color:#e67e22;font-size:11px;font-weight:600">[临时]</span>' : ''}</td>
         <td class="py-3 px-4 text-slate-700 border-b border-slate-100">
           ${isActive ? `<button class="btn btn-danger btn-sm" data-revoke-id="${pw.id}">🚫 吊销</button>` : ''}
@@ -1321,16 +1686,28 @@ async function testConnection() {
       tbody.appendChild(tr);
     });
 
-    // 绑定吊销（将过期时间设为当前时间）
+    // 【v2.7.44】绑定吊销：调用 RPC 函数 revoke_collab_password，立即降级所有激活的协助者
+    // 修复：降级操作必须在用户点击"确认"后才执行
     tbody.querySelectorAll('[data-revoke-id]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.revokeId;
-        const { error } = await supabase
-          .from('collab_passwords')
-          .update({ expires_at: new Date().toISOString() })
-          .eq('id', id);
-        if (error) toast('吊销失败：' + cnErr(error), 'error');
-        else { toast('密码已吊销', 'success'); loadPasswords(); }
+        // 使用自定义确认弹窗（Promise 异步等待用户操作）
+        const confirmed = await showCustomConfirm(
+          '确定吊销此密码？\n\n吊销后：\n1. 该密码立即失效，无法再用于扫码登录\n2. 已使用该密码登录的所有协助者将立即降级为读者权限\n3. 操作不可撤销\n\n是否继续？',
+          '吊销协作密码'
+        );
+        // 用户取消则不做任何操作
+        if (!confirmed) return;
+        // 仅在用户确认后才执行降级
+        try {
+          const { data, error } = await supabase.rpc('revoke_collab_password', { p_password_id: id });
+          if (error) throw error;
+          const count = data?.downgraded_count ?? 0;
+          toast(`密码已吊销，${count} 名协助者已降级为读者`, 'success');
+          loadPasswords();
+        } catch (e) {
+          toast('吊销失败：' + cnErr(e), 'error');
+        }
       });
     });
 
@@ -1344,13 +1721,67 @@ async function testConnection() {
         else { toast('密码已删除', 'success'); loadPasswords(); }
       });
     });
+
+    // 【v2.7.28】渲染分页控件
+    renderPwPagination(filtered.length, totalPages);
+  }
+
+  /** 渲染协作密码分页控件 */
+  function renderPwPagination(total, totalPages) {
+    const pag = $('#pwPagination');
+    if (total <= PW_PAGE_SIZE) {
+      pag.style.display = 'none';
+      return;
+    }
+    pag.style.display = '';
+    $('#pwPageInfo').textContent = `共 ${total} 条，第 ${pwCurrentPage} / ${totalPages} 页`;
+    $('#pwPrevPage').disabled = pwCurrentPage <= 1;
+    $('#pwNextPage').disabled = pwCurrentPage >= totalPages;
+
+    // 生成页码按钮
+    const numbersWrap = $('#pwPageNumbers');
+    numbersWrap.innerHTML = '';
+    // 最多显示 5 个页码按钮
+    let start = Math.max(1, pwCurrentPage - 2);
+    let end = Math.min(totalPages, start + 4);
+    if (end - start < 4) start = Math.max(1, end - 4);
+    for (let i = start; i <= end; i++) {
+      const btn = document.createElement('button');
+      btn.textContent = i;
+      btn.className = 'px-2 py-1 border rounded-md text-sm ' + (i === pwCurrentPage ? 'bg-blue-500 text-white border-blue-500' : 'border-slate-300 hover:bg-slate-50');
+      btn.addEventListener('click', () => { pwCurrentPage = i; renderPasswords(); });
+      numbersWrap.appendChild(btn);
+    }
   }
 
   // 楼层筛选
-  $('#pwFilterFloor').addEventListener('change', renderPasswords);
+  $('#pwFilterFloor').addEventListener('change', () => { pwCurrentPage = 1; renderPasswords(); });
 
   // 刷新按钮
   $('#refreshPwBtn').addEventListener('click', loadPasswords);
+
+  // 【v2.7.28】"仅显示今日"切换按钮：点击后切换状态并重新加载
+  $('#pwOnlyTodayBtn').addEventListener('click', () => {
+    pwOnlyToday = !pwOnlyToday;
+    const btn = $('#pwOnlyTodayBtn');
+    if (pwOnlyToday) {
+      btn.classList.add('btn-primary');
+      btn.textContent = '📅 仅显示今日';
+    } else {
+      btn.classList.remove('btn-primary');
+      btn.textContent = '📋 显示全部';
+    }
+    loadPasswords();
+  });
+
+  // 分页按钮
+  $('#pwPrevPage').addEventListener('click', () => {
+    if (pwCurrentPage > 1) { pwCurrentPage--; renderPasswords(); }
+  });
+  $('#pwNextPage').addEventListener('click', () => {
+    pwCurrentPage++;
+    renderPasswords();
+  });
 
   // 密码类型切换
   $('#pwType').addEventListener('change', () => {
@@ -1370,6 +1801,8 @@ async function testConnection() {
     const isTemp = passwordType === 'temporary';
     const startDate = $('#pwStartDate').value;
     const endDate = $('#pwEndDate').value;
+    // 【v2.7.36】移除 created_by：提供者由扫码时二维码中的 granter_uid 决定，
+    // 不依赖 collab_passwords.created_by 推断（手动生成密码时无法确定谁是提供者）
 
     // 确定日期范围
     let dates = [];
@@ -1387,47 +1820,77 @@ async function testConnection() {
       dates.push(todayStr());
     }
 
+    // 【v2.7.36】禁用按钮，防止重复点击
+    const genBtn = $('#genPwBtn');
+    const origText = genBtn.textContent;
+    genBtn.disabled = true;
+    genBtn.textContent = '生成中...';
+
     let count = 0;
     let failCount = 0;
+    let timedOut = false;
 
-    for (const date of dates) {
-      let expiresAt;
-      if (isTemp) {
-        const tempExpires = $('#pwTempExpires').value;
-        expiresAt = tempExpires ? new Date(tempExpires).toISOString() : new Date(date + 'T23:59:59').toISOString();
-      } else {
-        const expiresVal = $('#pwExpires').value;
-        expiresAt = expiresVal ? new Date(expiresVal).toISOString() : new Date(date + 'T23:59:59').toISOString();
-      }
-      const password = genPassword();
-      const record = { password, floor_id: floorId, date, max_uses: maxUses, used_count: 0, expires_at: expiresAt, password_type: passwordType };
+    // 【v2.7.36】5 秒超时保护：超过 5 秒未完成提示用户
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      toast('生成超时，请重试', 'error');
+      genBtn.disabled = false;
+      genBtn.textContent = origText;
+    }, 5000);
 
-      const { error } = await supabase.from('collab_passwords').insert(record);
-      if (!error) {
-        count++;
-      } else if (error.message?.includes('duplicate') || error.message?.includes('unique')) {
-        // 密码冲突，重试
-        let retry = 0;
-        while (retry < 5) {
-          record.password = genPassword();
-          const { error: e2 } = await supabase.from('collab_passwords').insert(record);
-          if (!e2) { count++; break; }
-          if (!e2.message?.includes('duplicate') && !e2.message?.includes('unique')) { failCount++; break; }
-          retry++;
+    try {
+      for (const date of dates) {
+        if (timedOut) break;
+        let expiresAt;
+        if (isTemp) {
+          const tempExpires = $('#pwTempExpires').value;
+          expiresAt = tempExpires ? new Date(tempExpires).toISOString() : new Date(date + 'T23:59:59').toISOString();
+        } else {
+          const expiresVal = $('#pwExpires').value;
+          expiresAt = expiresVal ? new Date(expiresVal).toISOString() : new Date(date + 'T23:59:59').toISOString();
         }
-        if (retry >= 5) failCount++;
-      } else {
-        failCount++;
+        const password = genPassword();
+        const record = { password, floor_id: floorId, date, max_uses: maxUses, used_count: 0, expires_at: expiresAt, password_type: passwordType };
+
+        const { error } = await supabase.from('collab_passwords').insert(record);
+        if (!error) {
+          count++;
+        } else if (error.message?.includes('duplicate') || error.message?.includes('unique')) {
+          // 密码冲突，重试
+          let retry = 0;
+          while (retry < 5) {
+            if (timedOut) break;
+            record.password = genPassword();
+            const { error: e2 } = await supabase.from('collab_passwords').insert(record);
+            if (!e2) { count++; break; }
+            if (!e2.message?.includes('duplicate') && !e2.message?.includes('unique')) { failCount++; break; }
+            retry++;
+          }
+          if (retry >= 5) failCount++;
+        } else {
+          failCount++;
+        }
+      }
+
+      clearTimeout(timeoutId);
+      if (timedOut) return;
+
+      if (count > 0) toast(`已生成 ${count} 个${isTemp ? '临时' : ''}密码` + (failCount > 0 ? `，${failCount} 个失败` : ''), 'success');
+      else toast('密码生成失败', 'error');
+
+      // 清空过期时间输入
+      $('#pwExpires').value = '';
+      $('#pwTempExpires').value = '';
+      loadPasswords();
+    } catch (e) {
+      clearTimeout(timeoutId);
+      toast('生成失败：' + (e.message || e), 'error');
+    } finally {
+      if (!timedOut) {
+        genBtn.disabled = false;
+        genBtn.textContent = origText;
       }
     }
-
-    if (count > 0) toast(`已生成 ${count} 个${isTemp ? '临时' : ''}密码` + (failCount > 0 ? `，${failCount} 个失败` : ''), 'success');
-    else toast('密码生成失败', 'error');
-
-    // 清空过期时间输入
-    $('#pwExpires').value = '';
-    $('#pwTempExpires').value = '';
-    loadPasswords();
   });
 
   // ================================================================
@@ -1452,14 +1915,32 @@ async function testConnection() {
       const regToggle = $('#registrationEnabledToggle');
       regToggle.checked = map['registration_enabled'] === 'true';
 
-      // 功能开关
-      const featureKeys = [
+      // 【v2.7.31】角色权限开关：解析 JSON 对象，兼容旧 'true'/'false' 格式
+      const roleBasedKeys = [
         'feat_batch_download', 'feat_clear_images', 'feat_photo_download',
         'feat_delete_seat', 'feat_reset_app', 'feat_rename_seat',
         'feat_add_seat', 'feat_bottom_download', 'feat_zip_download',
-        'feat_preview_save', 'feat_area_drag_sort'
+        'feat_preview_save'
       ];
-      featureKeys.forEach(key => {
+      roleBasedKeys.forEach(key => {
+        const raw = map[key];
+        let obj = { admin: false, floor_manager: false };
+        if (raw === 'true') obj = { admin: true, floor_manager: true };
+        else if (raw && typeof raw === 'string') {
+          try { const parsed = JSON.parse(raw); if (parsed && typeof parsed === 'object') obj = parsed; } catch(e) {}
+        } else if (raw && typeof raw === 'object') {
+          obj = raw;
+        }
+        // 设置 admin / floor_manager 复选框
+        document.querySelectorAll(`input[data-feat-key="${key}"]`).forEach(cb => {
+          const role = cb.dataset.role;
+          cb.checked = obj[role] === true;
+        });
+      });
+
+      // 其他非角色开关
+      const otherKeys = ['feat_area_drag_sort'];
+      otherKeys.forEach(key => {
         const el = $(`#${key}Toggle`);
         if (el) el.checked = map[key] === 'true';
       });
@@ -1469,7 +1950,42 @@ async function testConnection() {
     }
   }
 
-  // 通用开关切换函数
+  // 【v2.7.31】角色权限开关：监听 admin/floor_manager 复选框变化
+  document.querySelectorAll('input[data-feat-key][data-role]').forEach(cb => {
+    cb.addEventListener('change', async (e) => {
+      if (!ensureClient()) return;
+      const key = e.target.dataset.featKey;
+      const role = e.target.dataset.role;
+      const checked = e.target.checked;
+      // 收集同 key 的两个角色最新状态
+      const adminCb = document.querySelector(`input[data-feat-key="${key}"][data-role="admin"]`);
+      const fmCb = document.querySelector(`input[data-feat-key="${key}"][data-role="floor_manager"]`);
+      const newObj = {
+        admin: adminCb ? adminCb.checked : false,
+        floor_manager: fmCb ? fmCb.checked : false
+      };
+      const val = JSON.stringify(newObj);
+      const { error } = await supabase
+        .from('settings')
+        .upsert({ key, value: val }, { onConflict: 'key' });
+      if (error) {
+        toast('设置更新失败：' + cnErr(error), 'error');
+        e.target.checked = !checked; // 回滚
+      } else {
+        const labelMap = {
+          feat_batch_download: '批量下载', feat_clear_images: '清除图片', feat_photo_download: '拍照后下载',
+          feat_delete_seat: '允许删除座位', feat_reset_app: '重置应用', feat_rename_seat: '修改座位编号名称',
+          feat_add_seat: '添加座位按钮', feat_bottom_download: '底部下载按钮',
+          feat_zip_download: '打包下载（ZIP）', feat_preview_save: '全屏预览保存图片'
+        };
+        const label = labelMap[key] || key;
+        const roleLabel = role === 'admin' ? '管理者' : '辅专';
+        toast(`${label} - ${roleLabel} 已${checked ? '开启' : '关闭'}`, 'success');
+      }
+    });
+  });
+
+  // 通用开关切换函数（保留给 feat_area_drag_sort 等非角色开关使用）
   function bindFeatureToggle(key, label) {
     const el = $(`#${key}Toggle`);
     if (!el) return;
@@ -1518,17 +2034,7 @@ async function testConnection() {
     }
   });
 
-  // 绑定11个功能开关
-  bindFeatureToggle('feat_batch_download', '批量下载');
-  bindFeatureToggle('feat_clear_images', '清除图片');
-  bindFeatureToggle('feat_photo_download', '拍照后下载');
-  bindFeatureToggle('feat_delete_seat', '允许删除座位');
-  bindFeatureToggle('feat_reset_app', '重置应用');
-  bindFeatureToggle('feat_rename_seat', '修改座位编号名称');
-  bindFeatureToggle('feat_add_seat', '添加座位按钮');
-  bindFeatureToggle('feat_bottom_download', '底部下载按钮');
-  bindFeatureToggle('feat_zip_download', '打包下载（ZIP）');
-  bindFeatureToggle('feat_preview_save', '全屏预览保存图片');
+  // 绑定非角色功能开关（仅 feat_area_drag_sort）
   bindFeatureToggle('feat_area_drag_sort', '区域按钮拖动调序');
 
   // ================================================================
@@ -1566,24 +2072,22 @@ async function testConnection() {
       const pwIds = [...new Set((logs || []).map(l => l.password_id).filter(Boolean))];
       let pws = [];
       if (pwIds.length > 0) {
-        const { data: pwData } = await supabase.from('collab_passwords').select('id, password, floor_id, created_by').in('id', pwIds);
+        const { data: pwData } = await supabase.from('collab_passwords').select('id, password, floor_id').in('id', pwIds);
         pws = pwData || [];
       }
 
-      // 批量获取用户信息（含 assistant_expires_at）
-      // 【修复】同时收集 created_by 和 assistant_uid 来查找辅专姓名
-      // 还需额外加载所有 floor_manager，用于 created_by 为空时的兜底查找
-      const uids = [...new Set([...pws.map(p => p.created_by), ...(logs || []).map(l => l.assistant_uid)].filter(Boolean))];
+      // 批量获取用户信息
+      // 【v2.7.36】提供者 uid 直接从 collab_activation_logs.granter_uid 获取
+      // 不再依赖 collab_passwords.created_by（手动生成密码时无法预知提供者）
+      // 【v2.7.44】不再查询 users.assistant_expires_at（每次扫码会被覆盖，无法反映历史记录的真实过期时间）
+      const uids = [...new Set([
+        ...(logs || []).map(l => l.granter_uid),
+        ...(logs || []).map(l => l.assistant_uid)
+      ].filter(Boolean))];
       let usersData = [];
       if (uids.length > 0) {
-        const { data: ud } = await supabase.from('users').select('uid, name, phone, assistant_expires_at, role, managed_floors').in('uid', uids);
+        const { data: ud } = await supabase.from('users').select('uid, name, phone, card_number, role, managed_floors').in('uid', uids);
         usersData = ud || [];
-      }
-      // 额外加载所有 floor_manager/admin/owner，用于兜底查找辅专姓名
-      const { data: managers } = await supabase.from('users').select('uid, name, phone, assistant_expires_at, role, managed_floors').in('role', ['floor_manager', 'admin', 'owner']);
-      if (managers && managers.length > 0) {
-        const existingUids = new Set(usersData.map(u => u.uid));
-        managers.forEach(m => { if (!existingUids.has(m.uid)) usersData.push(m); });
       }
 
       // 构建映射
@@ -1601,25 +2105,42 @@ async function testConnection() {
       tbody.innerHTML = '';
       logs.forEach(row => {
         const pw = pwMap[row.password_id] || {};
-        // 【修复】辅专姓名：优先从 created_by 查找，若为空则尝试从该楼层 floor_manager 中查找
-        // 如果 created_by 有值但用户已被删除，显示"账号已删除"
+        // 【v2.7.36】提供者：从激活记录的 granter_uid 直接关联 users 表
+        // granter_uid 由扫码时二维码内容携带（即出示二维码的辅专 uid）
         let granterName = '—';
-        if (pw.created_by) {
-          if (userMap[pw.created_by]) {
-            granterName = userMap[pw.created_by].name || '—';
+        if (row.granter_uid) {
+          if (userMap[row.granter_uid]) {
+            const u = userMap[row.granter_uid];
+            const userName = u.name || '—';
+            if (u.card_number) {
+              granterName = `${userName}（证号：${u.card_number}）`;
+            } else if (u.phone) {
+              granterName = `${userName}（手机：${u.phone}）`;
+            } else {
+              granterName = userName;
+            }
           } else {
             granterName = '账号已删除';
           }
-        } else if (pw.floor_id) {
-          // 兜底：查找管辖该楼层的 floor_manager
-          const manager = usersData.find(u => (u.role === 'floor_manager' || u.role === 'admin' || u.role === 'owner') && (u.managed_floors || []).includes(String(pw.floor_id)));
-          if (manager) granterName = manager.name || '—';
+        } else if (row.granter_name) {
+          // 兜底：如果只存了 granter_name（无 uid），直接显示解码后的姓名
+          try {
+            granterName = decodeURIComponent(row.granter_name);
+          } catch (e) {
+            granterName = row.granter_name;
+          }
         }
-        // 【修复】协作者信息：如果 uid 有值但用户已被删除，显示"账号已删除"
+        // 协作者信息
         const assistant = userMap[row.assistant_uid] || null;
         const assistantName = row.assistant_uid ? (assistant ? (assistant.name || '—') : '账号已删除') : '—';
         const assistantPhone = row.assistant_uid ? (assistant ? (assistant.phone || '—') : '账号已删除') : '—';
-        const expiresAt = row.assistant_uid ? (assistant ? (assistant.assistant_expires_at ? fmtTime(assistant.assistant_expires_at) : '—') : '账号已删除') : '—';
+        // 【v2.7.44】权限失效时间：只使用激活记录中的 expires_at（每条独立、不会覆盖）
+        // 旧记录 expires_at 为 NULL 时显示"—"，不再兜底到 users.assistant_expires_at
+        // 因为 users.assistant_expires_at 每次扫码都会被覆盖为最新值，会导致多条记录显示同一时间
+        let expiresAt = '—';
+        if (row.expires_at) {
+          expiresAt = fmtTime(row.expires_at);
+        }
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td class="py-3 px-4 text-slate-700 border-b border-slate-100"><span class="pw-value">${esc(pw.password || '—')}</span></td>
@@ -2166,13 +2687,71 @@ async function testConnection() {
   })();
 
   // ========== 功能说明折叠/展开 ==========
-  document.querySelectorAll('.info-toggle').forEach(btn => {
+  // 【v2.7.37】完整重写：setupHintFold 函数动态创建按钮、判断溢出、绑定事件
+  // 解决之前"只加 max-height 但缺少判断和按钮生成逻辑"的问题
+  function setupHintFold(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    // 防止重复初始化（切换标签页时会多次调用）
+    if (container.dataset.hintFold === '1') return;
+
+    // 检查内容是否超出 5 行（约 7.5em）
+    const isOverflow = container.scrollHeight > 7.5 * parseFloat(getComputedStyle(container).lineHeight || 16);
+
+    if (!isOverflow) {
+      // 内容不超出，不做任何处理
+      return;
+    }
+
+    // 标记已初始化
+    container.dataset.hintFold = '1';
+
+    // 添加折叠样式
+    container.style.maxHeight = '7.5em';
+    container.style.overflow = 'hidden';
+    container.style.transition = 'max-height 0.3s ease';
+
+    // 创建展开按钮
+    const btn = document.createElement('button');
+    btn.textContent = '展开 ↓';
+    btn.style.cssText = 'margin-top:4px;padding:2px 8px;font-size:12px;color:#1890ff;background:none;border:1px solid #1890ff;border-radius:4px;cursor:pointer;';
+
     btn.addEventListener('click', () => {
-      const target = document.getElementById(btn.dataset.target);
-      if (!target) return;
-      const hidden = target.style.display === 'none';
-      target.style.display = hidden ? '' : 'none';
-      btn.textContent = hidden ? '收起' : '展开';
+      if (container.style.maxHeight === 'none') {
+        // 收起
+        container.style.maxHeight = '7.5em';
+        btn.textContent = '展开 ↓';
+      } else {
+        // 展开
+        container.style.maxHeight = 'none';
+        btn.textContent = '收起 ↑';
+      }
+    });
+
+    // 将按钮插入到容器后面
+    container.parentNode.insertBefore(btn, container.nextSibling);
+  }
+
+  // 对所有标签页的说明容器执行折叠初始化
+  function _setupAllHintFolds() {
+    setupHintFold('info-users');
+    setupHintFold('info-passwords');
+    setupHintFold('info-settings');
+    setupHintFold('info-history');
+    setupHintFold('info-reports');
+    setupHintFold('info-photos');
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _setupAllHintFolds);
+  } else {
+    _setupAllHintFolds();
+  }
+  // 切换标签页时重新初始化（之前隐藏的 tab scrollHeight=0，切换后可见才能准确测量）
+  $$('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      // 等待 tab-panel display 切换完成
+      setTimeout(_setupAllHintFolds, 0);
     });
   });
 
@@ -2227,9 +2806,11 @@ async function testConnection() {
   });
 
   // 角色切换时显示/隐藏管辖楼层（只绑定一次）
+  // 【v2.7.43】协助者也需要选择管辖楼层（与 floor_manager 一致）
   $('#addUserRole').addEventListener('change', () => {
     const role = $('#addUserRole').value;
-    $('#addUserFloorsWrap').style.display = (role === 'floor_manager') ? '' : 'none';
+    const needFloors = (role === 'floor_manager' || role === 'assistant');
+    $('#addUserFloorsWrap').style.display = needFloors ? '' : 'none';
   });
 
   function closeAddUserModal() {
@@ -2254,26 +2835,43 @@ async function testConnection() {
     const role = $('#addUserRole').value;
     const managedFloors = [...$('#addUserFloors').querySelectorAll('input:checked')].map(cb => cb.value);
 
-    if (!name || !cardNumber || !password) { toast('请填写姓名、证号和密码', 'error'); return; }
+    // 【v2.7.43】前端校验：按最新规则校验所有字段
+    if (!name) { toast('请填写姓名', 'error'); return; }
+    if (!/^[\u4e00-\u9fa5a-zA-Z0-9]{2,8}$/.test(name)) { toast('姓名应为2-8位中英文或数字，不能包含特殊符号', 'error'); return; }
+    if (!cardNumber) { toast('请填写读者证号', 'error'); return; }
     if (!/^[A-Z0-9]{13,18}$/.test(cardNumber)) { toast('读者证号应为13-18位大写字母或数字', 'error'); return; }
-    if (password.length < 6) { toast('密码至少6位', 'error'); return; }
+    if (!password) { toast('请设置密码', 'error'); return; }
+    if (!/(?=.*[a-zA-Z])(?=.*\d).{6,16}/.test(password)) { toast('密码6-16位，需同时包含数字和字母', 'error'); return; }
+    if (role !== 'reader' && role !== 'assistant' && role !== 'floor_manager' && role !== 'admin' && role !== 'owner') {
+      toast('请选择有效的角色', 'error'); return;
+    }
+    // 辅专/协助者必须选择至少一个管辖楼层
+    if ((role === 'floor_manager' || role === 'assistant') && managedFloors.length === 0) {
+      toast('辅专/协助者必须选择至少一个管辖楼层', 'error'); return;
+    }
+    // 手机号选填，但填写了就必须符合规则
+    if (phone && !/^1\d{10}$/.test(phone)) { toast('手机号应为11位数字且以1开头', 'error'); return; }
 
     const btn = $('#addUserSubmit');
     btn.disabled = true; btn.textContent = '创建中...';
 
     try {
-      const fakeEmail = `${cardNumber}@lib.internal`;
+      // 【v2.7.43】协助者使用 {phone}@assistant.lib 邮箱；其他角色使用 {card_number}@lib.internal
+      const isAssistant = (role === 'assistant');
+      // 协助者必须填手机号（用于构造邮箱）
+      if (isAssistant && !phone) { toast('协助者必须填写手机号', 'error'); btn.disabled = false; btn.textContent = '确认创建'; return; }
+      const fakeEmail = isAssistant ? `${phone}@assistant.lib` : `${cardNumber}@lib.internal`;
       const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
         email: fakeEmail, password,
         email_confirm: true,
-        user_metadata: { name: name, card_number: cardNumber, phone: phone }
+        user_metadata: { name: name, card_number: cardNumber, phone: phone || '' }
       });
       console.log('[admin] createUser result:', { authData, authErr });
       if (authErr) {
         // 如果邮箱已存在（422），尝试查找已有 auth 用户并复用
         const isDuplicate = authErr.status === 422 || (authErr.message && authErr.message.toLowerCase().includes('already'));
         if (isDuplicate) {
-          toast('该证号已有 Auth 账号，尝试关联...', 'warning');
+          toast('该证号/手机号已有 Auth 账号，尝试关联...', 'warning');
           const { data: userList } = await supabase.auth.admin.listUsers();
           const existing = userList?.users?.find(u => u.email === fakeEmail);
           if (existing) {
@@ -2284,7 +2882,7 @@ async function testConnection() {
             // 直接插入 users 表记录
             const { error: dbErr2 } = await supabase.from('users').upsert({
               uid: existing.id, name, card_number: cardNumber, role,
-              managed_floors: role === 'floor_manager' ? managedFloors : [],
+              managed_floors: (role === 'floor_manager' || role === 'assistant') ? managedFloors : [],
               phone: phone || null
             }, { onConflict: 'uid' });
             if (dbErr2) throw new Error('写入用户数据失败: ' + cnErr(dbErr2));
@@ -2300,7 +2898,7 @@ async function testConnection() {
 
       const { error: dbErr } = await supabase.from('users').upsert({
         uid, name, card_number: cardNumber, role,
-        managed_floors: role === 'floor_manager' ? managedFloors : [],
+        managed_floors: (role === 'floor_manager' || role === 'assistant') ? managedFloors : [],
         phone: phone || null
       }, { onConflict: 'uid' });
       if (dbErr) {

@@ -123,7 +123,7 @@
         <div class="form-group has-validation">
           <label class="form-label">密码</label>
           <div class="input-wrap">
-            <input class="form-input" type="password" id="reg-password" placeholder="请输入至少6位密码" autocomplete="new-password">
+            <input class="form-input" type="password" id="reg-password" placeholder="6-16位，需含数字和字母" autocomplete="new-password">
             <span class="status-icon" id="regPwdIcon"></span>
           </div>
           <small class="hint" id="regPwdHint"></small>
@@ -161,7 +161,7 @@
           </div>
           <small class="hint" id="collabPhoneHint"></small>
         </div>
-        <button class="login-btn" id="btn-collab-relogin">快捷登录</button>
+        <button class="login-btn" id="btn-collab-relogin" style="white-space:nowrap;">已有账号登录</button>
         <div class="login-divider">或</div>
         <button class="login-btn green" id="btn-collab-scan">扫描协作二维码</button>
         <div class="login-error err" id="collab-error"></div>
@@ -183,6 +183,14 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" onerror="window.__sbLoadFailed=true"></script>
+<script>
+// 【v2.7.28】10秒后如果 supabase 仍未加载，显示错误提示
+setTimeout(function() {
+  if (typeof window.supabase === 'undefined' || typeof window.supabase.createClient !== 'function') {
+    document.body.innerHTML = '<div style="text-align:center;padding:40px 20px;font-size:16px;color:#333;"><p>网络连接超时</p><p style="color:#999;font-size:14px;">请检查网络后刷新页面</p><button onclick="location.reload()" style="margin-top:20px;padding:10px 30px;background:#1890ff;color:#fff;border:none;border-radius:4px;font-size:14px;">刷新重试</button></div>';
+  }
+}, 10000);
+</script>
 <script src="auth.js"></script>
 <script>
 (async function(){
@@ -214,7 +222,7 @@
   const regLink = $('switch-to-register');
   const [sessionResult, collabResult, regSetting] = await Promise.all([
     getSession().catch(() => null),
-    (async () => { const p = localStorage.getItem('assistant_phone'); if (!p) return null; try { return await assistantReLogin('', p); } catch(e) { return null; } })(),
+    (async () => { const p = localStorage.getItem('shared_assistant_phone'); if (!p) return null; try { return await assistantReLogin('', p); } catch(e) { return null; } })(),
     (async () => { try { const { data, error } = await getSupabaseClient().from('settings').select('value').eq('key', 'registration_enabled').single(); if (error) return null; return data; } catch(e) { return null; } })()
   ]);
 
@@ -222,7 +230,7 @@
   if (sessionResult) { location.href = 'index.html'; return; }
   if (collabResult && collabResult.success) { location.href = 'index.html'; return; }
   if (collabResult === null) { /* 无协作缓存 */ }
-  else { localStorage.removeItem('assistant_uid'); localStorage.removeItem('assistant_phone'); }
+  else { localStorage.removeItem('shared_assistant_uid'); localStorage.removeItem('shared_assistant_phone'); }
 
   // ========== 注册按钮状态 ==========
   let registrationEnabled = false;
@@ -292,6 +300,11 @@
 
   // 证号登录
   $('btn-card-login').onclick=async()=>{
+    // 【v2.7.28】前置检查：Supabase SDK 是否加载完成
+    if (typeof supabase === 'undefined' || typeof isSupabaseReady !== 'function' || !isSupabaseReady()) {
+      showToast('页面尚未加载完成，请稍等');
+      return;
+    }
     // 【v2.7.14】提交前强制全量校验，显示所有错误提示
     validateCardNum();
     validateCardPwd();
@@ -337,12 +350,22 @@
   // 【v2.7.1】注册表单实时校验
   const regValidState = { name: false, card: false, pwd: false, pwd2: false };
 
-  function updateFieldStatus(inputEl, iconEl, hintEl, isValid, errMsg) {
+  function updateFieldStatus(inputEl, iconEl, hintEl, isValid, errMsg, showValidIcon) {
+    // 【v2.7.28】showValidIcon 默认 true（注册表单保留绿色 ✓），证号登录和协作登录传 false 仅显示红色错误
+    if (showValidIcon === undefined) showValidIcon = true;
     const val = inputEl.value;
     const hasInput = val.length > 0;
-    // 图标
-    iconEl.className = 'status-icon' + (hasInput ? (' show ' + (isValid ? 'valid' : 'invalid')) : '');
-    iconEl.textContent = hasInput ? (isValid ? '✓' : '✗') : '';
+    // 图标：showValidIcon=false 时合法状态不显示图标，仅非法状态显示 ✗
+    if (hasInput && !isValid) {
+      iconEl.className = 'status-icon show invalid';
+      iconEl.textContent = '✗';
+    } else if (hasInput && isValid && showValidIcon) {
+      iconEl.className = 'status-icon show valid';
+      iconEl.textContent = '✓';
+    } else {
+      iconEl.className = 'status-icon';
+      iconEl.textContent = '';
+    }
     // 下方提示：仅不合法时显示红色错误，合法或为空时不显示
     if (hasInput && !isValid) {
       hintEl.className = 'hint error';
@@ -351,9 +374,15 @@
       hintEl.className = 'hint';
       hintEl.textContent = '';
     }
-    // 输入框边框
+    // 输入框边框：showValidIcon=false 时合法状态移除所有边框样式，仅非法状态显示红色
     inputEl.classList.remove('is-valid', 'is-invalid');
-    if (hasInput) inputEl.classList.add(isValid ? 'is-valid' : 'is-invalid');
+    if (hasInput) {
+      if (isValid) {
+        if (showValidIcon) inputEl.classList.add('is-valid');
+      } else {
+        inputEl.classList.add('is-invalid');
+      }
+    }
   }
 
   // 【v2.7.14】强制显示指定容器内所有未通过校验的输入框错误提示
@@ -389,9 +418,10 @@
 
   function validateRegPwd() {
     const val = $('reg-password').value;
-    const valid = val.length >= 6;
+    // 【v2.7.29】密码规则：6-16位，必须同时包含数字和字母
+    const valid = val.length >= 6 && val.length <= 16 && /\d/.test(val) && /[a-zA-Z]/.test(val);
     regValidState.pwd = valid;
-    updateFieldStatus($('reg-password'), $('regPwdIcon'), $('regPwdHint'), valid, '密码至少6位');
+    updateFieldStatus($('reg-password'), $('regPwdIcon'), $('regPwdHint'), valid, '密码6-16位，需同时包含数字和字母');
     // 同步校验确认密码
     if ($('reg-password-confirm').value) {
       const p2 = $('reg-password-confirm').value;
@@ -423,6 +453,11 @@
 
   // 协作快捷登录
   $('btn-collab-relogin').onclick=async()=>{
+    // 【v2.7.28】前置检查：Supabase SDK 是否加载完成
+    if (typeof supabase === 'undefined' || typeof isSupabaseReady !== 'function' || !isSupabaseReady()) {
+      showToast('页面尚未加载完成，请稍等');
+      return;
+    }
     // 【v2.7.14】提交前强制全量校验，显示所有错误提示
     validateCollabName();
     validateCollabPhone();
@@ -457,7 +492,7 @@
     const val = $('card-number').value.trim();
     const valid = /^[A-Z0-9]{13,18}$/.test(val);
     cardValidState.num = valid;
-    updateFieldStatus($('card-number'), $('cardNumIcon'), $('cardNumHint'), valid, '请输入13-18位大写字母或数字');
+    updateFieldStatus($('card-number'), $('cardNumIcon'), $('cardNumHint'), valid, '请输入13-18位大写字母或数字', false);
     checkCardLoginBtn();
     if (val) hide('card-login-error');
   }
@@ -466,7 +501,7 @@
     const val = $('card-password').value;
     const valid = val.length >= 6;
     cardValidState.pwd = valid;
-    updateFieldStatus($('card-password'), $('cardPwdIcon'), $('cardPwdHint'), valid, '密码至少6位');
+    updateFieldStatus($('card-password'), $('cardPwdIcon'), $('cardPwdHint'), valid, '密码至少6位', false);
     checkCardLoginBtn();
     if (val) hide('card-login-error');
   }
@@ -487,7 +522,7 @@
     const val = $('collab-name').value.trim();
     const valid = /^[\u4e00-\u9fa5a-zA-Z0-9]{2,8}$/.test(val);
     collabValidState.name = valid;
-    updateFieldStatus($('collab-name'), $('collabNameIcon'), $('collabNameHint'), valid, '请输入2-8个字符，仅限中英文和数字');
+    updateFieldStatus($('collab-name'), $('collabNameIcon'), $('collabNameHint'), valid, '请输入2-8个字符，仅限中英文和数字', false);
     checkCollabBtns();
     if (val) hide('collab-error');
   }
@@ -496,7 +531,7 @@
     const val = $('collab-phone').value.trim();
     const valid = /^1\d{10}$/.test(val);
     collabValidState.phone = valid;
-    updateFieldStatus($('collab-phone'), $('collabPhoneIcon'), $('collabPhoneHint'), valid, '请输入正确的11位手机号');
+    updateFieldStatus($('collab-phone'), $('collabPhoneIcon'), $('collabPhoneHint'), valid, '请输入正确的11位手机号', false);
     checkCollabBtns();
     if (val) hide('collab-error');
   }

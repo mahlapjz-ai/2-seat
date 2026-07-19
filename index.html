@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
 <!-- 【v1.9.20】阻塞渲染：同步读取主题，防止非默认主题闪烁 -->
-<script>try{var t=localStorage.getItem('app_theme');if(t&&t!=='default'){var m={'normal':'theme-normal','yiban':'theme-yiban','pixel':'theme-pixel','pink':'theme-pink'};if(m[t])document.documentElement.className=m[t]}}catch(e){}try{if(/Android/i.test(navigator.userAgent))document.documentElement.classList.add('android-device')}catch(e){}</script>
+<script>try{var t=localStorage.getItem('shared_app_theme');if(t&&t!=='default'){var m={'normal':'theme-normal','yiban':'theme-yiban','pixel':'theme-pixel','pink':'theme-pink'};if(m[t])document.documentElement.className=m[t]}}catch(e){}try{if(/Android/i.test(navigator.userAgent))document.documentElement.classList.add('android-device')}catch(e){}</script>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="seat-icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="seat-icon.png">
@@ -19,11 +19,11 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
 <!-- Supabase SDK + 认证模块 + 数据层 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
-<script src="auth.js?v=2.7.15"></script>
-<script src="data-layer.js?v=2.7.15"></script>
+<script src="auth.js?v=2.7.26"></script>
+<script src="data-layer.js?v=2.7.26"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <!-- 拆分自原单文件 - 外部样式 -->
-<link rel="stylesheet" href="styles.css?v=2.7.15">
+<link rel="stylesheet" href="styles.css?v=2.7.26">
 <link rel="stylesheet" href="login.css?v=2.1.0">
 </head>
 <body>
@@ -52,7 +52,7 @@
     <button class="user-bar-logout" id="user-bar-logout">登出</button>
   </div>
 </div>
-<div class="page-header" id="page-header" style="opacity:0;transition:opacity .2s ease"><div class="page-title-group" id="page-title-text" style="pointer-events:auto;position:relative;z-index:99"><span class="page-title">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><span class="mode-switch-hint" id="mode-switch-hint">点击切换显示</span></div><div class="date-picker-wrap" id="date-picker-wrap"><button id="date-picker-btn" class="header-btn date-picker-btn"></button><div class="date-picker-dropdown" id="date-picker-dropdown" style="display:none"></div></div><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">设置</button><button id="filter-toggle-btn" class="filter-toggle-btn" style="display:none;font-size:14px;padding:8px 16px">时段筛选</button></div>
+<div class="page-header" id="page-header" style="opacity:0;transition:opacity .2s ease"><div class="page-title-group" id="page-title-text" style="pointer-events:auto;position:relative;z-index:99"><span class="page-title">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><span class="mode-switch-hint" id="mode-switch-hint">点击切换显示</span></div><div class="date-picker-wrap" id="date-picker-wrap"><span class="date-picker-label" style="display:block;font-size:11px;text-align:left;margin-bottom:2px;">选择日期</span><button id="date-picker-btn" class="header-btn date-picker-btn"></button><div class="date-picker-dropdown" id="date-picker-dropdown" style="display:none"></div></div><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">设置</button><button id="filter-toggle-btn" class="filter-toggle-btn" style="display:none;font-size:14px;padding:8px 16px">时段筛选</button></div>
 <div id="app"></div>
 <div id="overview-container" style="display:none"></div>
 <div id="bottom-bar">
@@ -71,8 +71,8 @@
 <div class="modal-overlay" id="batch-modal">
   <div class="modal-box">
     <h3>批量下载</h3>
-    <div class="batch-section"><h4>选择区域 <span class="batch-progress" id="batch-progress"></span> <button class="batch-select-all" data-target="area">全选/取消</button></h4><div class="batch-grid" id="batch-areas"></div></div>
-    <div class="batch-section"><h4>选择时段 <button class="batch-select-all" data-target="time">全选/取消</button></h4><div class="batch-grid" id="batch-times"></div></div>
+    <div class="batch-section"><h4>选择区域 <button class="batch-select-all" data-target="area">全选/取消</button></h4><div class="batch-grid" id="batch-areas"></div></div>
+    <div class="batch-section"><h4>选择时段 <span class="batch-progress" id="batch-progress"></span> <button class="batch-select-all" data-target="time">全选/取消</button></h4><div class="batch-grid" id="batch-times"></div></div>
     <div class="modal-btns"><button class="modal-cancel" id="batch-cancel">取消</button><button class="modal-confirm" id="batch-exec">打包下载(ZIP)</button></div>
   </div>
 </div>
@@ -121,9 +121,9 @@
 <div class="filter-sheet" id="filter-sheet">
   <div class="filter-sheet-header"><span class="filter-sheet-title">选择显示时段（打勾为显示时段）</span><button class="filter-sheet-close" id="filter-close">&times;</button></div>
   <div class="filter-sheet-actions">
-    <button class="filter-action-btn primary" id="filter-hide-passed">隐藏已过时段</button>
+    <button class="filter-action-btn" id="filter-hide-passed">隐藏已过时段</button>
     <button class="filter-action-btn" id="filter-show-with-images">仅显示有图</button>
-    <button class="filter-action-btn" id="filter-select-all">全选</button>
+    <button class="filter-action-btn" id="filter-select-all"><span class="text-default">默认</span><span class="text-separator">/</span><span class="text-all">全选</span></button>
     <button class="filter-action-btn" id="filter-clear">清除</button>
   </div>
   <div class="filter-sheet-body" id="filter-body"></div>
@@ -135,6 +135,21 @@
   <div class="func-panel-body" id="func-panel-body"></div>
 </div>
 <!-- 拆分自原单文件 - 外部脚本 -->
-<script src="scripts.js?v=2.7.15"></script>
+<script src="scripts.js?v=2.7.43"></script>
+<!-- 【v2.7.33】GitHub Pages 首次加载缓慢时的超时检测 -->
+<script>
+// 8 秒后如果 skeleton 仍然显示，提示用户刷新（CDN 冷启动场景）
+setTimeout(function() {
+  var skeleton = document.getElementById('skeleton');
+  if (skeleton && skeleton.style.display !== 'none') {
+    skeleton.innerHTML = '<div style="text-align:center;padding:60px 20px;font-size:16px;color:#333;">'
+      + '<div style="font-size:48px;margin-bottom:16px;">📡</div>'
+      + '<p style="font-weight:500;margin-bottom:8px;">加载缓慢</p>'
+      + '<p style="color:#999;font-size:14px;margin-bottom:20px;">可能是网络问题或首次访问，请尝试刷新页面</p>'
+      + '<button onclick="location.reload()" style="padding:10px 30px;background:#1890ff;color:#fff;border:none;border-radius:4px;font-size:14px;cursor:pointer;">刷新重试</button>'
+      + '</div>';
+  }
+}, 8000);
+</script>
 </body>
 </html>

@@ -208,26 +208,111 @@ const _seatNamesCache = {};
 const _extraSeatsCache = {};
 const _deletedSeatsCache = new Set();
 const _deletedPhotoIds = new Set(); // 【v2.3.0】已删除的 photo_id，防止增量合并恢复
-const _userNameCache = new Map(); // uid → name 缓存
+const _userNameCache = new Map(); // uid → name 内存缓存
+const _userNameFetching = new Map(); // uid → Promise（去重并发请求）
+const _USER_NAME_LS_KEY = 'shared_seat_user_names_v1'; // localStorage 持久化键
 
-/** 批量获取用户姓名（缓存 + 按需查询） */
+/** 【v2.7.16】从 localStorage 恢复姓名缓存（页面刷新后立即可用，避免微信 WebView 会话时序问题） */
+function _loadUserNameCacheFromLS() {
+  if (_userNameCache.size > 0) return; // 已加载则跳过
+  try {
+    const raw = localStorage.getItem(_USER_NAME_LS_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw);
+    if (obj && typeof obj === 'object') {
+      Object.entries(obj).forEach(([uid, name]) => {
+        if (uid && name) _userNameCache.set(uid, name);
+      });
+    }
+  } catch (e) { /* localStorage 不可用，忽略 */ }
+}
+
+/** 【v2.7.16】将姓名缓存写入 localStorage（节流，避免频繁写入） */
+let _userNameLSWriteTimer = null;
+function _persistUserNameCacheToLS() {
+  if (_userNameLSWriteTimer) return;
+  _userNameLSWriteTimer = setTimeout(() => {
+    _userNameLSWriteTimer = null;
+    try {
+      const obj = {};
+      _userNameCache.forEach((name, uid) => { obj[uid] = name; });
+      localStorage.setItem(_USER_NAME_LS_KEY, JSON.stringify(obj));
+    } catch (e) { /* quota exceeded，忽略 */ }
+  }, 1000);
+}
+
+/** 【v2.7.16】预热当前用户姓名到缓存（登录后立即调用） */
+function _preWarmCurrentUserName(uid, name) {
+  if (!uid || !name) return;
+  if (_userNameCache.get(uid) !== name) {
+    _userNameCache.set(uid, name);
+    _persistUserNameCacheToLS();
+  }
+}
+
+/** 批量获取用户姓名（缓存 + 重试 + 按需查询）
+ *  【v2.7.16】增强：3 次重试 + 500ms 间隔，解决微信 WebView 会话时序导致查询失败的问题
+ */
 async function batchGetUserNames(uids) {
   if (!uids || !uids.length) return {};
+  _loadUserNameCacheFromLS(); // 确保从 localStorage 恢复
   const missing = uids.filter(uid => uid && !_userNameCache.has(uid));
   if (missing.length) {
-    try {
-      const { data } = await _sb.from('users').select('uid, name').in('uid', missing);
-      if (data) data.forEach(r => { if (r.name) _userNameCache.set(r.uid, r.name); });
-    } catch (e) { console.warn('[dl] 批量查询用户姓名失败:', e); }
+    // 去重并发请求：同一个 uid 同时被多次请求时，复用同一个 Promise
+    const tasks = missing.map(uid => {
+      if (!_userNameFetching.has(uid)) {
+        _userNameFetching.set(uid, _fetchUserNameWithRetry(uid));
+      }
+      return _userNameFetching.get(uid).finally(() => _userNameFetching.delete(uid));
+    });
+    await Promise.all(tasks);
   }
   const result = {};
   uids.forEach(uid => { if (uid) result[uid] = _userNameCache.get(uid) || ''; });
   return result;
 }
 
+/** 【v2.7.16】带重试的单 uid 姓名查询（3 次尝试，500ms 间隔）
+ *  【v2.7.19】改用 RPC 函数 get_user_names 绕过 RLS，解决非 owner/admin 角色查询被拦截的问题
+ */
+async function _fetchUserNameWithRetry(uid, maxRetries = 2, delayMs = 500) {
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      // 【v2.7.19】使用 RPC 函数绕过 RLS（仅返回 uid 和 name，不泄露敏感字段）
+      const { data, error } = await _sb.rpc('get_user_names', { p_uids: [uid] });
+      if (error) throw error;
+      if (data && data.length > 0 && data[0].name) {
+        _userNameCache.set(uid, data[0].name);
+        _persistUserNameCacheToLS();
+        return;
+      }
+      // data 为空数组：用户不存在或 name 为空，缓存为空字符串避免重试
+      _userNameCache.set(uid, '');
+      return;
+    } catch (e) {
+      console.warn(`[dl] 查询用户姓名失败 (uid=${uid}, 第${i + 1}次):`, e.message || e);
+      // 【v2.7.19】RPC 失败时回退到直接查询（兼容未部署 RPC 函数的环境）
+      try {
+        const { data: fallbackData, error: fallbackErr } = await _sb.from('users').select('uid, name').eq('uid', uid).maybeSingle();
+        if (!fallbackErr && fallbackData && fallbackData.name) {
+          _userNameCache.set(uid, fallbackData.name);
+          _persistUserNameCacheToLS();
+          return;
+        }
+      } catch (fallbackErr) { /* 静默 */ }
+      if (i < maxRetries) {
+        await new Promise(r => setTimeout(r, delayMs));
+        continue;
+      }
+      // 最终失败：不缓存，下次调用时再次尝试
+    }
+  }
+}
+
 // ---- 网络重试 + 本地缓存 ----
 const SUPABASE_HOST = 'https://cuejslqxatzkortnkdsf.supabase.co';
-const LOCAL_CACHE_PREFIX = 'seat_cell_';
+// 【v2.7.34】添加 shared_ 前缀，切断与离线版 localStorage 的关联
+const LOCAL_CACHE_PREFIX = 'shared_seat_cell_';
 const LOCAL_CACHE_TTL = 30 * 60 * 1000; // 策略四：30分钟过期
 
 /** 策略一：通用重试函数，最多重试 maxRetries 次，每次间隔 delayMs 毫秒 */
@@ -491,7 +576,9 @@ async function getCellData(ck, dateRange) {
   return { key: ck, images: _cellDataCache.get(ck) || freshImages };
 }
 
-/** 批量获取（按 cell_key 批量查询） */
+/** 批量获取（按 cell_key 批量查询）
+ *  【v2.7.38】分批查询：每批最多 100 个 cellKey，避免 URL 过长导致请求失败
+ */
 async function getCellDataBatch(cellKeys, dateRange) {
   if (!cellKeys || !cellKeys.length) return {};
   const result = {};
@@ -502,18 +589,38 @@ async function getCellDataBatch(cellKeys, dateRange) {
   });
   if (!missing.length) return result;
 
-  // 策略一：使用 fetchWithRetry 重试
-  const { data, error } = await fetchWithRetry(() => {
-    let q = _sb.from('seat_photos')
-      .select('id, url, status, cell_key, uploaded_by, created_at, time_slot')
-      .in('cell_key', missing)
-      .order('created_at', { ascending: true });
-    if (dateRange && dateRange.start && dateRange.end) {
-      q = q.gte('created_at', dateRange.start.toISOString()).lt('created_at', dateRange.end.toISOString());
+  // 【v2.7.38】分批查询，每批最多 100 个 cellKey
+  const BATCH_SIZE = 100;
+  const batches = [];
+  for (let i = 0; i < missing.length; i += BATCH_SIZE) {
+    batches.push(missing.slice(i, i + BATCH_SIZE));
+  }
+  console.log('[getCellDataBatch] 总 cellKey 数:', missing.length, '分批数:', batches.length);
+
+  let allData = [];
+  let lastError = null;
+  for (let bi = 0; bi < batches.length; bi++) {
+    const batch = batches[bi];
+    const { data, error } = await fetchWithRetry(() => {
+      let q = _sb.from('seat_photos')
+        .select('id, url, status, cell_key, uploaded_by, created_at, time_slot')
+        .in('cell_key', batch)
+        .order('created_at', { ascending: true });
+      if (dateRange && dateRange.start && dateRange.end) {
+        q = q.gte('created_at', dateRange.start.toISOString()).lt('created_at', dateRange.end.toISOString());
+      }
+      return q;
+    });
+    if (error) {
+      console.warn(`[getCellDataBatch] 第 ${bi + 1} 批查询失败:`, error);
+      lastError = error;
+    } else if (data) {
+      allData = allData.concat(data);
     }
-    return q;
-  });
-  if (error) {
+  }
+
+  // 所有批次都失败才走错误兜底逻辑
+  if (allData.length === 0 && lastError) {
     missing.forEach(ck => {
       const memCached = _cellDataCache.get(ck);
       if (memCached && memCached.length > 0) {
@@ -527,7 +634,7 @@ async function getCellDataBatch(cellKeys, dateRange) {
   }
 
   const byCellKey = {};
-  (data || []).forEach(p => { if (!byCellKey[p.cell_key]) byCellKey[p.cell_key] = []; if (byCellKey[p.cell_key].length < 3) byCellKey[p.cell_key].push(p); });
+  (allData || []).forEach(p => { if (!byCellKey[p.cell_key]) byCellKey[p.cell_key] = []; if (byCellKey[p.cell_key].length < 3) byCellKey[p.cell_key].push(p); });
 
   missing.forEach(ck => {
     const photos = byCellKey[ck] || [];

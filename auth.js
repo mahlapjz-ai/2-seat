@@ -79,7 +79,8 @@ function extractErrMsg(err) {
 async function signUpWithCard(cardNumber, password, name) {
   if (!isSupabaseReady()) return { success: false, error: 'Supabase 未配置' };
   if (!/^[A-Z0-9]{13,18}$/.test(cardNumber)) return { success: false, error: '读者证号应为13-18位大写字母或数字' };
-  if (!password || password.length < 6) return { success: false, error: '密码至少6位' };
+  // 【v2.7.29】密码规则：6-16位，必须同时包含数字和字母
+  if (!password || password.length < 6 || password.length > 16 || !/\d/.test(password) || !/[a-zA-Z]/.test(password)) return { success: false, error: '密码6-16位，需同时包含数字和字母' };
   // 校验注册开关
   try {
     const { data } = await _sb.from('settings').select('value').eq('key', 'registration_enabled').single();
@@ -226,17 +227,16 @@ async function assistantQRLogin(qrData, name, phone) {
     // 调用 loadUserProfile 从数据库强制刷新，补充 card_number 等字段
     await loadUserProfile();
     console.log('[auth] loadUserProfile 后角色:', currentUser.role, '楼层:', currentUser.managedFloors);
-    // 如果 loadUserProfile 将角色错误地降级为 reader，恢复 Edge Function 返回的角色
-    if (savedRole === 'assistant' && currentUser.role !== 'assistant') {
-      console.warn('[auth] loadUserProfile 将角色降级为', currentUser.role, '，恢复为 assistant');
-      currentUser.role = 'assistant';
-      currentUser.managedFloors = savedFloors;
-      currentUser.assistantExpiresAt = savedExpires;
+    // 【v2.7.35】信任数据库结果：如果数据库已将角色降级为 reader（密码被吊销或过期），
+    // 不再恢复 assistant。仅当 savedExpires 未过期且数据库角色仍为 assistant 时才正常使用。
+    if (savedRole === 'assistant' && currentUser.role === 'reader') {
+      const isExpired = savedExpires && new Date(savedExpires) <= new Date();
+      console.warn('[auth] 数据库已降级为 reader，savedExpires 是否过期:', isExpired);
+      if (typeof showToast === 'function') showToast('您的协助者权限已变更（可能已过期或被吊销）', 3000);
     }
     console.log('[auth] 最终角色:', currentUser.role, '楼层:', currentUser.managedFloors, '过期:', currentUser.assistantExpiresAt);
-    try { localStorage.setItem('assistant_uid', currentUser.uid); localStorage.setItem('assistant_phone', phone); } catch (e) {}
-    // 写入激活日志
-    if (currentUser.uid) logCollabActivation(qrData, currentUser.uid);
+    try { localStorage.setItem('shared_assistant_uid', currentUser.uid); localStorage.setItem('shared_assistant_phone', phone); } catch (e) {}
+    // 【v2.7.25】激活记录已由 Edge Function 写入，客户端不再重复写入
     return { success: true, error: null, user: currentUser };
   } catch (err) {
     console.error('[auth] assistantQRLogin error:', err);
@@ -302,16 +302,13 @@ async function callEdgeFunctionForSession(uid, phone, qrData) {
     console.log('[auth] callEdgeFunctionForSession 设置角色:', savedRole, '楼层:', savedFloors);
   }
   await loadUserProfile();
-  // 防止 loadUserProfile 降级角色
-  if (savedRole === 'assistant' && currentUser.role !== 'assistant') {
-    console.warn('[auth] loadUserProfile 降级角色，恢复为 assistant');
-    currentUser.role = 'assistant';
-    currentUser.managedFloors = savedFloors;
-    currentUser.assistantExpiresAt = savedExpires;
+  // 【v2.7.35】信任数据库结果：仅提示权限变更，不再恢复 assistant
+  if (savedRole === 'assistant' && currentUser.role === 'reader') {
+    console.warn('[auth] 数据库已降级为 reader');
+    if (typeof showToast === 'function') showToast('您的协助者权限已变更（可能已过期或被吊销）', 3000);
   }
-  try { localStorage.setItem('assistant_uid', currentUser.uid); localStorage.setItem('assistant_phone', phone); } catch (e) {}
-  // 写入激活日志
-  if (qrData && currentUser.uid) logCollabActivation(qrData, currentUser.uid);
+  try { localStorage.setItem('shared_assistant_uid', currentUser.uid); localStorage.setItem('shared_assistant_phone', phone); } catch (e) {}
+  // 【v2.7.25】激活记录已由 Edge Function 写入，客户端不再重复写入
   return { success: true, error: null, user: currentUser };
 }
 
@@ -367,14 +364,12 @@ async function assistantReLogin(name, phone) {
       console.log('[auth] assistantReLogin 设置角色:', savedRole, '楼层:', savedFloors);
     }
     await loadUserProfile();
-    // 防止 loadUserProfile 降级角色
-    if (savedRole === 'assistant' && currentUser.role !== 'assistant') {
-      console.warn('[auth] loadUserProfile 降级角色，恢复为 assistant');
-      currentUser.role = 'assistant';
-      currentUser.managedFloors = savedFloors;
-      currentUser.assistantExpiresAt = savedExpires;
+    // 【v2.7.35】信任数据库结果：不再恢复 assistant 角色
+    if (savedRole === 'assistant' && currentUser.role === 'reader') {
+      console.warn('[auth] 数据库已降级为 reader');
+      if (typeof showToast === 'function') showToast('您的协助者权限已变更（可能已过期或被吊销）', 3000);
     }
-    try { localStorage.setItem('assistant_uid', currentUser.uid); localStorage.setItem('assistant_phone', phone); } catch (e) {}
+    try { localStorage.setItem('shared_assistant_uid', currentUser.uid); localStorage.setItem('shared_assistant_phone', phone); } catch (e) {}
     return { success: true, error: null, user: currentUser };
   } catch (err) { return { success: false, error: extractErrMsg(err) || '登录请求失败' }; }
 }
@@ -382,58 +377,15 @@ async function assistantReLogin(name, phone) {
 // ---- 协作者自动登录 ----
 async function assistantAutoLogin() {
   try {
-    const phone = localStorage.getItem('assistant_phone');
+    const phone = localStorage.getItem('shared_assistant_phone');
     if (!phone) return { success: false, error: '无设备绑定' };
     return await assistantReLogin('', phone);
   } catch (e) { return { success: false, error: '自动登录失败' }; }
 }
 
-// ---- 单设备登录：session_token 机制 ----
-let _sessionCheckTimer = null;
-
-/** 生成并写入 session_token 到数据库和 localStorage */
-async function initSessionToken() {
-  if (!currentUser.uid || !isSupabaseReady()) return;
-  const token = crypto.randomUUID();
-  try {
-    await _sb.from('users').update({ session_token: token }).eq('uid', currentUser.uid);
-    localStorage.setItem('seat_session_token', token);
-    console.log('[auth] session_token 已写入');
-  } catch (e) {
-    console.warn('[auth] session_token 写入失败:', e);
-  }
-}
-
-/** 启动定时检查 session_token（每 30 秒） */
-function startSessionCheck() {
-  stopSessionCheck();
-  _sessionCheckTimer = setInterval(async () => {
-    if (!currentUser.uid || !isSupabaseReady()) return;
-    if (document.visibilityState !== 'visible') return;
-    try {
-      const localToken = localStorage.getItem('seat_session_token');
-      if (!localToken) return; // 未登录状态
-      const { data } = await _sb.from('users').select('session_token').eq('uid', currentUser.uid).single();
-      if (data && data.session_token && data.session_token !== localToken) {
-        // session_token 不一致，说明账号在别处登录
-        console.warn('[auth] 检测到账号在其他设备登录，强制登出');
-        stopSessionCheck();
-        localStorage.clear();
-        sessionStorage.clear();
-        alert('您的账号已在其他设备登录');
-        window.location.href = 'login.html';
-      }
-    } catch (e) { /* 查询失败忽略 */ }
-  }, 30000);
-}
-
-/** 停止定时检查 */
-function stopSessionCheck() {
-  if (_sessionCheckTimer) {
-    clearInterval(_sessionCheckTimer);
-    _sessionCheckTimer = null;
-  }
-}
+// ---- 多设备登录：已取消 session_token 互踢机制（v2.7.32） ----
+// 允许多设备同时登录同一账号，不再生成/检查 session_token
+// users 表的 session_token 字段保留不动，但前端不再使用
 
 // ---- 登出 ----
 let _authListener = null; // 保存监听器引用，登出时取消
@@ -445,20 +397,15 @@ async function signOut() {
       try { _authListener.subscription.unsubscribe(); } catch (e) {}
       _authListener = null;
     }
-    // 2. 停止轮询和 session 检查
+    // 2. 停止轮询
     if (typeof stopPolling === 'function') stopPolling();
-    stopSessionCheck();
-    // 3. 清除数据库中的 session_token
-    if (currentUser.uid && isSupabaseReady()) {
-      try { await _sb.from('users').update({ session_token: null }).eq('uid', currentUser.uid); } catch (e) {}
-    }
-    // 4. 调用 Supabase 登出
+    // 3. 调用 Supabase 登出
     if (_sb) {
       try { await _sb.auth.signOut(); } catch (e) { console.warn('[signOut] signOut 调用异常:', e); }
     }
-    // 5. 重置用户状态
+    // 4. 重置用户状态
     resetCurrentUser();
-    // 6. 彻底清除所有 Supabase session 残留（sb-* 键）+ 业务缓存
+    // 5. 彻底清除所有 Supabase session 残留（sb-* 键）+ 业务缓存
     try {
       // 【v2.7.15】清空预签名 URL 内存缓存
       if (typeof clearPresignedUrlCache === 'function') clearPresignedUrlCache();
@@ -468,12 +415,14 @@ async function signOut() {
           localStorage.removeItem(key);
         }
       }
-      sessionStorage.removeItem('seat_user_profile');
-      localStorage.removeItem('assistant_uid');
-      localStorage.removeItem('assistant_phone');
+      sessionStorage.removeItem('shared_seat_user_profile');
+      localStorage.removeItem('shared_assistant_uid');
+      localStorage.removeItem('shared_assistant_phone');
+      // 【v2.7.32】清理可能残留的旧 session_token（已弃用，仅做历史清理）
       localStorage.removeItem('seat_session_token');
+      localStorage.removeItem('shared_seat_session_token');
     } catch (e) {}
-    // 7. 跳转登录页
+    // 6. 跳转登录页
     window.location.href = 'login.html';
   } catch (err) {
     console.error('登出失败:', err);
@@ -522,15 +471,17 @@ async function loadUserProfile() {
       if (p.phone) currentUser.phone = p.phone;
     }
   } catch (err) { currentUser.role = 'reader'; currentUser.managedFloors = []; }
+  // 【v2.7.16】预热当前用户姓名到缓存，供历史图片水印使用
+  if (typeof _preWarmCurrentUserName === 'function') {
+    _preWarmCurrentUserName(currentUser.uid, currentUser.name);
+  }
 
   await checkAssistantExpiry();
   currentUser.loaded = true;
-  // 【v2.7.0】单设备登录：写入 session_token 并启动定时检查
-  await initSessionToken();
-  startSessionCheck();
+  // 【v2.7.32】已取消单设备登录机制，允许多设备同时登录
   // 更新缓存
   try {
-    sessionStorage.setItem('seat_user_profile', JSON.stringify({
+    sessionStorage.setItem('shared_seat_user_profile', JSON.stringify({
       uid: currentUser.uid, email: currentUser.email, name: currentUser.name,
       cardNumber: currentUser.cardNumber, phone: currentUser.phone,
       role: currentUser.role, managedFloors: currentUser.managedFloors,
@@ -561,20 +512,81 @@ async function checkAssistantExpiry() {
 // ---- 全局设置缓存 ----
 const globalSettings = {};
 
+// 【v2.7.31】受角色权限控制的功能开关清单（共10个）
+const ROLE_BASED_FEATURES = [
+  'feat_batch_download',      // 批量下载
+  'feat_bottom_download',     // 底部下载按钮
+  'feat_zip_download',        // 打包下载（ZIP）
+  'feat_clear_images',       // 清除图片
+  'feat_photo_download',     // 拍照后下载
+  'feat_delete_seat',        // 允许删除座位
+  'feat_reset_app',          // 重置应用
+  'feat_rename_seat',        // 修改座位编号名称
+  'feat_add_seat',           // 添加座位按钮
+  'feat_preview_save'        // 全屏预览保存图片
+];
+
 async function loadGlobalSettings() {
   if (!isSupabaseReady()) return;
   try {
     const { data, error } = await _sb.from('settings').select('*');
     if (!error && data) {
-      data.forEach(s => { globalSettings[s.key] = s.value; });
+      data.forEach(s => {
+        let val = s.value;
+        // 【v2.7.31】对受角色控制的功能开关进行旧数据迁移：'true'/'false' → JSON
+        if (ROLE_BASED_FEATURES.includes(s.key) && typeof val === 'string') {
+          if (val === 'true') val = JSON.stringify({ admin: true, floor_manager: true });
+          else if (val === 'false') val = JSON.stringify({ admin: false, floor_manager: false });
+          // 已是 JSON 字符串则保持不变
+        }
+        globalSettings[s.key] = val;
+      });
     }
   } catch(e) { console.warn('[auth] loadGlobalSettings error:', e); }
 }
 
+/**
+ * 旧 API：保留向后兼容
+ * - 受角色控制的开关：根据当前用户角色判断
+ * - 其他开关（feat_area_drag_sort、reader_view_enabled 等）：保留原 value === 'true' 判断
+ */
 function isFeatureEnabled(key) {
-  // owner始终可用
+  // owner 始终可用
   if (currentUser.role === 'owner') return true;
+  // 受角色控制的开关：走 canUseFeature
+  if (ROLE_BASED_FEATURES.includes(key)) return canUseFeature(key, currentUser.role);
+  // 其他开关：assistant 和 reader 不可用
+  if (currentUser.role === 'assistant' || currentUser.role === 'reader') return false;
   return globalSettings[key] === 'true';
+}
+
+/**
+ * 【v2.7.31】按角色授权的功能权限判断
+ * - owner 永远可用
+ * - assistant / reader 永远不可用
+ * - admin / floor_manager 根据 settings 中存储的 JSON 对象判断
+ */
+function canUseFeature(featureKey, userRole) {
+  if (userRole === 'owner') return true;
+  if (userRole === 'assistant' || userRole === 'reader') return false;
+  const setting = getFeatureSetting(featureKey);
+  if (userRole === 'admin') return setting?.admin === true;
+  if (userRole === 'floor_manager') return setting?.floor_manager === true;
+  return false;
+}
+
+/** 解析 settings 中的 JSON 权限对象（兼容旧字符串格式） */
+function getFeatureSetting(featureKey) {
+  const raw = globalSettings[featureKey];
+  if (!raw) return { admin: false, floor_manager: false };
+  if (typeof raw === 'object') return raw;
+  try {
+    const obj = JSON.parse(raw);
+    if (obj && typeof obj === 'object') return obj;
+  } catch (e) { /* 解析失败，按旧格式处理 */ }
+  // 旧格式：'true' / 'false'
+  if (raw === 'true') return { admin: true, floor_manager: true };
+  return { admin: false, floor_manager: false };
 }
 
 // ---- 权限判断 ----
@@ -627,10 +639,12 @@ async function startQrScanner() {
         }
       },
       (decodedText) => {
-        handleCollaborateLogin(decodedText);
         stopQrScanner();
+        handleCollaborateLogin(decodedText);
       },
-      () => {}
+      (errorMessage) => {
+        console.debug('[QR] 解码中...（持续尝试）');
+      }
     );
   } catch (err) {
     console.error('摄像头启动失败:', err);
@@ -653,26 +667,58 @@ const _btnCloseScanner = document.getElementById('btnCloseScanner');
 if (_btnCloseScanner) _btnCloseScanner.addEventListener('click', stopQrScanner);
 
 async function handleCollaborateLogin(decodedText) {
+  // 【v2.7.21】清理 BOM/前后空白/不可见字符，防止 JSON.parse 失败
+  const cleanText = decodedText.replace(/^\uFEFF/, '').trim();
   console.log('[auth] 扫码原始数据:', decodedText);
-  let qr; try { qr = JSON.parse(decodedText); } catch (e) { console.warn('[auth] 二维码解析失败:', e); return; }
+  console.log('[auth] 清理后数据:', cleanText);
+  const errEl = document.getElementById('collab-error');
+  const showErr = (msg) => { if (errEl) { errEl.textContent = msg; errEl.className = 'login-error show err'; } };
+
+  let qr;
+  try {
+    qr = JSON.parse(cleanText);
+  } catch (e) {
+    console.error('[auth] 二维码解析失败:', e, '原始数据前200字符:', decodedText.slice(0, 200));
+    showErr('二维码格式无效，请确认扫描的是协作二维码');
+    return;
+  }
   console.log('[auth] 解析后参数:', qr);
-  if (!qr.password || !qr.floor_id) { console.warn('[auth] 缺少必要字段: password=%s, floor_id=%s', qr.password, qr.floor_id); return; }
+  // 【v2.7.24】解码 granter_name（URL 编码后的中文姓名），兼容旧版未编码的二维码
+  if (qr.granter_name) {
+    try {
+      qr.granter_name = decodeURIComponent(qr.granter_name);
+    } catch (e) {
+      console.warn('[auth] granter_name decodeURIComponent 失败，保留原值:', qr.granter_name);
+    }
+  }
+  if (!qr.password || !qr.floor_id) {
+    console.error('[auth] 缺少必要字段: password=%s, floor_id=%s', qr.password, qr.floor_id, '完整对象:', qr);
+    showErr('二维码缺少必要字段，请让出示方重新生成');
+    return;
+  }
   const name = document.getElementById('collab-name').value.trim();
   const phone = document.getElementById('collab-phone').value.trim();
   const btn = document.getElementById('btn-collab-scan');
-  const errEl = document.getElementById('collab-error');
   if (btn) { btn.classList.add('loading'); btn.disabled = true; btn.setAttribute('data-loading-text', '正在验证...'); }
   if (errEl) errEl.className = 'login-error err';
+  // 【v2.7.29】扫码后增加 Loading 提示：屏幕中央显示"正在验证…"
+  const loadingMask = document.createElement('div');
+  loadingMask.className = 'qr-loading-mask';
+  loadingMask.innerHTML = '<div class="qr-loading-card"><div class="qr-loading-spinner"></div><div class="qr-loading-text">正在验证…</div></div>';
+  document.body.appendChild(loadingMask);
   try {
     // 统一走 Edge Function 校验密码（无论是否已有用户）
     const r = await assistantQRLogin(qr, name, phone);
 
     if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
+    loadingMask.remove();
     if (r.success) location.href = 'index.html';
-    else { if (errEl) { errEl.textContent = r.error || '扫码登录失败'; errEl.className = 'login-error show err'; } }
+    else { showErr(r.error || '扫码登录失败'); }
   } catch (e) {
     if (btn) { btn.classList.remove('loading'); btn.disabled = false; }
-    if (errEl) { errEl.textContent = '扫码登录出错'; errEl.className = 'login-error show err'; }
+    loadingMask.remove();
+    console.error('[auth] 扫码登录异常:', e);
+    showErr('扫码登录出错：' + (e.message || '未知错误'));
   }
 }
 
@@ -680,6 +726,37 @@ async function handleCollaborateLogin(decodedText) {
 if (_sb) {
   _authListener = _sb.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session) loadUserProfile();
-    else if (event === 'SIGNED_OUT') { resetCurrentUser(); try { sessionStorage.removeItem('seat_user_profile'); } catch (e) {} }
+    else if (event === 'SIGNED_OUT') { resetCurrentUser(); try { sessionStorage.removeItem('shared_seat_user_profile'); } catch (e) {} }
   });
 }
+
+// ---- 【v2.7.35】页面可见时强制刷新用户角色 ----
+// 防止密码被吊销或过期后，协助者在本设备仍保留 assistant 角色
+let _visibilityReloading = false;
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible') return;
+  if (!isSupabaseReady() || !currentUser.uid) return;
+  if (_visibilityReloading) return; // 防止重复触发
+  _visibilityReloading = true;
+  try {
+    const prevRole = currentUser.role;
+    const prevExpires = currentUser.assistantExpiresAt;
+    await loadUserProfile();
+    // 如果角色被降级，提示用户并触发 UI 刷新事件
+    if (prevRole !== 'reader' && currentUser.role === 'reader') {
+      console.warn('[auth] visibilitychange 检测到角色被降级:', prevRole, '→', currentUser.role);
+      if (typeof showToast === 'function') showToast('您的权限已变更，页面将刷新', 3000);
+      // 通知主应用 UI 刷新（通过自定义事件，scripts.js 可监听）
+      window.dispatchEvent(new CustomEvent('role-changed', { detail: { from: prevRole, to: currentUser.role } }));
+      // 1.5 秒后刷新页面，确保所有 UI 都按新角色重新渲染
+      setTimeout(() => location.reload(), 1500);
+    } else if (prevExpires !== currentUser.assistantExpiresAt) {
+      console.log('[auth] visibilitychange 检测到过期时间变更:', prevExpires, '→', currentUser.assistantExpiresAt);
+      window.dispatchEvent(new CustomEvent('role-changed', { detail: { from: prevRole, to: currentUser.role } }));
+    }
+  } catch (e) {
+    console.warn('[auth] visibilitychange 刷新失败:', e);
+  } finally {
+    _visibilityReloading = false;
+  }
+});
