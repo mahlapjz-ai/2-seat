@@ -12,6 +12,421 @@ const SUPABASE_URL = 'https://cuejslqxatzkortnkdsf.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1ZWpzbHF4YXR6a29ydG5rZHNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4OTk4OTAsImV4cCI6MjA5ODQ3NTg5MH0.T76oSi1ycI8xxBrybQsscR-eWM3ItJiKC_z3xaRglFE';
 const EDGE_FUNCTION_URL = SUPABASE_URL + '/functions/v1/handle-assistant-login';
 
+// 【v2.7.51】两设备登录限制：当前设备 token 存储 key
+// localStorage 用于跨页面持久化（login.html → index.html），sessionStorage 用于当前会话
+const _DEVICE_TOKEN_LS_KEY = 'shared_device_token';
+// 【v2.7.54】"本设备 token 已注册到 device_tokens" 标记 key
+//  - enforceDeviceLimit 成功写入 token 后设置 '1'
+//  - clearDeviceToken / signOut 时清除
+//  - checkDeviceStillValid 中用于区分"新设备正在登录（未注册）"和"旧设备已被踢出（已注册但 DB 中查不到）"
+const _DEVICE_TOKEN_REGISTERED_KEY = 'shared_device_token_registered';
+
+/** 【v2.7.51】获取当前设备 token（如不存在则生成并持久化）
+ *  token 在登出时清除，每次登录生成新 token，确保唯一性
+ */
+function getOrCreateDeviceToken() {
+  try {
+    let token = localStorage.getItem(_DEVICE_TOKEN_LS_KEY);
+    if (!token) {
+      // crypto.randomUUID() 在 HTTPS / localhost / PWA 中可用
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        token = crypto.randomUUID();
+      } else {
+        // 回退方案：基于时间戳+随机数
+        token = 'dev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 14);
+      }
+      localStorage.setItem(_DEVICE_TOKEN_LS_KEY, token);
+    }
+    return token;
+  } catch (e) {
+    // localStorage 不可用，回退到内存变量
+    if (!window._deviceTokenFallback) {
+      window._deviceTokenFallback = 'fallback-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 14);
+    }
+    return window._deviceTokenFallback;
+  }
+}
+
+/** 【v2.7.51】清除当前设备 token（登出时调用） */
+function clearDeviceToken() {
+  try { localStorage.removeItem(_DEVICE_TOKEN_LS_KEY); } catch (e) {}
+  // 【v2.7.54】同步清除"已注册"标记，下次登录重新走 enforceDeviceLimit 流程
+  try { localStorage.removeItem(_DEVICE_TOKEN_REGISTERED_KEY); } catch (e) {}
+  if (window._deviceTokenFallback) delete window._deviceTokenFallback;
+}
+
+/** 【v2.7.54】标记当前设备 token 已成功写入 device_tokens（enforceDeviceLimit 成功后调用） */
+function markDeviceTokenRegistered() {
+  try { localStorage.setItem(_DEVICE_TOKEN_REGISTERED_KEY, '1'); } catch (e) {}
+}
+
+/** 【v2.7.54】检查当前设备 token 是否已注册到 device_tokens
+ *  - true：已注册，若 DB 中查不到则视为被踢出
+ *  - false：未注册（新设备正在登录流程中），跳过被踢检测
+ */
+function isDeviceTokenRegistered() {
+  try { return localStorage.getItem(_DEVICE_TOKEN_REGISTERED_KEY) === '1'; } catch (e) { return false; }
+}
+
+/** 【v2.7.54】设备登录限制专用确认弹窗（不依赖 scripts.js 的 showCustomConfirm）
+ *  原因：login.html 只引用 auth.js，不引用 scripts.js，导致 showCustomConfirm 未定义
+ *        enforceDeviceLimit 调用 showCustomConfirm 时抛 ReferenceError，走 catch 分支
+ *        return true 但不设置 registered 标记，token 也没写入 DB
+ *  本函数内联样式，不依赖外部 CSS，确保在 login.html 和 index.html 都能正常工作
+ *  按钮顺序：取消（左）/ 确定（右）
+ *  @param {string} message - 提示文案
+ *  @param {object} options - { cancelText, okText }
+ *  @returns {Promise<boolean>} true=确定，false=取消
+ */
+function showDeviceConfirm(message, options = {}) {
+  const cancelText = (options && options.cancelText) || '取消';
+  const okText = (options && options.okText) || '确定';
+  return new Promise((resolve) => {
+    // 如果页面已有 showCustomConfirm（scripts.js 已加载），优先使用
+    if (typeof showCustomConfirm === 'function') {
+      showCustomConfirm(message, options).then(resolve);
+      return;
+    }
+    // 否则使用内联样式的独立弹窗
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.2s ease;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:8px;padding:24px 20px 16px;max-width:300px;width:80%;box-shadow:0 4px 16px rgba(0,0,0,0.12);';
+    const textEl = document.createElement('div');
+    textEl.style.cssText = 'font-size:15px;color:#333;line-height:1.5;text-align:center;margin-bottom:20px;word-break:break-word;';
+    textEl.textContent = message;
+    const btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;gap:12px;';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = cancelText;
+    cancelBtn.style.cssText = 'flex:1;padding:10px 16px;border:none;border-radius:4px;background:#f5f5f5;color:#666;font-size:14px;cursor:pointer;';
+    const okBtn = document.createElement('button');
+    okBtn.textContent = okText;
+    okBtn.style.cssText = 'flex:1;padding:10px 16px;border:none;border-radius:4px;background:#1890ff;color:#fff;font-size:14px;cursor:pointer;';
+    btns.appendChild(cancelBtn);
+    btns.appendChild(okBtn);
+    box.appendChild(textEl);
+    box.appendChild(btns);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    // 触发过渡动画
+    overlay.offsetHeight;
+    overlay.style.opacity = '1';
+    const close = (result) => {
+      overlay.style.opacity = '0';
+      setTimeout(() => { if (overlay.parentNode) overlay.remove(); }, 200);
+      resolve(result);
+    };
+    cancelBtn.onclick = () => close(false);
+    okBtn.onclick = () => close(true);
+    // 点击遮罩层视为取消
+    overlay.onclick = (e) => { if (e.target === overlay) close(false); };
+  });
+}
+
+/** 【v2.7.51】两设备登录限制：将当前设备 token 写入 users.device_tokens
+ *  - 第 1、2 台设备：直接写入
+ *  - 第 3 台设备：弹出确认框，用户同意后踢出最早登录的设备
+ *
+ *  @param {string} uid - 用户 uid
+ *  @param {string} currentToken - 当前设备 token
+ *  @returns {Promise<boolean>} true 表示继续登录，false 表示用户取消登录
+ *
+ *  【v2.7.52】修复紧急 BUG：登录后立刻提示"账号已在其他设备登录"（已废弃）
+ *  【v2.7.53】彻底重构：
+ *  - 改用 RPC 函数 register_device_token 绕过 RLS，确保写入成功
+ *  - 删除"等待 1 秒"逻辑（RPC 同步返回后即可保证一致性）
+ *  - RPC 返回最新 tokens，立即用于判断是否需要踢出
+ *  - 写入失败时阻塞登录并提示用户（避免静默失败导致限制失效）
+ */
+async function enforceDeviceLimit(uid, currentToken) {
+  if (!isSupabaseReady() || !uid || !currentToken) return true;
+  // 【v2.7.53】标记登录时间，checkDeviceStillValid 在 30 秒宽限期内不检查被踢
+  // 避免登录写入 device_tokens 与轮询读取之间的时序冲突
+  _markDeviceLoginTime();
+  try {
+    // 【v2.7.53】优先使用 RPC 函数 register_device_token（绕过 RLS，确保写入成功）
+    // RPC 函数内部逻辑：
+    //   1. 查询当前 device_tokens
+    //   2. 如果当前 token 已存在：仅更新 login_time，返回 { tokens, action: 'updated' }
+    //   3. 如果当前 token 不存在且 tokens.length < 2：添加新 token，返回 { tokens, action: 'added' }
+    //   4. 如果当前 token 不存在且 tokens.length >= 2：返回 { tokens, action: 'need_confirm', kicked_token }
+    // RPC 会返回最新的 tokens 数组，避免客户端再查一次
+    let rpcResult = null;
+    try {
+      const { data, error: rpcErr } = await _sb.rpc('register_device_token', {
+        p_uid: uid,
+        p_token: currentToken
+      });
+      if (!rpcErr && data) {
+        rpcResult = data;
+        console.log('[auth] RPC register_device_token 返回:', data);
+      } else if (rpcErr) {
+        console.warn('[auth] RPC register_device_token 失败，回退到客户端逻辑:', rpcErr.message);
+      }
+    } catch (e) {
+      console.warn('[auth] RPC register_device_token 异常，回退到客户端逻辑:', e);
+    }
+
+    // 如果 RPC 成功，按 RPC 返回的 action 处理
+    if (rpcResult) {
+      const action = rpcResult.action;
+      const tokens = Array.isArray(rpcResult.tokens) ? rpcResult.tokens : [];
+
+      if (action === 'updated' || action === 'added') {
+        // 直接写入成功（第 1、2 台设备，或同设备重复登录）
+        console.log('[auth] 设备 token 写入成功，action:', action, '当前设备数:', tokens.length);
+        // 【v2.7.54】标记当前设备 token 已注册到 device_tokens
+        // checkDeviceStillValid 检测到 DB 中没有当前 token 但本地标记为已注册时，才视为被踢出
+        markDeviceTokenRegistered();
+        return true;
+      }
+
+      if (action === 'need_confirm') {
+        // 第 3 台设备：弹出确认框（取消在左 / 确定在右）
+        // 【v2.7.54】使用 showDeviceConfirm（不依赖 scripts.js，login.html 也能正常工作）
+        const confirmed = await showDeviceConfirm(
+          '您已在 2 台设备上登录。确定在此登录并下线最早登录的设备吗？',
+          { cancelText: '取消', okText: '确定' }
+        );
+        if (!confirmed) {
+          console.log('[auth] 用户取消登录（两设备限制）');
+          return false;
+        }
+        // 用户确认踢出 → 调用 RPC 的 confirm 分支
+        const { data: confirmResult, error: confirmErr } = await _sb.rpc('register_device_token', {
+          p_uid: uid,
+          p_token: currentToken,
+          p_confirm_kick: true
+        });
+        if (confirmErr) {
+          console.warn('[auth] RPC confirm_kick 失败:', confirmErr.message);
+          // 失败也允许登录，避免阻塞用户
+        } else {
+          console.log('[auth] 已踢出最早设备，新设备登录成功:', confirmResult);
+        }
+        // 【v2.7.54】标记当前设备 token 已注册到 device_tokens（踢出场景也算当前设备已注册）
+        markDeviceTokenRegistered();
+        return true;
+      }
+    }
+
+    // 【v2.7.53】RPC 不可用时回退到客户端逻辑（兼容未部署 RPC 的环境）
+    // 但写入用 upsert 强制覆盖，避免 RLS update 失败
+    const fallbackOk = await _enforceDeviceLimitFallback(uid, currentToken);
+    // 【v2.7.54】fallback 成功时也标记已注册（与 RPC 路径保持一致）
+    if (fallbackOk) markDeviceTokenRegistered();
+    return fallbackOk;
+  } catch (err) {
+    // 【v2.7.54】异常时必须记录详细日志，帮助诊断 enforceDeviceLimit 为何失败
+    // 之前异常被静默吞掉，导致 token 未写入 DB 但用户已登录，两设备限制完全失效
+    console.error('[auth] enforceDeviceLimit 异常，跳过两设备限制:', err);
+    console.error('[auth] 异常堆栈:', err?.stack || err);
+    return true; // 异常不阻塞登录
+  }
+}
+
+/** 【v2.7.53】enforceDeviceLimit 的回退实现（RPC 不可用时使用）
+ *  使用 update + 验证的方式确保写入成功
+ */
+async function _enforceDeviceLimitFallback(uid, currentToken) {
+  // 查询当前 device_tokens
+  const { data: profile, error } = await _sb.from('users')
+    .select('device_tokens')
+    .eq('uid', uid)
+    .maybeSingle();
+  if (error) {
+    console.warn('[auth] 查询 device_tokens 失败，跳过两设备限制:', error.message);
+    return true; // 查询失败不阻塞登录
+  }
+
+  let tokens = Array.isArray(profile?.device_tokens) ? profile.device_tokens : [];
+
+  // 过滤掉超过 30 天未活跃的 token
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 3600 * 1000;
+  tokens = tokens.filter(t => {
+    if (!t || !t.token || !t.login_time) return false;
+    return new Date(t.login_time).getTime() > thirtyDaysAgo;
+  });
+
+  // 同设备重复登录：仅更新 login_time
+  if (tokens.some(t => t.token === currentToken)) {
+    console.log('[auth] 当前设备已在 device_tokens 中，更新 login_time');
+    tokens = tokens.map(t => t.token === currentToken
+      ? { ...t, login_time: new Date().toISOString() }
+      : t);
+    const { error: updateErr } = await _sb.from('users').update({ device_tokens }).eq('uid', uid);
+    if (updateErr) console.warn('[auth] 更新 login_time 失败:', updateErr.message);
+    return true;
+  }
+
+  // 设备数 < 2：直接添加
+  if (tokens.length < 2) {
+    tokens.push({ token: currentToken, login_time: new Date().toISOString() });
+    const { error: updateErr } = await _sb.from('users')
+      .update({ device_tokens })
+      .eq('uid', uid);
+    if (updateErr) {
+      console.warn('[auth] 写入 device_tokens 失败:', updateErr.message);
+    } else {
+      console.log('[auth] 设备登录成功，当前设备数:', tokens.length);
+    }
+    return true;
+  }
+
+  // 设备数 >= 2：弹出确认框
+  const confirmed = await showDeviceConfirm(
+    '您已在 2 台设备上登录。确定在此登录并下线最早登录的设备吗？',
+    { cancelText: '取消', okText: '确定' }
+  );
+  if (!confirmed) {
+    console.log('[auth] 用户取消登录（两设备限制）');
+    return false;
+  }
+
+  // 踢出最早登录的设备
+  tokens.shift();
+  tokens.push({ token: currentToken, login_time: new Date().toISOString() });
+  const { error: updateErr } = await _sb.from('users')
+    .update({ device_tokens })
+    .eq('uid', uid);
+  if (updateErr) {
+    console.warn('[auth] 更新 device_tokens 失败:', updateErr.message);
+  } else {
+    console.log('[auth] 已踢出最早设备，新设备登录成功');
+  }
+  return true;
+}
+
+/** 【v2.7.51】检查当前设备是否仍在 device_tokens 中（未被踢出）
+ *  在轮询中调用，被踢出时弹提示并强制登出
+ *
+ *  @param {string} uid - 用户 uid
+ *  @param {string} currentToken - 当前设备 token
+ *  @returns {Promise<boolean>} true 表示仍在登录状态，false 表示已被踢出
+ *
+ *  【v2.7.52】修复紧急 BUG：登录后立刻提示"账号已在其他设备登录"（已废弃的保护逻辑）
+ *  【v2.7.53】彻底重构：
+ *  - 删除"空数组跳过检测"和"长度<2 不视为被踢"的保护逻辑（导致限制完全失效）
+ *  - 正确逻辑：token 不在 device_tokens 中即视为被踢，强制弹窗
+ *  - 对话框"确定"和"取消"都执行登出（账号权限已被移除，必须登出）
+ *  - 保留 shared_skip_device_check 紧急自救标记
+ *  - 登录后 30 秒宽限期内不检查（避免登录写入与轮询时序冲突导致误判）
+ */
+// 【v2.7.53】登录成功时间戳，30 秒宽限期内不检查被踢
+let _deviceLoginTime = 0;
+function _markDeviceLoginTime() { _deviceLoginTime = Date.now(); }
+
+async function checkDeviceStillValid(uid, currentToken) {
+  if (!isSupabaseReady() || !uid || !currentToken) return true;
+
+  // 【v2.7.52】紧急自救标记：localStorage 中有 shared_skip_device_check 时跳过检测
+  try {
+    if (localStorage.getItem('shared_skip_device_check') === '1') {
+      console.log('[auth] shared_skip_device_check 标记存在，跳过被踢检测');
+      return true;
+    }
+  } catch (e) {}
+
+  // 【v2.7.54】关键修复 BUG1：区分"新设备正在登录"和"旧设备已被踢出"
+  // - 如果当前设备 token 从未成功写入 device_tokens（未注册标记），说明 enforceDeviceLimit 还未完成
+  //   （可能在等用户确认 need_confirm 弹窗，或 RPC 调用失败被吞掉）
+  //   此时即使 DB 中查不到当前 token，也不能视为被踢出 → 跳过检测
+  // - 只有当本地标记为"已注册"但 DB 中查不到当前 token 时，才视为被踢出（旧设备场景）
+  if (!isDeviceTokenRegistered()) {
+    console.log('[auth] 当前设备 token 未注册到 device_tokens，跳过被踢检测（新设备登录流程中）');
+    return true;
+  }
+
+  // 【v2.7.53】登录后 30 秒宽限期内不检查被踢（双重保险，避免 DB 读取延迟）
+  if (_deviceLoginTime && Date.now() - _deviceLoginTime < 30000) {
+    console.log('[auth] 登录后 30 秒宽限期内，跳过被踢检测');
+    return true;
+  }
+
+  try {
+    const { data: profile, error } = await _sb.from('users')
+      .select('device_tokens')
+      .eq('uid', uid)
+      .maybeSingle();
+    if (error || !profile) return true; // 查询失败不踢出
+
+    const tokens = Array.isArray(profile?.device_tokens) ? profile.device_tokens : [];
+
+    // 【v2.7.54】正确判定：当前 token 已注册但不在 device_tokens 中 → 已被踢出
+    const stillValid = tokens.some(t => t && t.token === currentToken);
+    if (stillValid) return true; // 当前设备在线，无需操作
+
+    // 当前 token 已注册但不在 device_tokens 中 → 已被踢出（其他设备登录并替换了 token 数组）
+    console.warn('[auth] 当前设备已被踢出（其他设备登录）');
+    console.warn('[auth] 当前 token:', currentToken, 'device_tokens:', tokens);
+
+    // 【v2.7.53】强制弹出提示框（不能用 showCustomConfirm，因为它点击空白处会 resolve(false)）
+    // 改用原生 alert，确保用户一定看到提示
+    try { alert('您的账号已在其他设备登录，即将退出登录'); } catch (e) {}
+
+    // 【v2.7.53】无论用户点击什么，都执行登出（账号权限已被移除，必须登出）
+    clearDeviceToken();
+    try { if (typeof stopPolling === 'function') stopPolling(); } catch (e) {}
+    try { if (typeof saveFilterState === 'function') saveFilterState(); } catch (e) {}
+    // 清除 session 残留
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('sb-') || key.startsWith('supabase'))) {
+          localStorage.removeItem(key);
+        }
+      }
+      sessionStorage.removeItem('shared_seat_user_profile');
+      localStorage.removeItem('shared_assistant_uid');
+      localStorage.removeItem('shared_assistant_phone');
+    } catch (e) {}
+    try { if (_sb) await _sb.auth.signOut(); } catch (e) {}
+    window.location.href = 'login.html';
+    return false;
+  } catch (err) {
+    console.warn('[auth] checkDeviceStillValid 异常:', err);
+    return true; // 异常不踢出
+  }
+}
+
+/** 【v2.7.51】登出时从 device_tokens 中移除当前设备 token
+ *
+ *  @param {string} uid - 用户 uid
+ *  @param {string} currentToken - 当前设备 token
+ *
+ *  【v2.7.54】修复 BUG2：改用 RPC p_logout: true 绕过 RLS，确保从 device_tokens 移除
+ *  原客户端 update 可能被 RLS 阻止 → token 未真正移除 → 数组仍残留旧 token → 新设备登录被误判超限
+ */
+async function removeDeviceTokenFromList(uid, currentToken) {
+  if (!isSupabaseReady() || !uid || !currentToken) return;
+  // 【v2.7.54】优先使用 RPC p_logout: true 绕过 RLS
+  try {
+    const { data, error } = await _sb.rpc('register_device_token', {
+      p_uid: uid,
+      p_token: currentToken,
+      p_logout: true
+    });
+    if (error) {
+      console.warn('[auth] RPC p_logout 失败，回退到客户端 update:', error.message);
+      // 回退：客户端 update（可能被 RLS 阻止，但尽力而为）
+      const { data: profile } = await _sb.from('users')
+        .select('device_tokens')
+        .eq('uid', uid)
+        .maybeSingle();
+      const tokens = Array.isArray(profile?.device_tokens) ? profile.device_tokens : [];
+      const newTokens = tokens.filter(t => t && t.token !== currentToken);
+      if (newTokens.length !== tokens.length) {
+        await _sb.from('users').update({ device_tokens: newTokens }).eq('uid', uid);
+      }
+    } else {
+      console.log('[auth] 已通过 RPC 从 device_tokens 移除当前设备:', data);
+    }
+  } catch (err) {
+    console.warn('[auth] removeDeviceTokenFromList 异常:', err);
+  }
+}
+
 let _sb = null;
 let _sbConfigured = false;
 
@@ -114,6 +529,10 @@ async function signUpWithCard(cardNumber, password, name) {
           }
         }
         await loadUserProfile();
+        // 【v2.7.51】两设备登录限制：注册成功（已存在账号回退登录）后写入 device_tokens
+        const _dt1 = getOrCreateDeviceToken();
+        const _ok1 = await enforceDeviceLimit(currentUser.uid, _dt1);
+        if (!_ok1) return { success: false, error: '已取消登录' };
         return { success: true, error: null, user: currentUser };
       }
       return { success: false, error: extractErrMsg(error) || '注册失败' };
@@ -136,6 +555,10 @@ async function signUpWithCard(cardNumber, password, name) {
     }
     if (!data.session) return { success: true, error: null, needsEmailConfirm: true };
     await loadUserProfile();
+    // 【v2.7.51】两设备登录限制：注册成功后写入 device_tokens
+    const _dt2 = getOrCreateDeviceToken();
+    const _ok2 = await enforceDeviceLimit(currentUser.uid, _dt2);
+    if (!_ok2) return { success: false, error: '已取消登录' };
     return { success: true, error: null, user: currentUser };
   } catch (err) { return { success: false, error: extractErrMsg(err) || '注册请求失败' }; }
 }
@@ -165,6 +588,10 @@ async function signInWithCard(cardNumber, password) {
       }
     }
     await loadUserProfile();
+    // 【v2.7.51】两设备登录限制：读者证号登录后写入 device_tokens
+    const _dt3 = getOrCreateDeviceToken();
+    const _ok3 = await enforceDeviceLimit(currentUser.uid, _dt3);
+    if (!_ok3) return { success: false, error: '已取消登录' };
     return { success: true, error: null, user: currentUser };
   } catch (err) { return { success: false, error: extractErrMsg(err) || '登录请求失败' }; }
 }
@@ -188,6 +615,9 @@ async function fetchWithTimeout(url, opts, timeoutMs = 15000) {
 // 直接调用 Edge Function handle-assistant-login 统一处理密码校验、用户创建/更新、session 生成
 async function assistantQRLogin(qrData, name, phone) {
   if (!isSupabaseReady()) return { success: false, error: 'Supabase 未配置' };
+  // 【v2.7.62】协作登录跳转过程中设置标记，避免 iOS Safari 跳转触发 visibilitychange
+  // 导致令牌校验逻辑阻塞正常加载（卡在骨架屏）
+  try { sessionStorage.setItem('collab_login_in_progress', '1'); } catch (e) {}
   try {
     // 直接调用 Edge Function 统一处理：密码校验 + 用户创建/更新 + session 生成
     console.log('[auth] assistantQRLogin: 调用 Edge Function...');
@@ -237,6 +667,10 @@ async function assistantQRLogin(qrData, name, phone) {
     console.log('[auth] 最终角色:', currentUser.role, '楼层:', currentUser.managedFloors, '过期:', currentUser.assistantExpiresAt);
     try { localStorage.setItem('shared_assistant_uid', currentUser.uid); localStorage.setItem('shared_assistant_phone', phone); } catch (e) {}
     // 【v2.7.25】激活记录已由 Edge Function 写入，客户端不再重复写入
+    // 【v2.7.51】两设备登录限制：扫码登录后写入 device_tokens
+    const _dt4 = getOrCreateDeviceToken();
+    const _ok4 = await enforceDeviceLimit(currentUser.uid, _dt4);
+    if (!_ok4) return { success: false, error: '已取消登录' };
     return { success: true, error: null, user: currentUser };
   } catch (err) {
     console.error('[auth] assistantQRLogin error:', err);
@@ -249,12 +683,18 @@ async function logCollabActivation(qrData, assistantUid) {
   try {
     // 查询 collab_passwords 获取 password_id
     const today = getBjDateStr();
+    // 【v2.7.61】同时过滤已吊销的密码，防止吊销后仍能激活
     const { data: cp } = await _sb.from('collab_passwords')
-      .select('id, created_by')
+      .select('id, created_by, revoked')
       .eq('password', qrData.password)
       .eq('floor_id', String(qrData.floor_id))
       .eq('date', today)
       .maybeSingle();
+    // 【v2.7.61】已吊销的密码不写入激活日志
+    if (cp && cp.revoked === true) {
+      console.warn('[auth] 协作密码已被吊销，拒绝写入激活日志:', qrData.password);
+      return;
+    }
     if (cp) {
       await _sb.from('collab_activation_logs').insert({
         password_id: cp.id,
@@ -309,6 +749,10 @@ async function callEdgeFunctionForSession(uid, phone, qrData) {
   }
   try { localStorage.setItem('shared_assistant_uid', currentUser.uid); localStorage.setItem('shared_assistant_phone', phone); } catch (e) {}
   // 【v2.7.25】激活记录已由 Edge Function 写入，客户端不再重复写入
+  // 【v2.7.51】两设备登录限制：通过 Edge Function 获取 session 后写入 device_tokens
+  const _dt5 = getOrCreateDeviceToken();
+  const _ok5 = await enforceDeviceLimit(currentUser.uid, _dt5);
+  if (!_ok5) return { success: false, error: '已取消登录' };
   return { success: true, error: null, user: currentUser };
 }
 
@@ -316,6 +760,8 @@ async function callEdgeFunctionForSession(uid, phone, qrData) {
 // 先尝试 RPC 查找，再走 Edge Function 获取 session
 async function assistantReLogin(name, phone) {
   if (!isSupabaseReady()) return { success: false, error: 'Supabase 未配置' };
+  // 【v2.7.62】协作登录跳转过程中设置标记，避免 iOS Safari 跳转触发 visibilitychange
+  try { sessionStorage.setItem('collab_login_in_progress', '1'); } catch (e) {}
   try {
     console.log('[auth] assistantReLogin: 尝试 RPC 查找用户...');
     // 直接查 users 表找未过期的 assistant
@@ -370,6 +816,10 @@ async function assistantReLogin(name, phone) {
       if (typeof showToast === 'function') showToast('您的协助者权限已变更（可能已过期或被吊销）', 3000);
     }
     try { localStorage.setItem('shared_assistant_uid', currentUser.uid); localStorage.setItem('shared_assistant_phone', phone); } catch (e) {}
+    // 【v2.7.51】两设备登录限制：协作者再次登录后写入 device_tokens
+    const _dt6 = getOrCreateDeviceToken();
+    const _ok6 = await enforceDeviceLimit(currentUser.uid, _dt6);
+    if (!_ok6) return { success: false, error: '已取消登录' };
     return { success: true, error: null, user: currentUser };
   } catch (err) { return { success: false, error: extractErrMsg(err) || '登录请求失败' }; }
 }
@@ -399,13 +849,26 @@ async function signOut() {
     }
     // 2. 停止轮询
     if (typeof stopPolling === 'function') stopPolling();
-    // 3. 调用 Supabase 登出
+    // 【v2.7.54】修复 BUG2：登出流程顺序调整
+    // 3. 先调用 RPC 移除 device_tokens 中的当前设备 token（此时 session 还有效，RPC 能正常鉴权）
+    //    原顺序是先 signOut 再移除 token，导致 session 失效后 RPC 调用失败，token 残留在数组中
+    if (currentUser.uid) {
+      const _dt = getOrCreateDeviceToken();
+      try {
+        await removeDeviceTokenFromList(currentUser.uid, _dt);
+      } catch (e) {
+        console.warn('[signOut] removeDeviceTokenFromList 异常:', e);
+      }
+    }
+    // 4. 再调用 Supabase 登出（清除 session）
     if (_sb) {
       try { await _sb.auth.signOut(); } catch (e) { console.warn('[signOut] signOut 调用异常:', e); }
     }
-    // 4. 重置用户状态
+    // 5. 清除本地 token + 已注册标记（clearDeviceToken 内部同步清除 registered 标记）
+    clearDeviceToken();
+    // 6. 重置用户状态
     resetCurrentUser();
-    // 5. 彻底清除所有 Supabase session 残留（sb-* 键）+ 业务缓存
+    // 7. 彻底清除所有 Supabase session 残留（sb-* 键）+ 业务缓存
     try {
       // 【v2.7.15】清空预签名 URL 内存缓存
       if (typeof clearPresignedUrlCache === 'function') clearPresignedUrlCache();
@@ -422,7 +885,7 @@ async function signOut() {
       localStorage.removeItem('seat_session_token');
       localStorage.removeItem('shared_seat_session_token');
     } catch (e) {}
-    // 6. 跳转登录页
+    // 8. 跳转登录页
     window.location.href = 'login.html';
   } catch (err) {
     console.error('登出失败:', err);
@@ -439,6 +902,82 @@ function resetCurrentUser() {
 async function getSession() {
   if (!isSupabaseReady()) return null;
   try { const { data: { session } } = await _sb.auth.getSession(); return session; } catch (e) { return null; }
+}
+
+/** 【v2.7.60】校验会话有效性，必要时自动刷新令牌
+ *  场景：手机待机恢复后，Supabase 访问令牌可能已过期（默认 1 小时）
+ *  流程：
+ *    1. getSession() 检查当前会话
+ *    2. 若会话为空或令牌已过期 → refreshSession() 尝试用刷新令牌获取新访问令牌
+ *    3. 刷新成功 → 重新拉取 loadUserProfile 确保权限最新
+ *    4. 刷新失败 → 清除登录态，弹提示"登录已过期"，跳转登录页
+ *  @returns {Promise<boolean>} true 表示会话有效（已恢复或原本就有效），false 表示已跳转登录页
+ */
+async function validateAndRefreshSession() {
+  if (!isSupabaseReady()) return false;
+
+  // 步骤1：检查当前会话
+  let session = null;
+  try {
+    const result = await _sb.auth.getSession();
+    session = result?.data?.session || null;
+  } catch (e) {
+    console.warn('[auth] getSession 异常:', e);
+    session = null;
+  }
+
+  // 会话仍有效 → 检查令牌是否即将过期（提前 60 秒刷新，避免边界请求失败）
+  if (session) {
+    const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
+    const now = Date.now();
+    if (expiresAt - now > 60 * 1000) {
+      // 令牌还有效，无需刷新
+      return true;
+    }
+    console.log('[auth] 令牌即将过期或已过期，尝试刷新');
+  }
+
+  // 步骤2：尝试用刷新令牌获取新的访问令牌
+  try {
+    const { data: refreshData, error: refreshError } = await _sb.auth.refreshSession();
+    if (refreshError || !refreshData?.session) {
+      console.warn('[auth] 刷新令牌失败:', refreshError?.message || '无 session');
+      _handleSessionExpired();
+      return false;
+    }
+    console.log('[auth] 令牌刷新成功，重新拉取用户信息');
+    // 步骤3：刷新成功 → 重新拉取用户信息和权限
+    await loadUserProfile();
+    return true;
+  } catch (err) {
+    console.warn('[auth] refreshSession 异常:', err);
+    _handleSessionExpired();
+    return false;
+  }
+}
+
+/** 【v2.7.60】处理会话彻底失效（刷新令牌也过期） */
+function _handleSessionExpired() {
+  console.warn('[auth] 登录已过期，清除本地登录态并跳转登录页');
+  // 清除本地登录态
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('sb-') || key.startsWith('supabase'))) {
+        localStorage.removeItem(key);
+      }
+    }
+    sessionStorage.removeItem('shared_seat_user_profile');
+    localStorage.removeItem('shared_assistant_uid');
+    localStorage.removeItem('shared_assistant_phone');
+    // 注意：不清除 shared_device_token，避免重新登录后丢失设备限制状态
+  } catch (e) {}
+  // 清除当前用户缓存
+  resetCurrentUser();
+  // 弹出提示（用 setTimeout 确保 alert 在页面跳转前显示）
+  try { alert('登录已过期，请重新登录'); } catch (e) {}
+  // 跳转登录页
+  setTimeout(() => { window.location.href = 'login.html'; }, 100);
 }
 
 // ---- 加载用户角色 ----

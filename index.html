@@ -19,11 +19,11 @@
 <script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js"></script>
 <!-- Supabase SDK + 认证模块 + 数据层 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
-<script src="auth.js?v=2.7.26"></script>
-<script src="data-layer.js?v=2.7.26"></script>
+<script src="auth.js?v=2.7.64"></script>
+<script src="data-layer.js?v=2.7.64"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <!-- 拆分自原单文件 - 外部样式 -->
-<link rel="stylesheet" href="styles.css?v=2.7.26">
+<link rel="stylesheet" href="styles.css?v=2.7.65">
 <link rel="stylesheet" href="login.css?v=2.1.0">
 </head>
 <body>
@@ -52,7 +52,7 @@
     <button class="user-bar-logout" id="user-bar-logout">登出</button>
   </div>
 </div>
-<div class="page-header" id="page-header" style="opacity:0;transition:opacity .2s ease"><div class="page-title-group" id="page-title-text" style="pointer-events:auto;position:relative;z-index:99"><span class="page-title">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><span class="mode-switch-hint" id="mode-switch-hint">点击切换显示</span></div><div class="date-picker-wrap" id="date-picker-wrap"><span class="date-picker-label" style="display:block;font-size:11px;text-align:left;margin-bottom:2px;">选择日期</span><button id="date-picker-btn" class="header-btn date-picker-btn"></button><div class="date-picker-dropdown" id="date-picker-dropdown" style="display:none"></div></div><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px;padding:8px 16px">设置</button><button id="filter-toggle-btn" class="filter-toggle-btn" style="display:none;font-size:14px;padding:8px 16px">时段筛选</button></div>
+<div class="page-header" id="page-header" style="opacity:0;transition:opacity .2s ease"><div class="page-title-group" id="page-title-text" style="pointer-events:auto;position:relative;z-index:99"><span class="page-title">座位图片管理 <small style="font-size:12px;font-weight:400;color:#999;letter-spacing:0" id="header-version"></small></span><span class="mode-switch-hint" id="mode-switch-hint">点击切换显示</span></div><div class="date-picker-wrap" id="date-picker-wrap"><span class="date-picker-label" style="display:block;font-size:11px;text-align:left;margin-bottom:2px;">选择日期</span><button id="date-picker-btn" class="header-btn date-picker-btn"></button><div class="date-picker-dropdown" id="date-picker-dropdown" style="display:none"></div></div><button id="func-btn" class="header-btn btn-batch-dl" data-action="open-func-panel" style="font-size:14px">设置</button><button id="filter-toggle-btn" class="filter-toggle-btn" style="display:none;font-size:14px">时段筛选</button></div>
 <div id="app"></div>
 <div id="overview-container" style="display:none"></div>
 <div id="bottom-bar">
@@ -71,7 +71,7 @@
 <div class="modal-overlay" id="batch-modal">
   <div class="modal-box">
     <h3>批量下载</h3>
-    <div class="batch-section"><h4>选择区域 <button class="batch-select-all" data-target="area">全选/取消</button></h4><div class="batch-grid" id="batch-areas"></div></div>
+    <div class="batch-section"><h4>选择区域 <button class="batch-select-all" data-target="area" id="batch-select-all-areas">仅选有图/取消</button></h4><div class="batch-grid" id="batch-areas"></div></div>
     <div class="batch-section"><h4>选择时段 <span class="batch-progress" id="batch-progress"></span> <button class="batch-select-all" data-target="time">全选/取消</button></h4><div class="batch-grid" id="batch-times"></div></div>
     <div class="modal-btns"><button class="modal-cancel" id="batch-cancel">取消</button><button class="modal-confirm" id="batch-exec">打包下载(ZIP)</button></div>
   </div>
@@ -135,7 +135,7 @@
   <div class="func-panel-body" id="func-panel-body"></div>
 </div>
 <!-- 拆分自原单文件 - 外部脚本 -->
-<script src="scripts.js?v=2.7.43"></script>
+<script src="scripts.js?v=2.7.65"></script>
 <!-- 【v2.7.33】GitHub Pages 首次加载缓慢时的超时检测 -->
 <script>
 // 8 秒后如果 skeleton 仍然显示，提示用户刷新（CDN 冷启动场景）

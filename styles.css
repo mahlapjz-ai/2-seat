@@ -931,6 +931,8 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 /* 标题闪烁动画 */
 @keyframes titleBreathe{0%,100%{opacity:1}50%{opacity:.85}}
 .mode2-title-breathe{animation:titleBreathe 2.5s ease-in-out infinite}
+/* 【v2.7.65】第二种模式标题字号缩小（默认 20px → 16px），确保版本号与标题同行不换行 */
+.mode2-title-small{font-size:16px!important;letter-spacing:.5px!important}
 /* 楼层卡片隐藏/显示动画 */
 .floor-btn.mode2-hide{opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .3s ease-in-out,transform .3s ease-in-out}
 .area-container.mode2-hide{opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .3s ease-in-out,transform .3s ease-in-out}
@@ -979,17 +981,29 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 .theme-pixel .overview-floor-block.of-5{background:#d8a8a8;color:#3e2b1f}
 .theme-pixel .overview-floor-name{font-family:'Courier New',monospace;color:#3e2b1f;font-weight:900;text-shadow:2px 2px 0 #e0d7c5}
 .theme-pixel .overview-area-name{color:#6a5a4a;font-family:'Courier New',monospace}
-/* 时段筛选面板图片图标 */
-.filter-slot-has-img{font-size:12px;margin-left:3px;opacity:.7}
+/* 时段筛选面板图片图标（v2.7.59：改为 SVG，与座位按钮 .icon-filter-hit 一致） */
+.filter-slot-has-img{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-left:3px;vertical-align:middle}
+.filter-slot-has-img svg{width:12px;height:12px;fill:#52c41a;opacity:.85}
+/* 批量下载弹窗区域 chip 的图片图标（v2.7.59） */
+.batch-chip-img-icon{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;margin-left:4px;vertical-align:middle}
+.batch-chip-img-icon svg{width:12px;height:12px;fill:#52c41a}
 /* 时段筛选按钮（第二种模式标题栏） */
 .filter-toggle-btn{padding:6px 12px;font-size:12px;font-weight:600;border:none;border-radius:6px;color:#fff;cursor:pointer;white-space:nowrap;background:#1890ff}
+/* 【v2.7.65】第二种模式：时段筛选按钮与设置按钮尺寸统一 + 底部对齐 */
+/* 第二种模式显示时覆盖 padding，与 #func-btn 一致 */
+#filter-toggle-btn{padding:8px 16px;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;line-height:1.2;align-self:flex-end}
 .filter-toggle-btn:active{opacity:.7}
 .theme-normal .filter-toggle-btn{background:#8B7355;border:1px solid rgba(139,115,85,.25);border-radius:8px}
 .theme-yiban .filter-toggle-btn{background:linear-gradient(135deg,#4a4540,#3c3c46);border:1px solid rgba(0,255,255,.4);color:#00ffff}
 .theme-pixel .filter-toggle-btn{background:#b08040;border:2px solid #6a5a4a;color:#3e2b1f;font-family:'Courier New',monospace;font-weight:900;border-radius:0;box-shadow:2px 2px 0 #c8b89a}
 /* Date picker */
-.date-picker-wrap{position:relative;display:inline-block}
-.date-picker-btn{font-size:12px!important;min-width:90px;text-align:center;color:#000}
+/* 【v2.7.64】方案A：.date-picker-wrap 用 flex 纵向布局 + justify-content:flex-end */
+/* 让按钮始终贴底，与 #func-btn 底部对齐（label 多高都无所谓）*/
+.date-picker-wrap{position:relative;display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;align-self:flex-end}
+.date-picker-btn{font-size:12px!important;min-width:90px;text-align:center;color:#000;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;line-height:1.2}
+#func-btn{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;line-height:1.2;align-self:flex-end}
+/* 统一 #func-btn 和 #date-picker-btn 的 padding，确保底部对齐 */
+#func-btn, .date-picker-btn{padding:8px 16px}
 .theme-normal .date-picker-btn{color:#fff}
 .theme-yiban .date-picker-btn{color:#00ffff}
 .theme-pixel .date-picker-btn{color:#4a3728}
@@ -1021,4 +1035,4 @@ html.theme-pixel{background:repeating-linear-gradient(180deg,#7ec8e8 0%,#a8d8a8 
 .func-panel-divider{height:1px;background:#e0e0e0;margin:8px 0}
 .version-info{display:flex;align-items:center;gap:6px;cursor:pointer}
 .version-dot{width:8px;height:8px;border-radius:50%;background:#ff3b30;display:inline-block;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+/* 【清理】@keyframes pulse 已在 L321 定义（v2.7.41 批量下载进度圆点），此处删除冗余定义避免覆盖 */

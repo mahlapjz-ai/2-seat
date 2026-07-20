@@ -111,6 +111,15 @@ async function handleQrLogin(
     );
   }
 
+  // 【v2.7.61】后端兜底校验：检查密码是否已被吊销
+  // 即使前端绕过校验，后端也必须拒绝已吊销的密码
+  if (collab.revoked === true) {
+    return jsonResponse(
+      { success: false, error: "该密码已被吊销，无法使用" },
+      400
+    );
+  }
+
   // ---- 检查使用次数 ----
   if (collab.used_count >= collab.max_uses) {
     return jsonResponse(

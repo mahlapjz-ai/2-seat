@@ -124,6 +124,15 @@ async function getCOSPresignedUrl(action, key) {
     return data.url;
   } catch (e) {
     console.error('[COS] 获取预签名URL失败:', e.message);
+    // 【v2.7.45】SSL/网络错误统一提示，不写入脏数据
+    // 调用方（dlUploadPhoto）会在拿不到预签名 URL 时回退到 Supabase Storage
+    // 但如果是 SSL 证书错误，Supabase Storage 大概率也会失败
+    const errMsg = String(e?.message || '');
+    if (/cert|ssl|tls|ERR_CERT|ERR_TLS/i.test(errMsg)) {
+      console.error('[COS] SSL/TLS 错误，可能是网络环境问题');
+      // 不抛异常，返回 null 让调用方处理（避免中断流程）
+      // 调用方的 catch 块会检测错误信息并给出友好提示
+    }
     return null;
   }
 }
@@ -579,13 +588,18 @@ async function getCellData(ck, dateRange) {
 /** 批量获取（按 cell_key 批量查询）
  *  【v2.7.38】分批查询：每批最多 100 个 cellKey，避免 URL 过长导致请求失败
  */
-async function getCellDataBatch(cellKeys, dateRange) {
+async function getCellDataBatch(cellKeys, dateRange, forceRefresh = false) {
   if (!cellKeys || !cellKeys.length) return {};
   const result = {};
   const missing = [];
+  // 【v2.7.50】forceRefresh=true 时跳过 _cellDataCache 缓存，强制走数据库查询
+  // 原因：批量下载场景下，缓存可能是上次下载时的旧数据，不包含他人新上传的图片
   cellKeys.forEach(ck => {
-    if (_cellDataCache.has(ck)) result[ck] = { key: ck, images: _cellDataCache.get(ck) };
-    else missing.push(ck);
+    if (!forceRefresh && _cellDataCache.has(ck)) {
+      result[ck] = { key: ck, images: _cellDataCache.get(ck) };
+    } else {
+      missing.push(ck);
+    }
   });
   if (!missing.length) return result;
 
@@ -914,6 +928,11 @@ async function dlDeletePhoto(photoId, url, ck) {
       if (url) removeCachedThumb(url);
       // 【v2.7.15】同步清除预签名 URL 内存缓存
       if (url) removePresignedUrl(url);
+      // 【v2.7.47】强制清空轮询脏标记，确保本机和其他设备的下次轮询必定检测到变化
+      // 否则可能出现：本机缓存已更新但 newJSON 比对仍相同 → 跳过 UI 刷新
+      if (typeof _lastCountsJSON !== 'undefined') {
+        _lastCountsJSON = '';
+      }
     }
     return { success: true, storageOk };
   } catch (e) {
@@ -1074,8 +1093,11 @@ async function cosDeleteBatch(paths) {
 // ---- 协作密码 ----
 async function dlGetCollabPasswords(floorId) {
   const today = getBjDateStr();
+  // 【v2.7.61】过滤已吊销的密码：revoked = false 或 revoked IS NULL
+  // 吊销操作只更新 DB，前端必须同步增加过滤条件，否则已吊销密码仍会显示
   const { data, error } = await _sb.from('collab_passwords')
     .select('*').eq('floor_id', String(floorId)).eq('date', today)
+    .or('revoked.is.null,revoked.eq.false')
     .order('created_at', { ascending: false });
   return error ? [] : (data || []);
 }
