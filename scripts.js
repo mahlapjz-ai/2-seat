@@ -75,7 +75,7 @@ function updateCellButtonStates(cellKey) {
   });
 }
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v2.7.91';
+const APP_VERSION = 'v2.7.92';
 // 【v2.7.91】协作登录标记改为 10 秒超时兜底清除（不再立即清除）
 // 原因：iOS Safari 扫码跳转时触发 visibilitychange，若标记已被清除，会执行 loadUserProfile 阻塞页面加载
 // 标记保留 10 秒确保页面完全加载后再让 visibilitychange 恢复正常逻辑
@@ -131,6 +131,9 @@ const state = {
 const _uploadLocks = new Map(); // Map<cellKey, Promise>
 const _deletingCells = new Set(); // 正在删除中的 cell 集合，防并发
 const _uploadingCells = new Set(); // 正在上传/拍照中的 cell 集合，防并发点击
+// 【v2.7.92】刚上传完成的 cell 宽限期保护：cellKey → 完成时间戳
+// 上传完成后保留 30 秒，防止轮询因 DB 读副本延迟返回空数据而误删缩略图
+const _recentlyUploadedCells = new Map();
 let _clearingInProgress = false;   // 【v2.5.6】清除图片进行中标记，与上传互斥
 const _uploadTimers = new Map();   // 超时自动释放定时器
 let updateReady = false; // 【v2.7.13】新版本是否就绪（SW 检测到更新时置 true）
@@ -168,6 +171,9 @@ function unlockUploadingCell(ck) {
   _uploadingCells.delete(ck);
   if (_uploadTimers.has(ck)) { clearTimeout(_uploadTimers.get(ck)); _uploadTimers.delete(ck); }
   disableSeatButtons(ck, false);
+  // 【v2.7.92】记录刚上传完成的 cell，30 秒宽限期内不被轮询 DB 空数据覆盖
+  _recentlyUploadedCells.set(ck, Date.now());
+  setTimeout(() => { _recentlyUploadedCells.delete(ck); }, 30000);
 }
 
 /**
@@ -1546,6 +1552,8 @@ function refreshSeatThumbsIncrementally(sk, cellDataMap) {
         for (let t = 0; t < TIME_SLOTS.length; t++) {
           const ck = cellKey(fid, aname, sidx, t);
           if (isUploading(ck)) continue; // 保护上传中的 cell
+          // 【v2.7.92】保护刚上传完成的 cell（30秒宽限期），避免 DB 读副本延迟返回空导致缩略图被误删
+          if (_recentlyUploadedCells.has(ck)) continue;
 
           const cellData = cellDataMap[ck] || null;
           const images = (cellData && cellData.images) ? cellData.images : [];
@@ -8444,12 +8452,13 @@ async function _refreshVisibleAreasInner() {
     // 【v2.7.49】收集要清空的 cell，跳过正在上传的 cell（防止清空覆盖正在上传的新图片）
     const allCellsToClear = [];
     imageCountCache.forEach((cnt, ck) => {
-      if (cnt > 0 && !isUploading(ck)) allCellsToClear.push(ck);
+      if (cnt > 0 && !isUploading(ck) && !_recentlyUploadedCells.has(ck)) allCellsToClear.push(ck);
     });
     // 收集上传中 cell 的旧值（清空后需要恢复）
     const _protectedInClear = new Map();
     imageCountCache.forEach((cnt, ck) => {
       if (isUploading(ck)) _protectedInClear.set(ck, cnt);
+      if (_recentlyUploadedCells.has(ck)) _protectedInClear.set(ck, cnt); // 【v2.7.92】宽限期保护
     });
     // 清空 seatHasImages 和统计
     imageCountCache.clear();
@@ -8494,6 +8503,7 @@ async function _refreshVisibleAreasInner() {
       const card = document.querySelector(`.timeslot-card[data-cell-key="${ck}"]`);
       if (!card) return; // 该 cell 未展开或不存在 DOM
       if (isUploading(ck)) return; // 保护上传中的 cell
+      if (_recentlyUploadedCells.has(ck)) return; // 【v2.7.92】保护刚上传完成的 cell
       const thumbsEl = card.querySelector('.ts-thumbs');
       if (thumbsEl) {
         thumbsEl.remove();
@@ -8609,6 +8619,8 @@ async function _refreshVisibleAreasInner() {
   const _protectedOldValues = new Map();
   imageCountCache.forEach((cnt, ck) => {
     if (isUploading(ck)) _protectedOldValues.set(ck, cnt);
+    // 【v2.7.92】保护刚上传完成的 cell（30秒宽限期），避免 DB 读副本延迟覆盖本地计数
+    if (_recentlyUploadedCells.has(ck)) _protectedOldValues.set(ck, cnt);
   });
   // 【v2.7.89】额外保护：本地计数>0 但 newCounts 中不存在的 cell（可能因 DB 读延迟临时缺失）
   // 避免轮询把刚上传完的图片在区域按钮上"抹掉"
@@ -8688,6 +8700,8 @@ async function _refreshVisibleAreasInner() {
     const newCnt = imageCountCache.get(ck) || 0;
     if (newCnt > 0) return; // 仅处理计数归零的 cell
     if (isUploading(ck)) return; // 保护上传中的 cell
+    // 【v2.7.92】保护刚上传完成的 cell（30秒宽限期），避免 DB 读副本延迟导致缩略图被误删
+    if (_recentlyUploadedCells.has(ck)) return;
     const card = document.querySelector(`.timeslot-card[data-cell-key="${ck}"]`);
     if (!card) return;
     const thumbsEl = card.querySelector('.ts-thumbs');
