@@ -6,7 +6,7 @@
 <title>登录 - 座位图片管理</title>
 <link rel="icon" type="image/png" sizes="192x192" href="seat-icon-192.png">
 <link rel="stylesheet" href="login.css">
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<!-- 【v2.7.79】html5-qrcode 从 head 移到 body 末尾（见下方），避免同步阻塞导致白屏 -->
 <style>
 /* 强制扫码容器全屏，不留黑边 */
 #qrScannerContainer {
@@ -86,7 +86,7 @@
         <div class="form-group has-validation">
           <label class="form-label">读者证号</label>
           <div class="input-wrap">
-            <input class="form-input" type="text" id="card-number" placeholder="请输入13-18位大写字母或数字" autocomplete="username">
+            <input class="form-input" type="text" id="card-number" placeholder="请输入13-18位大写字母或数字">
             <span class="status-icon" id="cardNumIcon"></span>
           </div>
           <small class="hint" id="cardNumHint"></small>
@@ -94,7 +94,7 @@
         <div class="form-group has-validation">
           <label class="form-label">密码</label>
           <div class="input-wrap">
-            <input class="form-input" type="password" id="card-password" placeholder="请输入密码" autocomplete="current-password">
+            <input class="form-input" type="password" id="card-password" placeholder="请输入密码">
             <span class="status-icon" id="cardPwdIcon"></span>
           </div>
           <small class="hint" id="cardPwdHint"></small>
@@ -107,7 +107,7 @@
         <div class="form-group has-validation">
           <label class="form-label">姓名</label>
           <div class="input-wrap">
-            <input class="form-input" type="text" id="reg-name" placeholder="请输入2-8个字符的姓名" autocomplete="name">
+            <input class="form-input" type="text" id="reg-name" placeholder="请输入2-8个字符的姓名">
             <span class="status-icon" id="regNameIcon"></span>
           </div>
           <small class="hint" id="regNameHint"></small>
@@ -115,7 +115,7 @@
         <div class="form-group has-validation">
           <label class="form-label">读者证号</label>
           <div class="input-wrap">
-            <input class="form-input" type="text" id="reg-card" placeholder="请输入13-18位大写字母或数字" autocomplete="off">
+            <input class="form-input" type="text" id="reg-card" placeholder="请输入13-18位大写字母或数字">
             <span class="status-icon" id="regCardIcon"></span>
           </div>
           <small class="hint" id="regCardHint"></small>
@@ -123,7 +123,7 @@
         <div class="form-group has-validation">
           <label class="form-label">密码</label>
           <div class="input-wrap">
-            <input class="form-input" type="password" id="reg-password" placeholder="6-16位，需含数字和字母" autocomplete="new-password">
+            <input class="form-input" type="password" id="reg-password" placeholder="6-16位，需含数字和字母">
             <span class="status-icon" id="regPwdIcon"></span>
           </div>
           <small class="hint" id="regPwdHint"></small>
@@ -131,7 +131,7 @@
         <div class="form-group has-validation">
           <label class="form-label">确认密码</label>
           <div class="input-wrap">
-            <input class="form-input" type="password" id="reg-password-confirm" placeholder="请再次输入密码" autocomplete="new-password">
+            <input class="form-input" type="password" id="reg-password-confirm" placeholder="请再次输入密码">
             <span class="status-icon" id="regPwd2Icon"></span>
           </div>
           <small class="hint" id="regPwd2Hint"></small>
@@ -182,18 +182,25 @@
   <button id="btnCloseScanner">取消</button>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" onerror="window.__sbLoadFailed=true"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" defer onerror="window.__sbLoadFailed=true"></script>
+<!-- 【v2.7.79】html5-qrcode 改为 defer 异步加载，只在用户点扫码按钮时才用到 -->
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" defer></script>
 <script>
-// 【v2.7.28】10秒后如果 supabase 仍未加载，显示错误提示
-setTimeout(function() {
-  if (typeof window.supabase === 'undefined' || typeof window.supabase.createClient !== 'function') {
-    document.body.innerHTML = '<div style="text-align:center;padding:40px 20px;font-size:16px;color:#333;"><p>网络连接超时</p><p style="color:#999;font-size:14px;">请检查网络后刷新页面</p><button onclick="location.reload()" style="margin-top:20px;padding:10px 30px;background:#1890ff;color:#fff;border:none;border-radius:4px;font-size:14px;">刷新重试</button></div>';
-  }
-}, 10000);
+// 【v2.7.79】超时检测改为 DOMContentLoaded 后启动
+// 原因：supabase 和 auth.js 改为 defer，DOMContentLoaded 会在它们执行完后才触发
+//       如果在 head 中就启动 10 秒计时，会在 defer 脚本执行前就误判超时
+window.addEventListener('DOMContentLoaded', function() {
+  setTimeout(function() {
+    if (typeof window.supabase === 'undefined' || typeof window.supabase.createClient !== 'function') {
+      document.body.innerHTML = '<div style="text-align:center;padding:40px 20px;font-size:16px;color:#333;"><p>网络连接超时</p><p style="color:#999;font-size:14px;">请检查网络后刷新页面</p><button onclick="location.reload()" style="margin-top:20px;padding:10px 30px;background:#1890ff;color:#fff;border:none;border-radius:4px;font-size:14px;">刷新重试</button></div>';
+    }
+  }, 10000);
+});
 </script>
-<script src="auth.js"></script>
+<script src="auth.js" defer></script>
 <script>
-(async function(){
+// 【v2.7.79】等待 supabase 和 auth.js 加载完成（均为 defer，DOMContentLoaded 在 defer 脚本执行完后触发）
+window.addEventListener('DOMContentLoaded', async function(){
   const $=id=>document.getElementById(id);
 
   // 轻提示
@@ -205,7 +212,7 @@ setTimeout(function() {
     setTimeout(() => t.remove(), 2000);
   }
 
-  // Supabase SDK 加载检查
+  // Supabase SDK 加载检查（defer 后 supabase 此时应该已加载完成）
   if(window.__sbLoadFailed || (typeof window.supabase==='undefined' && typeof createClient==='undefined')){
     showToast('网络连接异常，请检查网络后刷新页面');
     return;
@@ -577,7 +584,7 @@ setTimeout(function() {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(handleKeyboard, 100);
   });
-})();
+});
 </script>
 </body>
 </html>

@@ -656,8 +656,24 @@ async function getCellDataBatch(cellKeys, dateRange, forceRefresh = false) {
       photo_id: p.id, url: p.url, status: p.status,
       uploaded_by: p.uploaded_by, created_at: p.created_at, thumbnail: p.url, time_slot: p.time_slot
     }));
-    // 【修复二】使用安全缓存更新：空数组不覆盖非空缓存
-    safeSetCache(ck, freshImages, 'getCellDataBatch');
+    // 【v2.7.78】forceRefresh=true 时强制覆盖缓存（包括空数组覆盖非空缓存）
+    // 原因：跨设备删除场景下，DB 已无数据（他人删除了图片），但 safeSetCache 的"安全更新"
+    //       逻辑会拒绝用空数组覆盖非空缓存，导致本地仍保留已删除的图片数据，
+    //       refreshSeatThumbsIncrementally 拿到旧数据 → 缩略图显示破损图标。
+    // 修复：forceRefresh=true 表示调用方明确要求从 DB 获取最新数据，DB 是权威源，
+    //       应信任 DB 的结果（包括空数组）。
+    // 例外：上传锁中的 cell 仍受保护，避免 DB 未写入的新上传被空数据覆盖。
+    if (forceRefresh && !isCellLocked(ck)) {
+      _cellDataCache.set(ck, freshImages);
+      if (freshImages.length > 0) {
+        setLocalCache(ck, freshImages);
+      } else {
+        clearLocalCache(ck);
+      }
+    } else {
+      // 非强制刷新或上传锁中：走 safeSetCache 安全更新逻辑
+      safeSetCache(ck, freshImages, 'getCellDataBatch');
+    }
     result[ck] = { key: ck, images: _cellDataCache.get(ck) || freshImages };
   });
   return result;
@@ -928,11 +944,6 @@ async function dlDeletePhoto(photoId, url, ck) {
       if (url) removeCachedThumb(url);
       // 【v2.7.15】同步清除预签名 URL 内存缓存
       if (url) removePresignedUrl(url);
-      // 【v2.7.47】强制清空轮询脏标记，确保本机和其他设备的下次轮询必定检测到变化
-      // 否则可能出现：本机缓存已更新但 newJSON 比对仍相同 → 跳过 UI 刷新
-      if (typeof _lastCountsJSON !== 'undefined') {
-        _lastCountsJSON = '';
-      }
     }
     return { success: true, storageOk };
   } catch (e) {

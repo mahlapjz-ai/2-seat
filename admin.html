@@ -151,7 +151,170 @@
       align-items: center;
       gap: 4px;
     }
+
+    /* 【v2.7.67】图片记录矩阵 - 缩略图性能优化 */
+    /* 固定缩略图尺寸，防止加载后重排 */
+    .photo-thumb-cell {
+      width: 60px;
+      height: 45px;
+      overflow: hidden;
+      display: inline-block;
+      position: relative;
+      border-radius: 4px;
+      background: #e2e8f0; /* 灰色占位背景 */
+      flex-shrink: 0;
+    }
+    .photo-thumb-cell img {
+      width: 60px;
+      height: 45px;
+      object-fit: cover;
+      display: block;
+      border-radius: 4px;
+      /* 加载前透明，加载后通过 onload 显示，避免闪烁 */
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    .photo-thumb-cell img.loaded {
+      opacity: 1;
+    }
+    .photo-thumb-cell img.error {
+      opacity: 0.3;
+      filter: grayscale(1);
+    }
+    /* 跳过屏幕外元素渲染，提升滚动流畅度 */
+    .photo-matrix-row {
+      content-visibility: auto;
+      contain-intrinsic-size: 65px;
+      will-change: transform;
+      transform: translateZ(0);
+    }
+    /* 删除按钮（右上角红圆） */
+    .photo-thumb-cell .photo-del-btn {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      width: 14px;
+      height: 14px;
+      background: #ef4444;
+      color: #fff;
+      border-radius: 50%;
+      font-size: 9px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 1px 2px rgba(0,0,0,.2);
+      cursor: pointer;
+      z-index: 2;
+    }
+    .photo-thumb-cell .photo-del-btn:hover {
+      background: #dc2626;
+    }
+
+    /* 【v2.7.68】图片记录全屏预览样式 */
+    .photo-preview-modal {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 99999;
+      display: none;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .photo-preview-modal.show {
+      display: block;
+    }
+    .photo-preview-close {
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      color: #fff;
+      font-size: 36px;
+      cursor: pointer;
+      z-index: 10;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,.4);
+      border-radius: 50%;
+      line-height: 1;
+    }
+    .photo-preview-scroller {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    .photo-preview-slide {
+      flex: 0 0 100%;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .photo-preview-slide img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      transform-origin: center center;
+      transition: transform .15s ease;
+      will-change: transform;
+      -webkit-user-drag: none;
+      user-select: none;
+      pointer-events: none; /* 由父级 slide 处理手势 */
+    }
+    .photo-preview-slide.loading::before {
+      content: '加载中…';
+      position: absolute;
+      color: #fff;
+      font-size: 14px;
+    }
+    .photo-preview-indicator {
+      position: absolute;
+      bottom: 48px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 13px;
+      background: rgba(0,0,0,.5);
+      padding: 4px 12px;
+      border-radius: 12px;
+      z-index: 5;
+      opacity: 0;
+      transition: opacity .25s ease;
+      pointer-events: none;
+    }
+    .photo-preview-indicator.visible {
+      opacity: 1;
+    }
+    .photo-preview-hint {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,.5);
+      font-size: 11px;
+      z-index: 5;
+      pointer-events: none;
+      text-align: center;
+      width: 100%;
+    }
   </style>
+  <!-- 【v2.7.68】定义 SUPABASE_ANON_KEY，供 data-layer.js 的 getCOSPresignedUrl 使用（COS 预签名 URL 场景） -->
+  <script>
+    window.SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1ZWpzbHF4YXR6a29ydG5rZHNmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4OTk4OTAsImV4cCI6MjA5ODQ3NTg5MH0.T76oSi1ycI8xxBrybQsscR-eWM3ItJiKC_z3xaRglFE';
+  </script>
+  <!-- 【v2.7.67】引入 data-layer.js，复用 PWA 主页面的缩略图缓存（getCachedThumb/cacheThumb/enqueueDownload/getCOSReadUrl） -->
+  <script src="data-layer.js?v=2.7.68"></script>
 </head>
 <body class="bg-slate-50 min-h-screen" style="font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;">
 
@@ -228,6 +391,11 @@
           <p>• 辅专需分配管辖楼层（可多选），仅能操作所管楼层的拍照、上传、删除等功能。</p>
           <p>• 辅专可以查看所有楼层的图片缩略图和拼接预览，但不能操作无权限楼层。</p>
           <p>• 协助者（义工）的权限有有效期，过期后自动降级为读者。</p>
+          <p class="mt-2 font-medium text-red-700">⚠️ 删除用户注意事项：</p>
+          <p>• 删除用户前，需确保该用户已无关联的图片记录（seat_photos 表）。</p>
+          <p>• 如果用户曾上传或拍照，需先通过"图片记录"标签页或"清除图片"功能清理其图片。</p>
+          <p>• 如果用户曾生成协作密码或有协作者激活记录，也需先清理相关数据。</p>
+          <p>• 删除用户会同步删除其登录凭证（Authentication 账号），不可恢复，请谨慎操作。</p>
         </div>
       </div>
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
@@ -808,13 +976,20 @@ $$);</code>
       <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
         <h2 class="text-base font-semibold text-slate-800 mb-4">图片记录（矩阵视图）</h2>
         <div class="flex items-end gap-4 flex-wrap">
+          <!-- 【v2.7.68】问题2：改为单日期选择器（今天/昨天/前天） -->
           <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-slate-400">起始日期</label>
-            <input type="date" id="photoStartDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
-          </div>
-          <div class="flex flex-col gap-1.5">
-            <label class="text-xs text-slate-400">结束日期</label>
-            <input type="date" id="photoEndDate" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30">
+            <label class="text-xs text-slate-400">日期</label>
+            <div class="relative" id="photoDatePickerWrap">
+              <button type="button" id="photoDatePickerBtn" class="px-3 py-1.5 border border-slate-300 rounded-md text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500/30 bg-white min-w-[110px] text-left flex items-center justify-between gap-2">
+                <span id="photoDatePickerLabel">今天</span>
+                <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </button>
+              <div id="photoDatePickerDropdown" class="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg z-30 hidden min-w-[110px]">
+                <div class="date-option px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer" data-offset="0">今天</div>
+                <div class="date-option px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer" data-offset="-1">昨天</div>
+                <div class="date-option px-3 py-1.5 text-sm hover:bg-blue-50 cursor-pointer" data-offset="-2">前天</div>
+              </div>
+            </div>
           </div>
           <div class="flex flex-col gap-1.5">
             <label class="text-xs text-slate-400">楼层</label>
@@ -882,6 +1057,14 @@ $$);</code>
 
 <!-- toast 容器 -->
 <div class="fixed top-14 right-6 z-[9999] flex flex-col gap-2" id="toastContainer"></div>
+
+<!-- 【v2.7.68】图片记录全屏预览（双指缩放 + 左右滑动 + 下滑关闭） -->
+<div id="photoPreviewModal" class="photo-preview-modal">
+  <div class="photo-preview-close" id="photoPreviewClose">&times;</div>
+  <div class="photo-preview-scroller" id="photoPreviewScroller"></div>
+  <div class="photo-preview-indicator" id="photoPreviewIndicator"></div>
+  <div class="photo-preview-hint">双指/双击缩放 · 左右滑动切换 · 下滑关闭</div>
+</div>
 
 <!-- Supabase SDK（双 CDN 容错：jsdelivr 加载失败自动回退到 unpkg） -->
 <script>
@@ -1212,9 +1395,7 @@ async function testConnection() {
       // 设置历史记录默认日期为今天
       $('#histStartDate').value = todayStr();
       $('#histEndDate').value = todayStr();
-      // 设置图片记录默认日期为今天
-      $('#photoStartDate').value = todayStr();
-      $('#photoEndDate').value = todayStr();
+      // 【v2.7.68】图片记录改为单日期选择器，默认今天（无需设置 input.value）
       // 各面板独立加载，避免单个面板报错导致全部失败
       const _panels = [loadUsers, loadPasswords, loadSettings, loadHistory, loadPhotos, loadReports];
       for (const _fn of _panels) { try { await _fn(); } catch(_e) { console.warn('面板加载失败:', _fn.name, _e); } }
@@ -1503,14 +1684,76 @@ async function testConnection() {
         const uid = btn.dataset.deleteUid;
         const user = allUsers.find(u => u.uid === uid);
         if (user && user.role === 'owner') return;
-        if (!confirm(`确定删除用户「${user?.name || uid}」吗？`)) return;
+        if (!confirm(`确定删除用户「${user?.name || uid}」吗？\n\n删除后该用户的登录凭证（Authentication 账号）也会被同步删除，不可恢复。`)) return;
+
+        // 【v2.7.76】删除前先检查关联数据，避免产生孤儿数据
+        // 外键约束：seat_photos.uploaded_by、collab_passwords.created_by 引用 auth.users(id)
+        // 未设置 ON DELETE 行为，直接删除会被外键阻止
+        // 正确做法：先检查并提示管理员清理关联数据，确认无关联后再删除
+        let photoCount = 0, collabCount = 0;
+        try {
+          // 查询该用户上传的图片记录数
+          const { count: pc, error: pcErr } = await supabase.from('seat_photos')
+            .select('id', { count: 'exact', head: true })
+            .eq('uploaded_by', uid);
+          if (!pcErr) photoCount = pc || 0;
+
+          // 查询该用户创建的协作密码数
+          const { count: cc, error: ccErr } = await supabase.from('collab_passwords')
+            .select('id', { count: 'exact', head: true })
+            .eq('created_by', uid);
+          if (!ccErr) collabCount = cc || 0;
+        } catch (e) {
+          console.warn('[admin] 查询关联数据失败，继续尝试删除:', e);
+        }
+
+        // 有关联数据时拒绝删除，给出明确清理指引
+        if (photoCount > 0 || collabCount > 0) {
+          const tips = [];
+          if (photoCount > 0) tips.push(`${photoCount} 条图片记录（请到"图片记录"标签页清理）`);
+          if (collabCount > 0) tips.push(`${collabCount} 条协作密码（请到"协作密码"标签页吊销或等待过期）`);
+          toast(`无法删除：该用户仍有${tips.join('、')}。请先清理后再删除`, 'error');
+          return;
+        }
+
+        // 无关联数据，执行删除
         const { error } = await supabase.from('users').delete().eq('uid', uid);
         if (error) {
-          toast('删除失败：' + cnErr(error), 'error');
-        } else {
-          toast('用户已删除', 'success');
-          loadUsers();
+          // 判断是否为外键约束错误（其他未预见的关联数据）
+          const errCode = error.code || '';
+          const errMsg = (error.message || '') + ' ' + errCode;
+          if (/23503|foreign key|violates|still references|关联|约束/i.test(errMsg)) {
+            toast('删除失败：该用户存在关联数据，请先清理后再删除', 'error');
+          } else {
+            toast('删除失败：' + cnErr(error), 'error');
+          }
+          return;
         }
+
+        // public.users 删除成功后，触发器 trigger_delete_auth_user 会自动删除 auth 账号
+        // 这里再调用一次确保 auth 账号被清理（若已被触发器删除会返回 not found，视为成功）
+        try {
+          const { error: authErr } = await supabase.auth.admin.deleteUser(uid);
+          if (authErr) {
+            const authErrMsg = (authErr.message || '').toLowerCase();
+            if (/user not found|not found|does not exist|already been deleted|no rows/i.test(authErrMsg)) {
+              console.log('[admin] auth 账号已被触发器删除');
+            } else {
+              console.warn('[admin] auth 账号删除失败（users 表已删除）:', authErr);
+              toast('用户数据已删除，但登录凭证需手动到 Supabase Dashboard 清理', 'warning');
+              loadUsers();
+              return;
+            }
+          }
+        } catch (e) {
+          const errMsg = String(e?.message || '').toLowerCase();
+          if (!/user not found|not found|does not exist|no rows/i.test(errMsg)) {
+            console.warn('[admin] auth 账号删除异常:', e);
+          }
+        }
+
+        toast('用户已删除', 'success');
+        loadUsers();
       });
     });
 
@@ -2173,6 +2416,168 @@ async function testConnection() {
   let _photoPage = 1;
   const PHOTOS_PER_PAGE = 10;
 
+  // 【v2.7.68】问题2：图片记录单日期选择器状态
+  // _photoDateOffset: 0=今天, -1=昨天, -2=前天（与 PWA 主界面 _selectedDateOffset 含义一致）
+  let _photoDateOffset = 0;
+  const _PHOTO_DATE_LABELS = { 0: '今天', '-1': '昨天', '-2': '前天' };
+
+  /** 计算指定偏移量的日期字符串（北京时间，YYYY-MM-DD） */
+  function _dateOffsetToStr(offset) {
+    const now = new Date();
+    const bjMs = now.getTime() + 8 * 3600000;
+    const d = new Date(bjMs);
+    d.setUTCDate(d.getUTCDate() + offset);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  /** 获取当前选中日期（YYYY-MM-DD） */
+  function _getPhotoSelectedDate() {
+    return _dateOffsetToStr(_photoDateOffset);
+  }
+
+  /** 初始化图片记录日期选择器 */
+  function initPhotoDatePicker() {
+    const btn = document.getElementById('photoDatePickerBtn');
+    const dropdown = document.getElementById('photoDatePickerDropdown');
+    const label = document.getElementById('photoDatePickerLabel');
+    if (!btn || !dropdown || !label) return;
+
+    // 更新按钮文字
+    function updateLabel() {
+      label.textContent = _PHOTO_DATE_LABELS[String(_photoDateOffset)] || '今天';
+      // 更新下拉选项的选中状态
+      dropdown.querySelectorAll('.date-option').forEach(el => {
+        const offset = parseInt(el.dataset.offset);
+        if (offset === _photoDateOffset) {
+          el.style.background = 'rgba(59,130,246,.15)';
+          el.style.color = '#1d4ed8';
+          el.style.fontWeight = '600';
+        } else {
+          el.style.background = '';
+          el.style.color = '';
+          el.style.fontWeight = '';
+        }
+      });
+    }
+    updateLabel();
+
+    // 点击按钮切换下拉
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      dropdown.classList.toggle('hidden');
+    };
+
+    // 点击外部关闭下拉
+    document.addEventListener('click', () => {
+      dropdown.classList.add('hidden');
+    });
+    dropdown.addEventListener('click', (e) => e.stopPropagation());
+
+    // 点击选项切换日期
+    dropdown.querySelectorAll('.date-option').forEach(el => {
+      el.onclick = async () => {
+        const offset = parseInt(el.dataset.offset);
+        if (offset === _photoDateOffset) {
+          dropdown.classList.add('hidden');
+          return;
+        }
+        _photoDateOffset = offset;
+        updateLabel();
+        dropdown.classList.add('hidden');
+        // 切换日期后自动重新查询
+        _photoPage = 1;
+        await loadPhotos();
+      };
+    });
+  }
+
+  // 【v2.7.67】缩略图性能优化：解码队列 + IntersectionObserver 懒加载
+  // 复用 PWA 主页面（data-layer.js）的 Cache Storage 缓存，避免重复下载
+  const MAX_DECODE = 3;                  // 同时最多解码 3 张缩略图
+  let _activeDecode = 0;
+  const _decodeQueue = [];
+  let _renderedPages = null;             // 已渲染页 DOM 缓存（Map<pageKey, HTMLTableRowElement>）
+  let _delBtnDelegated = false;          // 删除按钮事件委托标记
+
+  /** 判断 img 是否在视口附近（用于下载优先级） */
+  function _imgInViewport(img) {
+    if (!img.isConnected) return false;
+    const r = img.getBoundingClientRect();
+    return r.top < window.innerHeight + 200 && r.bottom > -200;
+  }
+
+  /** 加载单张缩略图（复用 data-layer.js 的 enqueueDownload，自动走 Cache Storage） */
+  function _loadPhotoThumb(img, realSrc) {
+    return new Promise(resolve => {
+      if (!realSrc.startsWith('http')) {
+        img.src = realSrc;
+        resolve();
+        return;
+      }
+      // 复用 PWA 主页面的并发下载队列（getCachedThumb 优先，未命中才走网络）
+      const isPriority = _imgInViewport(img);
+      if (typeof enqueueDownload === 'function') {
+        enqueueDownload(realSrc, isPriority).then(({ blobUrl }) => {
+          if (img.isConnected && !img.src) {
+            const tmp = new Image();
+            tmp.onload = () => {
+              if (img.isConnected && !img.src) img.src = blobUrl;
+              else if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+            };
+            tmp.onerror = () => {
+              if (img.isConnected && !img.src) img.src = blobUrl;
+              else if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+            };
+            tmp.src = blobUrl;
+          } else if (blobUrl.startsWith('blob:')) {
+            URL.revokeObjectURL(blobUrl);
+          }
+          resolve();
+        }).catch(() => {
+          if (img.isConnected && !img.src) img.src = realSrc;
+          resolve();
+        });
+      } else {
+        // 兜底：data-layer.js 未加载时直接设 src
+        img.src = realSrc;
+        resolve();
+      }
+    });
+  }
+
+  /** 处理解码队列 */
+  function _processDecodeQueue() {
+    while (_activeDecode < MAX_DECODE && _decodeQueue.length > 0) {
+      const task = _decodeQueue.shift();
+      if (!task.img.isConnected || task.img.src) continue;
+      _activeDecode++;
+      _loadPhotoThumb(task.img, task.realSrc).finally(() => {
+        _activeDecode--;
+        _processDecodeQueue();
+      });
+    }
+  }
+
+  /** 加入解码队列 */
+  function _enqueueDecode(img, realSrc) {
+    _decodeQueue.push({ img, realSrc });
+    _processDecodeQueue();
+  }
+
+  /** IntersectionObserver：进入视口时加载，离开时保留（不卸载，避免翻页闪烁） */
+  const _photoThumbObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const img = entry.target;
+      if (entry.isIntersecting) {
+        const realSrc = img.dataset.thumbSrc;
+        if (realSrc && !img.src) _enqueueDecode(img, realSrc);
+      }
+    });
+  }, { rootMargin: '200px 0px' });
+
   /** 从 seat_id 提取区域前缀（如"中1001"→"中"，"东2001"→"东"，"东临2901"→"东临"） */
   function extractRegionPrefix(seatId) {
     const m = seatId.match(/^([\u4e00-\u9fff]+)/);
@@ -2193,6 +2598,10 @@ async function testConnection() {
     const photoEmpty = $('#photoEmpty');
     const pagination = $('#photoPagination');
 
+    // 清空 tbody 前，先卸载旧 img 的 blob URL，避免内存泄漏
+    tbody.querySelectorAll('img.photo-thumb-img[src]').forEach(img => {
+      if (img.src && img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+    });
     tbody.innerHTML = '';
 
     if (_seatRows.length === 0) {
@@ -2212,9 +2621,27 @@ async function testConnection() {
     const start = (_photoPage - 1) * PHOTOS_PER_PAGE;
     const pageRows = _seatRows.slice(start, start + PHOTOS_PER_PAGE);
 
+    // 已渲染页的 DOM 缓存：避免切回同一页时重复渲染（要求6：切换页面不清其他页 DOM）
+    // 注意：必须使用 DocumentFragment 保存每页的 tr 副本，不能直接保存 tbody 引用
+    // （因为 tbody 是当前活跃节点，下次 innerHTML='' 会清空其内容，缓存也会失效）
+    if (!_renderedPages) _renderedPages = new Map();
+    const pageKey = `p${_photoPage}`;
+    if (_renderedPages.has(pageKey)) {
+      // 切回已渲染页：克隆缓存的 fragment 后插入，原 fragment 保留备用
+      tbody.appendChild(_renderedPages.get(pageKey).cloneNode(true));
+      _renderPaging(pagination, totalPages);
+      // 重新观察新插入的 img（克隆后 src 属性不会保留，img 仍是占位状态）
+      tbody.querySelectorAll('img.photo-thumb-img:not([src])').forEach(img => {
+        _photoThumbObserver.observe(img);
+      });
+      return;
+    }
+    const frag = document.createDocumentFragment();
+
     pageRows.forEach((row, rowIdx) => {
       const tr = document.createElement('tr');
-      tr.className = rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50';
+      // 【v2.7.67】应用 CSS 性能优化类，跳过屏幕外渲染
+      tr.className = (rowIdx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50') + ' photo-matrix-row';
       tr.dataset.seatId = row.seatId;
 
       // 楼层、区域、座位（sticky 列）
@@ -2244,21 +2671,55 @@ async function testConnection() {
         if (photos.length > 0) {
           const container = document.createElement('div');
           container.className = 'flex flex-nowrap gap-0.5 overflow-x-auto';
-          photos.slice(0, 5).forEach(p => {
-            const wrap = document.createElement('div');
-            wrap.className = 'relative inline-block photo-thumb';
-            wrap.dataset.operator = p.operator;
-            wrap.dataset.date = p.date;
-            wrap.innerHTML = `
-              <img src="${esc(p.url)}" class="w-[40px] h-[30px] object-cover rounded-sm cursor-pointer hover:opacity-80" onclick="window.open('${esc(p.url)}','_blank')">
-              <button class="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 hover:bg-red-700 text-white rounded-full flex items-center justify-center text-[8px] leading-none shadow-sm photo-del-btn" data-photo-id="${p.id}" data-photo-url="${esc(p.url)}" data-seat-id="${esc(row.seatId)}" data-time-slot="${esc(ts)}" title="删除">×</button>
-            `;
-            container.appendChild(wrap);
+          // 【v2.7.68】保存当前时段所有图片引用，供全屏预览左右滑动切换
+          const photoList = photos.slice(0, 5);
+          photoList.forEach((p, idx) => {
+            const cell = document.createElement('div');
+            cell.className = 'photo-thumb-cell';
+            cell.dataset.operator = p.operator;
+            cell.dataset.date = p.date;
+            cell.dataset.photoId = p.id;
+            cell.dataset.photoUrl = p.url;
+            cell.dataset.seatId = row.seatId;
+            cell.dataset.timeSlot = ts;
+
+            // 【v2.7.67】懒加载 img：用 data-thumb-src 占位，由 IntersectionObserver 按需加载
+            // 固定 width/height 防止加载后重排；loading=lazy + decoding=async 兜底
+            const img = document.createElement('img');
+            img.className = 'photo-thumb-img';
+            img.width = 60;
+            img.height = 45;
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            img.alt = `${row.seatId} ${ts}`;
+            img.dataset.thumbSrc = p.url;
+            // 【v2.7.68】问题1：恢复鼠标悬停提示（上传者 + 日期）
+            img.title = `上传者：${p.operator}，日期：${p.date}`;
+            img.style.cursor = 'pointer';
+            // 【v2.7.68】问题3：点击改为全屏预览（支持双指缩放、左右滑动切换同座位多图）
+            img.addEventListener('click', () => _openPhotoPreview(photoList, idx, row.seatId, ts));
+            // 加载完成显示
+            img.addEventListener('load', () => img.classList.add('loaded'));
+            img.addEventListener('error', () => img.classList.add('error'));
+
+            // 删除按钮
+            const delBtn = document.createElement('button');
+            delBtn.className = 'photo-del-btn';
+            delBtn.title = '删除';
+            delBtn.textContent = '×';
+            delBtn.dataset.photoId = p.id;
+            delBtn.dataset.photoUrl = p.url;
+            delBtn.dataset.seatId = row.seatId;
+            delBtn.dataset.timeSlot = ts;
+
+            cell.appendChild(img);
+            cell.appendChild(delBtn);
+            container.appendChild(cell);
           });
-          if (photos.length > 3) {
+          if (photos.length > 5) {
             const more = document.createElement('span');
-            more.className = 'text-[10px] text-slate-400 ml-0.5';
-            more.textContent = `+${photos.length - 3}`;
+            more.className = 'text-[10px] text-slate-400 ml-0.5 self-center';
+            more.textContent = `+${photos.length - 5}`;
             container.appendChild(more);
           }
           td.appendChild(container);
@@ -2267,63 +2728,372 @@ async function testConnection() {
         tr.appendChild(td);
       });
 
-      tbody.appendChild(tr);
+      frag.appendChild(tr);
     });
 
-    // 删除按钮事件
-    tbody.querySelectorAll('.photo-del-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        if (!confirm('确定删除该图片吗？将同时删除存储文件和数据库记录。')) return;
-        const photoId = btn.dataset.photoId;
-        const photoUrl = btn.dataset.photoUrl;
-        // 删除 Storage 文件
-        if (photoUrl) {
-          try {
-            const path = new URL(photoUrl).pathname.match(/\/object\/public\/seat-photos\/(.+)/);
-            if (path && path[1]) await supabase.storage.from('seat-photos').remove([path[1]]);
-          } catch(e) { console.warn('删除文件失败:', e); }
-        }
-        // 删除数据库记录
-        const { error } = await supabase.from('seat_photos').delete().eq('id', photoId);
-        if (error) { toast('删除失败：' + cnErr(error), 'error'); return; }
-        toast('图片已删除', 'success');
-        // 从内存数据中移除，即时更新 UI
-        const seatId = btn.dataset.seatId;
-        const timeSlot = btn.dataset.timeSlot;
-        const seatRow = _seatRows.find(r => r.seatId === seatId);
-        if (seatRow && seatRow.byTimeSlot[timeSlot]) {
-          seatRow.byTimeSlot[timeSlot] = seatRow.byTimeSlot[timeSlot].filter(p => p.id !== photoId);
-          if (seatRow.byTimeSlot[timeSlot].length === 0) delete seatRow.byTimeSlot[timeSlot];
-        }
-        // 移除 DOM 中的缩略图
-        const wrap = btn.closest('.relative');
-        if (wrap) wrap.remove();
-      });
-    });
+    // 【v2.7.67】保存 frag 的克隆副本到缓存（appendChild 后 frag 会被清空）
+    _renderedPages.set(pageKey, frag.cloneNode(true));
+    tbody.appendChild(frag);
 
-    // 分页
-    pagination.innerHTML = '';
-    if (totalPages > 1) {
-      const prevBtn = document.createElement('button');
-      prevBtn.className = 'btn btn-sm';
-      prevBtn.textContent = '上一页';
-      prevBtn.disabled = _photoPage <= 1;
-      prevBtn.addEventListener('click', () => { _photoPage--; renderPhotoPage(); });
-
-      const info = document.createElement('span');
-      info.className = 'text-sm text-slate-500';
-      info.textContent = `${_photoPage} / ${totalPages}`;
-
-      const nextBtn = document.createElement('button');
-      nextBtn.className = 'btn btn-sm';
-      nextBtn.textContent = '下一页';
-      nextBtn.disabled = _photoPage >= totalPages;
-      nextBtn.addEventListener('click', () => { _photoPage++; renderPhotoPage(); });
-
-      pagination.appendChild(prevBtn);
-      pagination.appendChild(info);
-      pagination.appendChild(nextBtn);
+    // 删除按钮事件（事件委托，避免大量监听器）
+    if (!_delBtnDelegated) {
+      tbody.addEventListener('click', _handlePhotoDelete);
+      _delBtnDelegated = true;
     }
+
+    // 启动 IntersectionObserver 观察新插入的 img
+    tbody.querySelectorAll('img.photo-thumb-img:not([src])').forEach(img => {
+      _photoThumbObserver.observe(img);
+    });
+
+    _renderPaging(pagination, totalPages);
+  }
+
+  /** 渲染分页控件（抽离，便于复用 DOM 缓存路径调用） */
+  function _renderPaging(pagination, totalPages) {
+    pagination.innerHTML = '';
+    if (totalPages <= 1) return;
+    const prevBtn = document.createElement('button');
+    prevBtn.className = 'btn btn-sm';
+    prevBtn.textContent = '上一页';
+    prevBtn.disabled = _photoPage <= 1;
+    prevBtn.addEventListener('click', () => { _photoPage--; renderPhotoPage(); });
+
+    const info = document.createElement('span');
+    info.className = 'text-sm text-slate-500';
+    info.textContent = `${_photoPage} / ${totalPages}`;
+
+    const nextBtn = document.createElement('button');
+    nextBtn.className = 'btn btn-sm';
+    nextBtn.textContent = '下一页';
+    nextBtn.disabled = _photoPage >= totalPages;
+    nextBtn.addEventListener('click', () => { _photoPage++; renderPhotoPage(); });
+
+    pagination.appendChild(prevBtn);
+    pagination.appendChild(info);
+    pagination.appendChild(nextBtn);
+  }
+
+  /** 删除按钮事件委托处理函数 */
+  async function _handlePhotoDelete(e) {
+    const btn = e.target.closest('.photo-del-btn');
+    if (!btn) return;
+    if (!confirm('确定删除该图片吗？将同时删除存储文件和数据库记录。')) return;
+    const photoId = btn.dataset.photoId;
+    const photoUrl = btn.dataset.photoUrl;
+    // 删除 Storage 文件
+    if (photoUrl) {
+      try {
+        // 同时清理 Cache Storage 中的缓存
+        await removeCachedThumb(photoUrl).catch(() => {});
+        const path = new URL(photoUrl).pathname.match(/\/object\/public\/seat-photos\/(.+)/);
+        if (path && path[1]) await supabase.storage.from('seat-photos').remove([path[1]]);
+      } catch(e) { console.warn('删除文件失败:', e); }
+    }
+    // 删除数据库记录
+    const { error } = await supabase.from('seat_photos').delete().eq('id', photoId);
+    if (error) { toast('删除失败：' + cnErr(error), 'error'); return; }
+    toast('图片已删除', 'success');
+    // 从内存数据中移除，即时更新 UI
+    const seatId = btn.dataset.seatId;
+    const timeSlot = btn.dataset.timeSlot;
+    const seatRow = _seatRows.find(r => r.seatId === seatId);
+    if (seatRow && seatRow.byTimeSlot[timeSlot]) {
+      seatRow.byTimeSlot[timeSlot] = seatRow.byTimeSlot[timeSlot].filter(p => p.id !== photoId);
+      if (seatRow.byTimeSlot[timeSlot].length === 0) delete seatRow.byTimeSlot[timeSlot];
+    }
+    // 清除该页 DOM 缓存，重新渲染当前页
+    if (_renderedPages) _renderedPages.delete(`p${_photoPage}`);
+    // 移除 DOM 中的缩略图（先释放 blob URL）
+    const cell = btn.closest('.photo-thumb-cell');
+    if (cell) {
+      const img = cell.querySelector('img.photo-thumb-img');
+      if (img && img.src && img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+      cell.remove();
+    }
+  }
+
+  /** 【v2.7.68】问题3：全屏预览（支持双指缩放、左右滑动切换、下滑关闭）
+   *  参考 PWA 主界面 showPreview 的交互模式，独立实现以适配 admin.html 数据结构
+   *  @param {Array} photos - 当前时段所有图片 [{id, url, operator, date}, ...]
+   *  @param {number} startIndex - 初始显示图片索引
+   *  @param {string} seatId - 座位号（仅用于标题）
+   *  @param {string} timeSlot - 时段（仅用于标题）
+   */
+  async function _openPhotoPreview(photos, startIndex, seatId, timeSlot) {
+    if (!photos || !photos.length) return;
+    const modal = document.getElementById('photoPreviewModal');
+    const scroller = document.getElementById('photoPreviewScroller');
+    const indicator = document.getElementById('photoPreviewIndicator');
+    const closeBtn = document.getElementById('photoPreviewClose');
+    if (!modal || !scroller) return;
+
+    // 状态
+    let pvIndex = Math.max(0, Math.min(startIndex, photos.length - 1));
+    let pvSlideOffset = 0;        // scroller 的 translateX
+    let pvGesture = 'idle';      // idle | pan | pinch
+    let pvScale = 1;
+    let pvTx = 0;                 // 双指缩放后的偏移
+    let pvTy = 0;
+    let pvStartTouches = null;
+    let pvStartScale = 1;
+    let pvStartDistance = 0;
+    let pvStartTranslate = { x: 0, y: 0 };
+    let pvPanStart = null;
+    let pvLastTapTime = 0;
+    const slideEls = [];
+
+    // 构建 DOM
+    scroller.innerHTML = '';
+    for (let i = 0; i < photos.length; i++) {
+      const slide = document.createElement('div');
+      slide.className = 'photo-preview-slide';
+      if (i === pvIndex) {
+        slide.appendChild(_createImgEl(photos[i], seatId, timeSlot));
+      } else {
+        slide.classList.add('loading');
+      }
+      scroller.appendChild(slide);
+      slideEls.push(slide);
+    }
+
+    function _createImgEl(photo, seatId, timeSlot) {
+      const img = document.createElement('img');
+      img.alt = `${seatId || ''} ${timeSlot || ''}`.trim();
+      img.dataset.url = photo.url;
+      img.onload = () => {
+        img.parentElement && img.parentElement.classList.remove('loading');
+      };
+      img.onerror = () => {
+        img.parentElement && img.parentElement.classList.remove('loading');
+        img.alt = '加载失败';
+      };
+      // 异步获取 COS 预签名 URL，避免 CORS
+      (async () => {
+        let url = photo.url;
+        try {
+          if (typeof getCOSReadUrl === 'function' && url.includes('.myqcloud.com')) {
+            const presigned = await getCOSReadUrl(url);
+            if (presigned) url = presigned;
+          }
+        } catch(e) { /* 降级到原始 URL */ }
+        if (img.isConnected) img.src = url;
+      })();
+      return img;
+    }
+
+    function applyTransform() {
+      scroller.style.transform = `translateX(${pvSlideOffset}px)`;
+      const current = slideEls[pvIndex];
+      if (current) {
+        const img = current.querySelector('img');
+        if (img) img.style.transform = `translate(${pvTx}px, ${pvTy}px) scale(${pvScale})`;
+      }
+    }
+
+    function updateIndicator() {
+      if (photos.length > 1) {
+        indicator.textContent = `${pvIndex + 1} / ${photos.length}`;
+        indicator.classList.add('visible');
+        clearTimeout(updateIndicator._timer);
+        updateIndicator._timer = setTimeout(() => indicator.classList.remove('visible'), 1500);
+      }
+    }
+
+    function loadAdjacentImages() {
+      // 加载当前及相邻图片
+      for (let i = Math.max(0, pvIndex - 1); i <= Math.min(photos.length - 1, pvIndex + 1); i++) {
+        const slide = slideEls[i];
+        if (!slide || slide.querySelector('img')) continue;
+        slide.classList.remove('loading');
+        slide.appendChild(_createImgEl(photos[i], seatId, timeSlot));
+      }
+    }
+
+    let _closeCore = () => {
+      modal.classList.remove('show');
+      document.removeEventListener('touchstart', onTouchStart, { passive: false });
+      document.removeEventListener('touchmove', onTouchMove, { passive: false });
+      document.removeEventListener('touchend', onTouchEnd);
+      scroller.style.transform = '';
+      scroller.innerHTML = '';
+    };
+
+    // 手势处理（参考 PWA scripts.js showPreview 的双指+滑动模式）
+    function onTouchStart(e) {
+      if (e.target === closeBtn || closeBtn.contains(e.target)) {
+        _closeCore();
+        return;
+      }
+      const touches = e.touches;
+      if (touches.length === 1) {
+        // 单指：双击检测 + 拖动
+        const now = Date.now();
+        if (now - pvLastTapTime < 300) {
+          // 双击：切换缩放
+          if (pvScale > 1) {
+            pvScale = 1; pvTx = 0; pvTy = 0;
+          } else {
+            pvScale = 2.5;
+          }
+          applyTransform();
+          pvLastTapTime = 0;
+          pvGesture = 'idle';
+          return;
+        }
+        pvLastTapTime = now;
+        pvGesture = 'pan';
+        pvPanStart = { x: touches[0].clientX, y: touches[0].clientY, startOffset: pvSlideOffset, startTx: pvTx, startTy: pvTy };
+      } else if (touches.length === 2) {
+        // 双指：缩放
+        pvGesture = 'pinch';
+        pvStartDistance = _getTouchDistance(touches);
+        pvStartScale = pvScale;
+        pvStartTranslate = { x: pvTx, y: pvTy };
+        const mid = _getTouchMidpoint(touches);
+        pvStartTouches = { x: mid.x, y: mid.y };
+      }
+      e.preventDefault();
+    }
+
+    function onTouchMove(e) {
+      const touches = e.touches;
+      if (pvGesture === 'pan' && touches.length === 1 && pvPanStart) {
+        const dx = touches[0].clientX - pvPanStart.x;
+        const dy = touches[0].clientY - pvPanStart.y;
+        if (pvScale > 1) {
+          // 缩放状态下：平移图片
+          pvTx = pvPanStart.startTx + dx;
+          pvTy = pvPanStart.startTy + dy;
+          // 限制平移范围（约图片宽度的 1 倍）
+          const maxX = 150;
+          pvTx = Math.max(-maxX, Math.min(maxX, pvTx));
+          pvTy = Math.max(-200, Math.min(200, pvTy));
+        } else {
+          // 正常状态：水平滑动切换
+          pvSlideOffset = pvPanStart.startOffset + dx;
+          // 下滑关闭检测（垂直位移大于水平位移且向下滑）
+          if (Math.abs(dy) > Math.abs(dx) && dy > 80) {
+            _closeCore();
+            return;
+          }
+        }
+        applyTransform();
+      } else if (pvGesture === 'pinch' && touches.length === 2) {
+        const dist = _getTouchDistance(touches);
+        const scale = Math.max(1, Math.min(5, pvStartScale * (dist / pvStartDistance)));
+        pvScale = scale;
+        if (scale === 1) { pvTx = 0; pvTy = 0; }
+        applyTransform();
+      }
+      e.preventDefault();
+    }
+
+    function onTouchEnd(e) {
+      if (pvGesture === 'pan' && pvScale === 1) {
+        // 滑动结束：判断切换
+        const slideWidth = modal.offsetWidth;
+        const threshold = slideWidth * 0.2;
+        if (pvSlideOffset < -threshold && pvIndex < photos.length - 1) {
+          pvIndex++;
+          pvSlideOffset = -pvIndex * slideWidth;
+          loadAdjacentImages();
+        } else if (pvSlideOffset > threshold && pvIndex > 0) {
+          pvIndex--;
+          pvSlideOffset = -pvIndex * slideWidth;
+          loadAdjacentImages();
+        } else {
+          pvSlideOffset = -pvIndex * slideWidth;
+        }
+        applyTransform();
+        updateIndicator();
+      }
+      if (e.touches.length === 0) {
+        pvGesture = 'idle';
+        // 单指离开后，如果缩放小于 1.2，重置为 1
+        if (pvScale < 1.2) {
+          pvScale = 1; pvTx = 0; pvTy = 0;
+          applyTransform();
+        }
+      }
+    }
+
+    function _getTouchDistance(touches) {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+    function _getTouchMidpoint(touches) {
+      return {
+        x: (touches[0].clientX + touches[1].clientX) / 2,
+        y: (touches[0].clientY + touches[1].clientY) / 2
+      };
+    }
+
+    // 鼠标滚轮缩放（PC 端兼容）
+    function onWheel(e) {
+      if (e.target !== scroller && !scroller.contains(e.target)) return;
+      const delta = e.deltaY > 0 ? -0.2 : 0.2;
+      pvScale = Math.max(1, Math.min(5, pvScale + delta));
+      if (pvScale === 1) { pvTx = 0; pvTy = 0; }
+      applyTransform();
+      e.preventDefault();
+    }
+
+    // 显示弹窗
+    modal.classList.add('show');
+    pvSlideOffset = -pvIndex * modal.offsetWidth;
+    applyTransform();
+    updateIndicator();
+    loadAdjacentImages();
+
+    // 绑定事件（直接绑到 document，close 时移除）
+    document.addEventListener('touchstart', onTouchStart, { passive: false });
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd);
+    scroller.addEventListener('wheel', onWheel, { passive: false });
+    closeBtn.onclick = _closeCore;
+
+    // ESC 关闭（PC 端）
+    const onKeydown = (e) => {
+      if (e.key === 'Escape') {
+        _closeCore();
+        document.removeEventListener('keydown', onKeydown);
+      } else if (e.key === 'ArrowLeft' && pvIndex > 0) {
+        pvIndex--;
+        pvSlideOffset = -pvIndex * modal.offsetWidth;
+        applyTransform();
+        updateIndicator();
+        loadAdjacentImages();
+      } else if (e.key === 'ArrowRight' && pvIndex < photos.length - 1) {
+        pvIndex++;
+        pvSlideOffset = -pvIndex * modal.offsetWidth;
+        applyTransform();
+        updateIndicator();
+        loadAdjacentImages();
+      }
+    };
+    document.addEventListener('keydown', onKeydown);
+
+    // 窗口大小变化时重新计算
+    const onResize = () => {
+      pvSlideOffset = -pvIndex * modal.offsetWidth;
+      applyTransform();
+    };
+    window.addEventListener('resize', onResize);
+
+    // 清理函数：在 close 时移除 resize/wheel/keydown 监听
+    const _cleanupExtras = () => {
+      window.removeEventListener('resize', onResize);
+      scroller.removeEventListener('wheel', onWheel);
+      document.removeEventListener('keydown', onKeydown);
+    };
+    // 包装 _closeCore，让所有关闭路径都触发清理
+    const _origCloseCore = _closeCore;
+    _closeCore = () => {
+      _origCloseCore();
+      _cleanupExtras();
+    };
   }
 
   async function loadPhotos() {
@@ -2336,8 +3106,10 @@ async function testConnection() {
     photoEmpty.style.display = 'none';
     photoTableWrap.style.display = 'none';
 
-    const startDate = $('#photoStartDate').value || todayStr();
-    const endDate = $('#photoEndDate').value || todayStr();
+    // 【v2.7.68】问题2：改为单日期查询（今天/昨天/前天）
+    const targetDate = _getPhotoSelectedDate();
+    const startDate = targetDate;
+    const endDate = targetDate;
     const floorId = $('#photoFloor').value;
     const seatId = $('#photoSeatId').value.trim();
 
@@ -2430,6 +3202,15 @@ async function testConnection() {
       });
 
       _photoPage = 1;
+      // 【v2.7.67】清除已渲染页 DOM 缓存（新查询结果，旧缓存全部失效）
+      if (_renderedPages) {
+        _renderedPages.forEach(node => {
+          node.querySelectorAll('img.photo-thumb-img[src]').forEach(img => {
+            if (img.src && img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+          });
+        });
+        _renderedPages.clear();
+      }
       renderPhotoPage();
     } catch (e) {
       photoLoading.style.display = 'none';
@@ -2438,6 +3219,9 @@ async function testConnection() {
   }
 
   $('#photoQueryBtn').addEventListener('click', () => { _photoPage = 1; loadPhotos(); });
+
+  // 【v2.7.68】初始化图片记录单日期选择器
+  initPhotoDatePicker();
 
   // ================================================================
   //   报表
@@ -2963,8 +3747,7 @@ async function testConnection() {
       try {
         $('#histStartDate').value = todayStr();
         $('#histEndDate').value = todayStr();
-        $('#photoStartDate').value = todayStr();
-        $('#photoEndDate').value = todayStr();
+        // 【v2.7.68】图片记录改为单日期选择器，默认今天（无需设置 input.value）
         // 各面板独立加载，避免单个面板报错导致全部失败
       const _panels = [loadUsers, loadPasswords, loadSettings, loadHistory, loadPhotos, loadReports];
       for (const _fn of _panels) { try { await _fn(); } catch(_e) { console.warn('面板加载失败:', _fn.name, _e); } }

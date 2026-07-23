@@ -764,12 +764,13 @@ async function assistantReLogin(name, phone) {
   try { sessionStorage.setItem('collab_login_in_progress', '1'); } catch (e) {}
   try {
     console.log('[auth] assistantReLogin: 尝试 RPC 查找用户...');
-    // 直接查 users 表找未过期的 assistant
+    // 直接查 users 表找 assistant（不前端过滤过期时间，由后端定时任务处理降级）
+    // 【v2.7.84】删除 .gt('assistant_expires_at', new Date().toISOString()) 过滤
+    // 原因：手机本地时间不准时会误判未过期的协助者为已过期，导致协作登录失败
     const { data: user, error } = await _sb.from('users')
       .select('uid, role, name')
       .eq('phone', phone)
       .eq('role', 'assistant')
-      .gt('assistant_expires_at', new Date().toISOString())
       .limit(1)
       .maybeSingle();
     console.log('[auth] assistantReLogin query:', { user, error });
@@ -926,16 +927,16 @@ async function validateAndRefreshSession() {
     session = null;
   }
 
-  // 会话仍有效 → 检查令牌是否即将过期（提前 60 秒刷新，避免边界请求失败）
+  // 【v2.7.84】会话仍有效 → 直接信任，不预判 JWT 过期
+  // 原因：原代码用 Date.now()（本地时间）和 session.expires_at 比较，手机时间不准时会误判
+  //       JWT 已过期，触发 refreshSession，如果 refresh token 也因时间问题失败，
+  //       会错误触发"登录已过期"提示。
+  // 修复：信任 session 存在即有效，不主动检查过期时间。
+  //       如果 JWT 真的过期，下次 API 调用会返回 401，由调用方触发刷新。
   if (session) {
-    const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
-    const now = Date.now();
-    if (expiresAt - now > 60 * 1000) {
-      // 令牌还有效，无需刷新
-      return true;
-    }
-    console.log('[auth] 令牌即将过期或已过期，尝试刷新');
+    return true;
   }
+  console.log('[auth] 无有效 session，尝试刷新令牌');
 
   // 步骤2：尝试用刷新令牌获取新的访问令牌
   try {
@@ -997,25 +998,41 @@ async function loadUserProfile() {
       .select('uid, role, managed_floors, assistant_expires_at, name, card_number, phone')
       .eq('uid', session.user.id);
     if (error || !profile || profile.length === 0) {
-      console.error('[auth] 查询用户角色失败:', error, 'uid:', session.user.id);
-      currentUser.role = 'reader'; currentUser.managedFloors = [];
+      // 【v2.7.88】查询失败时保留现有角色，不静默降级为 reader
+      // 原因：RLS 拦截、网络抖动、JWT 刷新延迟都会导致查询失败，静默降级会误判"权限过期"
+      console.error('[auth] 查询用户角色失败，保留现有角色:', error, 'uid:', session.user.id);
     } else {
       const p = profile[0]; // 取第一条
       console.log('[auth] loadUserProfile 查到:', { role: p.role, managed_floors: p.managed_floors, assistant_expires_at: p.assistant_expires_at });
-      currentUser.role = p.role || 'reader';
+      const dbRole = p.role || 'reader';
+      // 【v2.7.89】本地是 assistant 但 DB 返回 reader 时，不立即降级
+      // 原因：pg_cron 历史激活日志误判、DB 读副本延迟、网络竞态都会导致 DB 临时返回 reader
+      // 真正的降级由 _pollingCheckRoleChange（30秒节流 + 登录标记保护）处理
+      if (currentUser.role === 'assistant' && dbRole === 'reader') {
+        console.warn('[auth] DB 返回 reader 但本地是 assistant，保留现有角色（可能为 DB 读延迟或 pg_cron 误判）');
+      } else {
+        currentUser.role = dbRole;
+      }
       currentUser.managedFloors = p.managed_floors || [];
       currentUser.assistantExpiresAt = p.assistant_expires_at;
       if (p.name) currentUser.name = p.name;
       if (p.card_number) currentUser.cardNumber = p.card_number;
       if (p.phone) currentUser.phone = p.phone;
     }
-  } catch (err) { currentUser.role = 'reader'; currentUser.managedFloors = []; }
+  } catch (err) {
+    // 【v2.7.88】异常时保留现有角色，不静默降级为 reader
+    console.error('[auth] loadUserProfile 异常，保留现有角色:', err.message || err);
+  }
   // 【v2.7.16】预热当前用户姓名到缓存，供历史图片水印使用
   if (typeof _preWarmCurrentUserName === 'function') {
     _preWarmCurrentUserName(currentUser.uid, currentUser.name);
   }
 
-  await checkAssistantExpiry();
+  // 【v2.7.74】彻底移除前端的 assistant_expires_at 自动降级逻辑
+  // 原因：手机系统时间不准/时区错乱时，前端 new Date() 与服务器时间不一致，
+  //      会误判权限已到期并主动 update users 表，导致用户权限被提前回收。
+  // 修复：前端只读取 role/assistant_expires_at 用于 UI 显示控制，
+  //      永不主动修改 DB 中的用户角色；角色降级完全交由后端定时任务处理。
   currentUser.loaded = true;
   // 【v2.7.32】已取消单设备登录机制，允许多设备同时登录
   // 更新缓存
@@ -1029,24 +1046,9 @@ async function loadUserProfile() {
   } catch (e) {}
 }
 
-async function checkAssistantExpiry() {
-  if (currentUser.role === 'assistant' && currentUser.assistantExpiresAt) {
-    if (new Date(currentUser.assistantExpiresAt) <= new Date()) {
-      currentUser.role = 'reader'; currentUser.managedFloors = [];
-      currentUser.assistantExpiresAt = null;
-      // 同步降级到数据库
-      if (currentUser.uid && isSupabaseReady()) {
-        try {
-          await _sb.from('users').update({
-            role: 'reader',
-            managed_floors: null,
-            assistant_expires_at: null
-          }).eq('uid', currentUser.uid);
-        } catch (e) { console.error('降级写入失败:', e); }
-      }
-    }
-  }
-}
+// 【v2.7.74】checkAssistantExpiry 函数已彻底删除
+// 原因：该函数会主动 update users 表降级角色，受手机系统时间影响存在误判风险。
+// 替代方案：由后端定时任务 downgrade-expired-assistants 统一处理权限过期降级。
 
 // ---- 全局设置缓存 ----
 const globalSettings = {};
@@ -1133,7 +1135,10 @@ function canEditFloor(floorId) {
   if (!currentUser.loaded) return false;
   if (currentUser.role === 'owner' || currentUser.role === 'admin') return true;
   if (currentUser.role === 'floor_manager' || currentUser.role === 'assistant') {
-    if (currentUser.role === 'assistant' && currentUser.assistantExpiresAt && new Date(currentUser.assistantExpiresAt) <= new Date()) return false;
+    // 【v2.7.84】删除前端时间预判（new Date() 比较受手机系统时间影响）
+    // 原代码：if (currentUser.role === 'assistant' && currentUser.assistantExpiresAt && new Date(currentUser.assistantExpiresAt) <= new Date()) return false;
+    // 修复：前端只检查 role 是否为 assistant，不预判过期时间。
+    //       角色降级完全由后端定时任务处理，前端在下次 loadUserProfile 时读取最新 role。
     const floors = (currentUser.managedFloors || []).map(f => String(f));
     return floors.includes(String(floorId));
   }
@@ -1147,6 +1152,7 @@ function getViewableFloors() { if (!currentUser.loaded) return []; return ['1','
 function getRoleDisplayName(r) { return { owner:'所有者', admin:'管理者', floor_manager:'辅专', assistant:'协助者', reader:'读者' }[r] || r; }
 function getAssistantRemainingMinutes() {
   if (currentUser.role !== 'assistant' || !currentUser.assistantExpiresAt) return -1;
+  // 【v2.7.84】注意：此函数用本地时间计算剩余分钟，仅供 UI 显示参考，不用于权限判断
   return Math.max(0, Math.floor((new Date(currentUser.assistantExpiresAt) - new Date()) / 60000));
 }
 
@@ -1276,6 +1282,10 @@ document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible') return;
   if (!isSupabaseReady() || !currentUser.uid) return;
   if (_visibilityReloading) return; // 防止重复触发
+  // 【v2.7.88】扫码登录流程中跳过角色检查，避免 Edge Function 写入与 loadUserProfile 竞态导致误降级
+  try {
+    if (sessionStorage.getItem('collab_login_in_progress') === '1') return;
+  } catch (e) {}
   _visibilityReloading = true;
   try {
     const prevRole = currentUser.role;

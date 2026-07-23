@@ -6,16 +6,14 @@
 //   外部 CDN（jszip）→ Network-First（网络优先，离线回退缓存）
 
 // 【v2.0.1】更新缓存版本号（每次发布新版本时必须递增，否则浏览器不会检测到 SW 更新）
-const CACHE_NAME = 'seat-cache-v150';
+// 【v2.7.67】回滚 v2.7.66 压缩部署，恢复原始资源路径，升级缓存版本强制刷新
+// 【v2.7.75】从预缓存清单移除 HTML/CSS/JS（带版本号文件预缓存会导致旧版本长期驻留，
+//           即使发版后 SW 仍可能返回缓存的旧 index.html + 新 styles.css，造成"裸体"页面）。
+//           仅保留图标和 manifest.json 预缓存。所有 HTML/CSS/JS 走 Network-First。
+const CACHE_NAME = 'seat-cache-v173';
 
-// 预缓存资源列表（安装时一次性缓存）
+// 预缓存资源列表（仅保留不常变且无版本号的小文件，避免缓存不一致）
 const PRECACHE_ASSETS = [
-  './',
-  './index.html',
-  './styles.css',
-  './scripts.js',
-  './auth.js',
-  './data-layer.js',
   './manifest.json',
   './seat-icon.png',
   './seat-icon-192.png'
@@ -93,9 +91,31 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // --- index.html / styles.css / scripts.js / auth.js / data-layer.js / manifest.json：Network-First（网络优先）---
+  // 【v2.7.75】HTML 文件（document 类型）强制走网络，绝不返回缓存
+  // 这是修复"裸体页面"的关键：避免 SW 返回缓存的旧 HTML 与新版 CSS/JS 组合
+  // 仅在离线时（fetch 抛异常）才回退缓存，保证可离线打开
+  if (e.request.destination === 'document' || url.pathname.endsWith('/') || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/admin.html') || url.pathname.endsWith('/login.html')) {
+    e.respondWith(
+      fetch(e.request)
+        .then(resp => {
+          // 网络成功：更新缓存并返回最新内容
+          if (resp.ok) {
+            const clone = resp.clone();
+            caches.open(CACHE_NAME).then(c => c.put(e.request, clone)).catch(() => {});
+          }
+          return resp;
+        })
+        .catch(() => {
+          // 网络失败（离线）：回退缓存
+          return caches.match(e.request).then(cached => cached || new Response('离线', { status: 503 }));
+        })
+    );
+    return;
+  }
+
+  // --- *.css / *.js / manifest.json：Network-First（网络优先）---
   // 每次打开都优先请求网络，确保拿到最新版；网络失败时才用缓存
-  if (url.pathname.endsWith('/') || url.pathname.endsWith('/index.html') || url.pathname === '/' || url.pathname.endsWith('/manifest.json') || url.pathname.endsWith('/styles.css') || url.pathname.endsWith('/scripts.js') || url.pathname.endsWith('/auth.js') || url.pathname.endsWith('/data-layer.js')) {
+  if (url.pathname.endsWith('/manifest.json') || url.pathname.endsWith('/styles.css') || url.pathname.endsWith('/scripts.js') || url.pathname.endsWith('/auth.js') || url.pathname.endsWith('/data-layer.js')) {
     e.respondWith(
       fetch(e.request)
         .then(resp => {

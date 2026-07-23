@@ -75,11 +75,13 @@ function updateCellButtonStates(cellKey) {
   });
 }
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v2.7.65';
-// 【v2.7.62】页面已加载完成，清除协作登录跳转标记
-// 标记由 assistantQRLogin/assistantReLogin 设置，用于豁免 visibilitychange 的令牌校验
-// 页面加载到这里说明已成功进入主界面，标记使命完成，可安全清除
-try { sessionStorage.removeItem('collab_login_in_progress'); } catch (e) {}
+const APP_VERSION = 'v2.7.91';
+// 【v2.7.91】协作登录标记改为 10 秒超时兜底清除（不再立即清除）
+// 原因：iOS Safari 扫码跳转时触发 visibilitychange，若标记已被清除，会执行 loadUserProfile 阻塞页面加载
+// 标记保留 10 秒确保页面完全加载后再让 visibilitychange 恢复正常逻辑
+setTimeout(() => {
+  try { sessionStorage.removeItem('collab_login_in_progress'); } catch (e) {}
+}, 10000);
 // 【v1.10.18】更新日志：记录次版本号和主版本号变更，修订号变更不记录，最多保留3条
 const UPDATE_LOG = [
   { date: '6月25日', text: '计时按钮改为纯图标+二次确认；新增骨架屏加载动画；更新固定文案' },
@@ -283,6 +285,12 @@ function seatKey(fid, aname, idx) { return `${fid}-${aname}-${idx}`; }
 function cellKey(fid, aname, sidx, tidx) { return `${fid}-${aname}-${sidx}-${tidx}`; }
 /** 从单元格 key 提取座位 key */
 function cellToSeatKey(ck) { return ck.split('-').slice(0, 3).join('-'); }
+/** 【v2.7.87】解析区域 key：返回 { fid, aname } */
+function parseAreaKey(ak) { const p = ak.split('-'); return { fid: parseInt(p[0]), aname: p[1] }; }
+/** 【v2.7.87】解析座位 key：返回 { fid, aname, sidx } */
+function parseSeatKey(sk) { const p = sk.split('-'); return { fid: parseInt(p[0]), aname: p[1], sidx: parseInt(p[2]) }; }
+/** 【v2.7.87】解析单元格 key：返回 { fid, aname, sidx, tidx } */
+function parseCellKey(ck) { const p = ck.split('-'); return { fid: parseInt(p[0]), aname: p[1], sidx: parseInt(p[2]), tidx: parseInt(p[3]) }; }
 
 /** 获取某区域的配置（从 FLOORS 常量中查找） */
 function getAreaConfig(fid, aname) {
@@ -552,7 +560,7 @@ async function refreshSeatImageStats() {
 
 /** 【v1.3.13 微调】刷新单个座位的图片统计（同步，仅读内存缓存） */
 function refreshSingleSeatStats(sk) {
-  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  const { fid, aname, sidx } = parseSeatKey(sk);
   let totalCount = 0, hasSlotWithMulti = false, visibleTotalCount = 0, visibleHasSlotWithMulti = false, visibleCount = 0, hiddenHasImages = false, visibleHasImages = false;
   for (let t = 0; t < TIME_SLOTS.length; t++) {
     const ck = cellKey(fid, aname, sidx, t);
@@ -665,11 +673,6 @@ function loadFilterState() {
     let raw = localStorage.getItem(FILTER_KEY_MAIN);
     // 2. 主键失败，尝试备用键
     if (!raw) raw = localStorage.getItem(FILTER_KEY_BACKUP);
-    // 3. 新键都为空，不再读取离线版的旧键名（v2.7.34 切断离线版与在线版 localStorage 关联）
-    // if (!raw) {
-    //   const oldRaw = localStorage.getItem('seat_time_filter') || localStorage.getItem('seat_time_filter_bak');
-    //   ...
-    // }
     if (raw) {
       const o = JSON.parse(raw);
       if (o && Array.isArray(o.slots)) {
@@ -877,7 +880,7 @@ async function renderMain() {
     + `<div class="footer-title">使用说明</div>`
     + `<div class="usage-guide">·座位如有单张图片且当前时段未隐藏，座位显示蓝色；若时段隐藏，则不显示颜色<br>·座位的同一时段有多张图片且未隐藏，座位显示橙色；若时段隐藏，则不显示颜色<br>·隐藏时段内若存在图片，座位按钮左上角显示"闭眼"图标<br>·若区域存在图片，区域按钮显示绿色<br>·通过"时段筛选"选定某一时段后，若该时段有图片，座位按钮右上角显示"图片"图标</div>`
     + `<div class="footer-collapsible" data-action="toggle-footer-opt">近期优化记录</div>`
-    + `<div class="footer-collapsible-body ${optExpanded ? 'expanded' : 'collapsed'}" data-action="expand-footer-opt">·可切换显示近三天的图片（07.14更新）<br>·可切换显示已释放座位概览，时段筛选列表显示图片提示（07.11更新）<br>·修复部分安卓机型座位文字被省略显示的问题（06.30更新）<br>·v1.15~v1.20 汇总：完善记录时间与区域统计功能，优化批量下载与清除图片逻辑，修复区域布局与拖动调序问题（06.29更新）<br>·琪同志反馈缩略图"×"按钮误触易删除图片：v1.13.5 新增"删除保护"功能，开启后可以防止误触删除图片。<br>·圳组、乔组建议增设占座倒计时：目前仅增设"记录完成时间"功能来辅助判断（06.25更新），真正的倒计时提醒待馆方自研系统实现。<br>·赖组反馈批量清理原功能易致页面崩溃：已修复功能为"清除图片"（06.21更新）。<br>·圳组建议的纸质登记辅助功能已简单实现：时段筛选设为当前拍照时段后，蓝底且带图标的座位可对应纸质表打"×"（06.18更新）。<br>·环总、馨同志建议数据互通：资金实力不足，待馆方自研系统实现。</div>`
+    + `<div class="footer-collapsible-body ${optExpanded ? 'expanded' : 'collapsed'}" data-action="expand-footer-opt">·修复已知问题（07.21更新）<br>·可切换显示近三天的图片（07.14更新）<br>·可切换显示已释放座位概览，时段筛选列表显示图片提示（07.11更新）<br>·修复部分安卓机型座位文字被省略显示的问题（06.30更新）<br>·v1.15~v1.20 汇总：完善记录时间与区域统计功能，优化批量下载与清除图片逻辑，修复区域布局与拖动调序问题（06.29更新）<br>·琪同志反馈缩略图"×"按钮误触易删除图片：v1.13.5 新增"删除保护"功能，开启后可以防止误触删除图片。<br>·圳组建议的纸质登记辅助功能已简单实现：时段筛选设为当前拍照时段后，蓝底且带图标的座位可对应纸质表打"×"（06.18更新）。<br>·圳组、乔组建议增设占座倒计时：目前仅增设"记录完成时间"功能来辅助判断（06.25更新），真正的倒计时提醒待馆方自研系统实现。<br>·赖组反馈批量清理原功能易致页面崩溃：已修复功能为"清除图片"（06.21更新）。<br>·环总、馨同志建议数据互通：资金实力不足，待馆方自研系统实现。</div>`
     + `<div class="footer-collapsible" data-action="toggle-footer-thx">给大佬的情书</div>`
     + `<div class="footer-collapsible-body ${thxExpanded ? 'expanded' : 'collapsed'}" data-action="expand-footer-thx">感谢以下不愿透露姓名的大佬的建议与使用体验反馈（排名不分先后）：<br>环总、何总、圳组、赖组、州组、乔组、伟同志、垚同志、馨同志、瑜同志、伦同志、元同志、彦同志、灵同志、琪同志……</div>`
     + `<div class="disclaimer">内部参考工具，功能尚不完善，数据可能丢失，不承担准确性与隐私责任</div><div class="contact${showContact ? '' : ' hidden'}">如有使用建议可联系老范尝试优化。</div></div>`;
@@ -1354,6 +1357,10 @@ function startFuncBtnObserver() {
 // 【v1.3.18 深度修复】同时从 localStorage 恢复筛选状态，防止内存状态被浏览器意外清空
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
+  // 【v2.7.91】协作登录流程中跳过所有刷新，避免阻塞页面加载
+  try {
+    if (sessionStorage.getItem('collab_login_in_progress') === '1') return;
+  } catch (e) {}
     // 【v1.3.18】从 localStorage 恢复筛选状态
     const restored = restoreFilterStateFromStorage();
     if (restored) {
@@ -1376,6 +1383,10 @@ window.addEventListener('pagehide', () => {
 // 【v1.10.10】改用 restoreFilterStateFromStorage，仅在内存与存储不一致时才恢复
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
+    // 【v2.7.91】协作登录流程中跳过所有刷新，避免阻塞页面加载
+    try {
+      if (sessionStorage.getItem('collab_login_in_progress') === '1') return;
+    } catch (e) {}
     try {
       if (restoreFilterStateFromStorage()) {
         refreshExpandedSeats();
@@ -1428,7 +1439,7 @@ function invalidateAllTimeslotCache() {
 
 /** 【修复一】显示极简加载提示：不创建缩略图占位符，避免闪烁 */
 function showSkeletonPlaceholders(container, sk) {
-  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  const { fid, aname, sidx } = parseSeatKey(sk);
   const sName = getSeatNameSync(fid, aname, sidx);
   const delBtnClass = 'btn-delete-seat';
   const renameEnabled = isFeatureEnabled('feat_rename_seat') && canEditFloor(fid);
@@ -1525,7 +1536,7 @@ function refreshSeatThumbsIncrementally(sk, cellDataMap) {
   const container = document.getElementById('timeslots-' + sk);
   if (!container) return false;
 
-  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  const { fid, aname, sidx } = parseSeatKey(sk);
   const canEditThisFloor = canEditFloor(fid);
 
   // 用 requestAnimationFrame 合并到下一帧，避免阻塞当前帧
@@ -1690,7 +1701,7 @@ async function renderTimeSlots(sk) {
     _unloadSeatThumbs(_currentOpenSeatKey);
   }
   _currentOpenSeatKey = sk;
-  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  const { fid, aname, sidx } = parseSeatKey(sk);
   const sName = getSeatNameSync(fid, aname, sidx);
 
   // 构建图片计数指纹：用所有时段的计数 + 筛选状态 + 删除开关状态 + 日期偏移量
@@ -1741,7 +1752,7 @@ async function renderTimeSlots(sk) {
   }
 
   // ---- 以下为非缓存路径：分片渲染 ----
-  const canEditThisFloor = canEditFloor(parseInt(parts[0]));
+  const canEditThisFloor = canEditFloor(fid);
   const allKeys = [];
   for (let t = 0; t < TIME_SLOTS.length; t++) {
     allKeys.push(cellKey(fid, aname, sidx, t));
@@ -1767,7 +1778,7 @@ async function renderTimeSlots(sk) {
   }
 
   // 阶段一：立即渲染座位头 + 时段卡片框架（无缩略图，极快）
-  const delBtnClass = (isFeatureEnabled('feat_delete_seat') && state.allowDeleteSeat && canEditFloor(parseInt(parts[0]))) ? 'btn-delete-seat visible' : 'btn-delete-seat';
+  const delBtnClass = (isFeatureEnabled('feat_delete_seat') && state.allowDeleteSeat && canEditFloor(fid)) ? 'btn-delete-seat visible' : 'btn-delete-seat';
   const hiddenTsNames = [];
   for (let t = 0; t < TIME_SLOTS.length; t++) {
     if (!isTimeSlotVisible(t)) {
@@ -1778,7 +1789,7 @@ async function renderTimeSlots(sk) {
   const hiddenHintHtml = hiddenTsNames.length > 0
     ? `<span class="hidden-ts-hint">以下时段照片被隐藏：${hiddenTsNames.join('、')}</span>`
     : '';
-  const renameEnabled = isFeatureEnabled('feat_rename_seat') && canEditFloor(parseInt(parts[0]));
+  const renameEnabled = isFeatureEnabled('feat_rename_seat') && canEditFloor(fid);
   const nameHtml = renameEnabled
     ? `<span class="seat-name-text" data-action="edit-seat-name" data-seat-key="${sk}">${sName}</span><span class="seat-name-hint">（点击修改）</span>`
     : `<span class="seat-name-text" data-seat-key="${sk}">${sName}</span>`;
@@ -1870,7 +1881,7 @@ function applyTimeslotFilter(container) {
   if (!nameEl) return;
   const sk = nameEl.dataset.seatKey;
   if (!sk) return;
-  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  const { fid, aname, sidx } = parseSeatKey(sk);
   const hiddenTsNames = [];
   for (let t = 0; t < TIME_SLOTS.length; t++) {
     if (!isTimeSlotVisible(t)) {
@@ -1931,7 +1942,7 @@ function updateSeatVisual(sk) {
     }
   });
   // 同步更新区域按钮视觉
-  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+  const { fid, aname } = parseSeatKey(sk);
   updateAreaVisual(fid, aname);
 }
 /** 更新区域按钮的 has-images 状态和文字统计 */
@@ -1990,22 +2001,10 @@ function compressImageBlob(imageData, quality = 0.85) {
   });
 }
 
-/** 【兼容】将图片重新编码为 JPEG DataURL，保持原分辨率 */
-function compressImage(imageData, quality = 0.85) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/jpeg', quality));
-      } catch (err) { reject(new Error('图片压缩失败: ' + err.message)); }
-    };
-    img.onerror = () => reject(new Error('图片压缩失败'));
-    img.src = imageData;
-  });
+/** 【兼容】将图片重新编码为 JPEG DataURL，保持原分辨率（基于 compressImageBlob） */
+async function compressImage(imageData, quality = 0.85) {
+  const blob = await compressImageBlob(imageData, quality);
+  return blobToDataURL(blob);
 }
 
 /** 【兼容】addWatermark：返回 Base64 DataURL，供 getProcessedData / pvLoadFullImage / regenerateWatermarks 使用 */
@@ -2357,27 +2356,11 @@ function generateThumbnailBlob(imageSource, targetWidth = 200) {
   });
 }
 
-/** 生成缩略图：宽度 200px，等比缩放，JPEG 质量 0.8（返回 DataURL，兼容旧逻辑） */
-function generateThumbnail(imageData, targetWidth = 200) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        const scale = Math.min(targetWidth / img.naturalWidth, 1);
-        canvas.width = Math.round(img.naturalWidth * scale);
-        canvas.height = Math.round(img.naturalHeight * scale);
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
-      } catch (err) {
-        console.error('缩略图生成失败:', err);
-        resolve(imageData); // 降级返回原图
-      }
-    };
-    img.onerror = () => resolve(imageData);
-    img.src = imageData;
-  });
+/** 生成缩略图：宽度 200px，等比缩放，JPEG 质量 0.8（返回 DataURL，基于 generateThumbnailBlob） */
+async function generateThumbnail(imageData, targetWidth = 200) {
+  const blob = await generateThumbnailBlob(imageData, targetWidth);
+  if (!blob) return imageData; // 降级返回原图
+  return blobToDataURL(blob);
 }
 
 // 【v2.7.11 终极流畅优化】缩略图懒加载：解码队列 + 灰色占位
@@ -2407,11 +2390,25 @@ function enqueueDecode(img, realSrc) {
   processDecodeQueue();
 }
 
-/** 加载单张缩略图（预解码后设 src，失败保持灰色占位） */
+/** 加载单张缩略图（预解码后设 src，失败自动清理占位块） */
 function _loadThumbnail(img, realSrc) {
   return new Promise(resolve => {
+    // 【v2.7.82】加载失败时自动清理占位块
+    // 原因：COS 预签名 URL 失效或图片被删除后，加载失败会留下灰色占位块
+    // 修复：失败时移除 .thumb-wrap 父节点，避免占位块残留
+    const _handleLoadError = (reason) => {
+      console.warn('[缩略图] 加载失败，自动清理占位块:', realSrc, reason);
+      if (img.isConnected && img.parentNode) {
+        const wrap = img.closest('.thumb-wrap');
+        if (wrap && wrap.parentNode) {
+          wrap.remove();
+        }
+      }
+    };
+
     // 非 HTTP URL（blob:/data:）直接加载
     if (!realSrc.startsWith('http')) {
+      img.onerror = () => _handleLoadError('blob/data 加载失败');
       img.src = realSrc;
       resolve();
       return;
@@ -2424,13 +2421,15 @@ function _loadThumbnail(img, realSrc) {
         // 预解码：用临时 Image 确保解码完成再显示
         const temp = new Image();
         temp.onload = () => {
-          if (img.isConnected && !img.src) img.src = blobUrl;
-          else if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+          if (img.isConnected && !img.src) {
+            img.onerror = () => _handleLoadError('blob 解码后加载失败');
+            img.src = blobUrl;
+          } else if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
         };
         temp.onerror = () => {
-          // 解码失败，仍尝试直接设
-          if (img.isConnected && !img.src) img.src = blobUrl;
-          else if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+          // 【v2.7.82】解码失败：清理占位块，不残留灰色块
+          if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+          _handleLoadError('预解码失败');
         };
         temp.src = blobUrl;
       } else {
@@ -2439,10 +2438,8 @@ function _loadThumbnail(img, realSrc) {
       }
       resolve();
     }).catch(() => {
-      // 下载失败，回退到直接设 src
-      if (img.isConnected && !img.src) {
-        img.src = realSrc;
-      }
+      // 【v2.7.82】下载失败：清理占位块，不残留灰色块
+      _handleLoadError('下载异常');
       resolve();
     });
   });
@@ -2842,10 +2839,19 @@ captureInput.addEventListener('change', async (e) => {
     // 权限检查（二次防线）
     const capFid = parseInt(ck.split('-')[0]);
     if (!canEditFloor(capFid)) { showToast('无该楼层操作权限'); return; }
-    const cellData = await getCellData(ck, _getDateRange());
+    // 【v2.7.81】修复：拍照场景同样修复跨设备删除后误判"时段已满"
+    let cellData;
+    const _capCachedCount = imageCountCache.get(ck) || 0;
+    console.log('[拍照] cellKey:', ck, 'imageCountCache 计数:', _capCachedCount, '按钮 disabled:', shouldDisableButtons(ck));
+    if (_capCachedCount === 0) {
+      cellData = await getCellData(ck, _getDateRange(), true);
+      console.log('[拍照] 缓存为 0，强制 DB 查询结果:', cellData?.images?.length || 0, '张');
+    } else {
+      cellData = await getCellData(ck, _getDateRange());
+    }
     const images = (cellData && cellData.images) ? [...cellData.images] : [];
     if (images.length >= MAX_IMAGES) { showToast('该时段图片已满'); return; }
-    const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+    const { fid, aname, sidx } = parseCellKey(ck);
     // 【v1.19.0】区域图片总数上限检查
     if (getAreaImageTotal(fid, aname) >= MAX_AREA_IMAGES) { showToast('该区域图片已达上限（999张），请清理后再添加'); return; }
     const sName = getSeatNameSync(fid, aname, sidx);
@@ -3078,7 +3084,7 @@ uploadInput.addEventListener('change', async (e) => {
     // 注意：isUploading(ck) 已在按钮点击时检查（L4914），此处不再重复检查，
     // 因为 lockUploadingCell 已在点击时调用，isUploading 此时必然为 true
 
-    const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+    const { fid, aname, sidx } = parseCellKey(ck);
     if (getAreaImageTotal(fid, aname) >= MAX_AREA_IMAGES) { showToast('该区域图片已达上限（999张），请清理后再添加'); return; }
     const sName = getSeatNameSync(fid, aname, sidx);
     const bTime = getBeijingTime();
@@ -3128,7 +3134,20 @@ uploadInput.addEventListener('change', async (e) => {
         };
 
         // 3. 加入 images 数组并缓存
-        const cellData = await getCellData(ck, _getDateRange());
+        // 【v2.7.81】修复：跨设备删除后上传仍提示"时段已满"
+        // 原因：getCellData 在 v2.7.78 forceRefresh 修复后，若 imageCountCache=0 但 _cellDataCache
+        //       仍残留旧数据，getCellData 不带 forceRefresh 时会返回旧 images（length=3），误判已满
+        // 修复：优先读 imageCountCache（轮询同步后的权威计数），若计数=0 则强制走 DB 查询
+        let cellData;
+        const _cachedCount = imageCountCache.get(ck) || 0;
+        console.log('[上传] cellKey:', ck, 'imageCountCache 计数:', _cachedCount, '按钮 disabled:', shouldDisableButtons(ck));
+        if (_cachedCount === 0) {
+          // 缓存计数为 0，但 _cellDataCache 可能残留旧数据，强制从 DB 查询
+          cellData = await getCellData(ck, _getDateRange(), true);
+          console.log('[上传] 缓存为 0，强制 DB 查询结果:', cellData?.images?.length || 0, '张');
+        } else {
+          cellData = await getCellData(ck, _getDateRange());
+        }
         const images = (cellData && cellData.images) ? [...cellData.images] : [];
         if (images.length >= MAX_IMAGES) { showToast('该时段图片已满'); return; }
         const imgIdx = images.length; // 记录索引
@@ -3436,7 +3455,7 @@ async function downloadSelectedImages() {
   for (const ck of filteredCells) {
     const cellData = cellDataMap[ck];
     if (!cellData || !cellData.images || cellData.images.length === 0) continue;
-    const parts = ck.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]), tidx = parseInt(parts[3]);
+    const { fid, aname, sidx, tidx } = parseCellKey(ck);
     const sName = getSeatNameSync(fid, aname, sidx), timeSlot = TIME_SLOTS[tidx];
     for (let i = 0; i < cellData.images.length; i++) {
       let blob = cellData.images[i]._fullBlob || null;
@@ -4065,9 +4084,7 @@ async function initBatchModal() {
 
 // 【v2.7.59】判断区域是否有图片（根据 state.seatHasImages）
 function _batchAreaHasImages(ak) {
-  const parts = ak.split('-');
-  const fid = parseInt(parts[0]);
-  const aname = parts[1];
+  const { fid, aname } = parseAreaKey(ak);
   for (let si = 0; si < getAreaSeatCount(fid, aname); si++) {
     if (state.seatHasImages.has(seatKey(fid, aname, si))) return true;
   }
@@ -4316,7 +4333,7 @@ function _stopSwitchingProgress() {
 }
 
 async function collectAreaBlobs(ak, seatIndices) {
-  const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+  const { fid, aname } = parseAreaKey(ak);
   const seatCount = getAreaSeatCount(fid, aname);
   const targetSeats = seatIndices || Array.from({length: seatCount}, (_, i) => i);
   const neededKeys = [];
@@ -4482,14 +4499,14 @@ safeOn('batch-exec', 'click', async () => {
   // 现在每次点击批量下载时，先从数据库查询选中区域的最新图片计数
   console.log('[批量下载] 开始刷新选中区域的图片计数缓存', [...batchSelectedAreas]);
   await Promise.all([...batchSelectedAreas].map(ak => {
-    const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+    const { fid, aname } = parseAreaKey(ak);
     return preloadAreaImageCounts(fid, aname);
   }));
   // preloadAreaImageCounts 会复用缓存（_preloadedAreas 标记），但日期切换后需要强制刷新
   // 这里再强制调用 dbGetAreaImageCounts 更新当前日期范围内的计数
   // 【v2.7.50】同时清空 _cellDataCache 中该区域的 cell 缓存，确保后续 getCellDataBatch 强制走 DB
   await Promise.all([...batchSelectedAreas].map(async (ak) => {
-    const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+    const { fid, aname } = parseAreaKey(ak);
     try {
       const counts = await dbGetAreaImageCounts(fid, aname, _getDateRange());
       counts.forEach((cnt, ck) => {
@@ -4513,7 +4530,7 @@ safeOn('batch-exec', 'click', async () => {
   // 第一步：统计每个区域的图片数量
   const areaCounts = new Map();
   for (const ak of batchSelectedAreas) {
-    const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+    const { fid, aname } = parseAreaKey(ak);
     const seatCount = getAreaSeatCount(fid, aname);
     let cnt = 0;
     for (const tidx of batchSelectedTimes) {
@@ -4568,7 +4585,7 @@ safeOn('batch-exec', 'click', async () => {
         // 首个区域立即显示呼吸圆点，避免空白
         _showSwitchingProgress('准备下载');
       }
-      const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+      const { fid, aname } = parseAreaKey(ak);
       const floorObj = FLOORS.find(f => f.id === fid);
       const folder = `${floorObj.name}_${aname}`;
       const blobs = await collectAreaBlobs(ak);
@@ -5940,27 +5957,46 @@ safeOn('cleanup-confirm-exec', 'click', () => {
   console.time('[清除] 收集区域');
   const affectedAreas = [];
   for (const ak of cleanupSelectedAreas) {
-    const parts = ak.split('-'), fid = parseInt(parts[0]), aname = parts[1];
+    const { fid, aname } = parseAreaKey(ak);
     if (!canEditFloor(fid)) continue;
     affectedAreas.push({ fid, aname, ak });
   }
   console.timeEnd('[清除] 收集区域');
   console.log('[清除] 选中区域数:', affectedAreas.length);
 
+  // 【v2.7.69】强制刷新受影响区域的 imageCountCache，避免缓存过期导致"已清除 0 张图片"
+  // 根因：v2.7.57 引入的轮询增量更新可能让 imageCountCache 与 DB 实际状态脱节
+  // 修复：清除前主动调用 dbGetAreaImageCounts 重新查询，用最新计数覆盖缓存
+  console.time('[清除] 强制刷新 imageCountCache');
+  try {
+    const dateRange = _getDateRange();
+    await Promise.all(affectedAreas.map(({ fid, aname }) =>
+      dbGetAreaImageCounts(fid, aname, dateRange).catch(e => {
+        console.warn(`[清除] 刷新 ${aname} 计数失败:`, e);
+      })
+    ));
+    console.log('[清除] imageCountCache 已刷新，当前区域计数:');
+    affectedAreas.forEach(({ fid, aname }) => {
+      const prefix = `${fid}-${aname}-`;
+      const counts = [];
+      imageCountCache.forEach((cnt, ck) => {
+        if (ck.startsWith(prefix) && cnt > 0) counts.push(`${ck}=${cnt}`);
+      });
+      console.log(`[清除]   ${aname}: ${counts.length} 个 cell 有图片，合计 ${counts.reduce((s, c) => s + parseInt(c.split('=')[1]), 0)} 张`);
+    });
+  } catch (e) {
+    console.warn('[清除] 刷新 imageCountCache 整体失败:', e);
+  }
+  console.timeEnd('[清除] 强制刷新 imageCountCache');
+
   // 时段过滤条件
   const selectedTimeSlotNames = [...cleanupSelectedTimes].map(t => TIME_SLOTS[parseInt(t)]);
   const allTimeSlotsSelected = cleanupSelectedTimes.size === TIME_SLOTS.length;
 
-  // 【v2.7.11】日期过滤：仅删除今天北京时间 00:00:00 ~ 23:59:59 的图片
-  const now = new Date();
-  const bjOffset = 8 * 60; // 北京时间 UTC+8
-  const localOffset = now.getTimezoneOffset();
-  const bjDiff = bjOffset + localOffset; // 分钟差
-  const bjNow = new Date(now.getTime() + bjDiff * 60000);
-  const bjTodayStart = new Date(Date.UTC(bjNow.getFullYear(), bjNow.getMonth(), bjNow.getDate(), 0, 0, 0));
-  const bjTodayEnd = new Date(bjTodayStart.getTime() + 24 * 60 * 60 * 1000);
-  const todayStartISO = bjTodayStart.toISOString();
-  const todayEndISO = bjTodayEnd.toISOString();
+  // 【v2.7.87】日期过滤：统一使用 getTodayDateRange()，仅删除今天北京时间 00:00:00 ~ 23:59:59 的图片
+  const todayRange = getTodayDateRange();
+  const todayStartISO = todayRange.start.toISOString();
+  const todayEndISO = todayRange.end.toISOString();
   console.log('[清除] 日期过滤：仅删除', todayStartISO, '~', todayEndISO, '的图片');
 
   let totalDeleted = 0;
@@ -6434,7 +6470,7 @@ document.addEventListener('click', async (e) => {
   if (delSeatBtn) {
     const sk = delSeatBtn.dataset.seatKey;
     if (!confirm('确定删除该座位及其所有图片？')) return;
-    const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+    const { fid, aname, sidx } = parseSeatKey(sk);
     if (!canEditFloor(fid)) { showToast('无该楼层操作权限'); return; }
     for (let t = 0; t < TIME_SLOTS.length; t++) {
       const ck = cellKey(fid, aname, sidx, t);
@@ -6472,7 +6508,7 @@ document.addEventListener('click', async (e) => {
     if (_ck && isUploading(_ck)) { showToast('请等待当前上传完成'); return; }
     // 检查时段图片数量上限
     try {
-      const _parts = _ck.split('-'), _fid = parseInt(_parts[0]), _aname = _parts[1];
+      const { fid: _fid, aname: _aname } = parseCellKey(_ck);
       const _currentCount = getAreaImageTotal(_fid, _aname);
       if (_currentCount >= MAX_AREA_IMAGES) { showToast('该区域图片已达上限（999张），请清理后再添加'); return; }
     } catch (e) { /* 忽略解析错误 */ }
@@ -6539,7 +6575,7 @@ document.addEventListener('click', async (e) => {
         const sk = cellToSeatKey(ck);
         if (filtered.length === 0) {
           // 检查该座位其他时段是否还有图片，避免误删 seatHasImages
-          const parts2 = ck.split('-'), fid3 = parseInt(parts2[0]), aname3 = parts2[1], sidx3 = parseInt(parts2[2]);
+          const { fid: fid3, aname: aname3, sidx: sidx3 } = parseCellKey(ck);
           let seatStillHas = false;
           for (let t = 0; t < TIME_SLOTS.length; t++) {
             if (imageCountCache.get(cellKey(fid3, aname3, sidx3, t)) > 0) { seatStillHas = true; break; }
@@ -6613,7 +6649,7 @@ document.addEventListener('click', async (e) => {
         } else {
           imageCountCache.delete(ck); // 同步 scripts.js 的计数缓存
           // 检查该座位其他时段是否还有图片，避免误删 seatHasImages
-          const parts = ck.split('-'), fid2 = parseInt(parts[0]), aname2 = parts[1], sidx2 = parseInt(parts[2]);
+          const { fid: fid2, aname: aname2, sidx: sidx2 } = parseCellKey(ck);
           let seatStillHasImages = false;
           for (let t = 0; t < TIME_SLOTS.length; t++) {
             if (imageCountCache.get(cellKey(fid2, aname2, sidx2, t)) > 0) {
@@ -7187,7 +7223,7 @@ function updateSeatButtonText(sk, newName) {
 async function regenerateWatermarksForSeat(sk) {
   // 【v1.4.0】修改座位编号后，仅更新 seatName 字段，不再重新生成水印
   // 已存储的图片保持原样，新编号仅影响之后新拍照的水印文字
-  const parts = sk.split('-'), fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
+  const { fid, aname, sidx } = parseSeatKey(sk);
   const sName = getSeatNameSync(fid, aname, sidx);
   for (let t = 0; t < TIME_SLOTS.length; t++) {
     const ck = cellKey(fid, aname, sidx, t), cd = await getCellData(ck, _getDateRange());
@@ -7727,10 +7763,7 @@ async function init() {
       if (_selectedDateOffset === 0) {
         const btn = document.getElementById('date-picker-btn');
         if (btn) {
-          const now = new Date();
-          const bjMs = now.getTime() + 8 * 3600000;
-          const bjNow = new Date(bjMs);
-          btn.textContent = formatDateMMDDYYYY(bjNow);
+          btn.textContent = formatDateMMDDYYYY(getBjNowDate());
         }
       }
     }, 60000);
@@ -8203,8 +8236,13 @@ let _roleCheckTimestamp = 0;
 async function _pollingCheckRoleChange() {
   if (!currentUser || !currentUser.uid) return;
   if (typeof _sb === 'undefined' || !_sb) return;
+  // 【v2.7.89】扫码登录流程中跳过角色检查，避免 Edge Function 写入与轮询竞态导致误降级
+  try {
+    if (sessionStorage.getItem('collab_login_in_progress') === '1') return;
+  } catch (e) {}
   // 每 30 秒检查一次角色变化（不要每 8 秒都查询，减少 DB 负担）
   const now = Date.now();
+  // 【v2.7.89】首次检查延后 30 秒：_roleCheckTimestamp 初始为 0，startPolling 时设为当前时间
   if (now - _roleCheckTimestamp < 30000) return;
   _roleCheckTimestamp = now;
   try {
@@ -8248,6 +8286,8 @@ function startPolling() {
   stopPolling(); // 先停掉旧的，防止重复
   // 初始化角色检查
   if (currentUser) _lastCheckedRole = currentUser.role || '';
+  // 【v2.7.89】首次角色检查延后 30 秒，避免登录后立即查询 DB 竞态导致误降级
+  _roleCheckTimestamp = Date.now();
   // 【v2.7.51】两设备登录限制：上次检查设备 token 有效性的时间戳，节流用
   let _lastDeviceCheckTs = 0;
   _pollingTimer = setInterval(async () => {
@@ -8296,6 +8336,13 @@ document.addEventListener('visibilitychange', () => {
       console.log('[visibilitychange] 检测到协作登录跳转中，跳过本次令牌校验');
       return;
     }
+    // 【v2.7.69】网络未就绪时跳过本次校验，避免首次加载误报"断开 GitHub 连接"
+    // 首次打开页面或从后台切回时，visibilitychange 可能先于网络就绪触发
+    // 此时 navigator.onLine 可能返回 false（尤其在弱网或首次握手阶段）
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      console.log('[visibilitychange] 网络未就绪（navigator.onLine=false），跳过本次令牌校验');
+      return;
+    }
     // 【v2.7.60】先校验会话有效性（待机恢复后令牌可能已过期）
     // 流程：getSession → 令牌过期 → refreshSession → loadUserProfile → 刷新 UI
     // 若刷新令牌也过期 → _handleSessionExpired 内部跳转登录页
@@ -8319,6 +8366,31 @@ document.addEventListener('visibilitychange', () => {
         refreshVisibleAreas().catch(() => {});
       }
     })();
+  }
+});
+
+// 【v2.7.69】网络恢复时主动执行一次令牌校验，弥补 visibilitychange 因网络未就绪跳过的场景
+// 典型场景：首次打开页面时网络尚未就绪 → visibilitychange 跳过 → 网络恢复后主动校验
+window.addEventListener('online', () => {
+  console.log('[online] 网络已恢复，主动执行令牌校验');
+  if (typeof validateAndRefreshSession === 'function') {
+    validateAndRefreshSession().then(valid => {
+      if (valid) {
+        // 校验成功 → 刷新可见区域
+        refreshVisibleAreas().catch(() => {});
+        // 检查设备是否被踢出
+        if (typeof checkDeviceStillValid === 'function' && typeof getOrCreateDeviceToken === 'function'
+            && currentUser?.uid) {
+          const _dt = getOrCreateDeviceToken();
+          checkDeviceStillValid(currentUser.uid, _dt).catch(() => {});
+        }
+      }
+    }).catch(e => {
+      console.warn('[online] 令牌校验失败:', e);
+    });
+  } else {
+    // auth.js 未加载时仅刷新可见区域
+    refreshVisibleAreas().catch(() => {});
   }
 });
 
@@ -8346,6 +8418,7 @@ async function refreshVisibleAreas() {
 }
 
 async function _refreshVisibleAreasInner() {
+  // 【v2.7.86】回退版本号机制：每次轮询直接查询 DB 计数并比对，不判断版本号/冷却期
   // 1. 重新查询全量图片计数
   let newCounts;
   try {
@@ -8358,6 +8431,12 @@ async function _refreshVisibleAreasInner() {
   // 【v2.7.47】修复：当 DB 查询返回空但本机缓存有图片时，说明其他设备清除了所有图片
   // 此时必须清空 UI，而不是 return（否则 UI 永远不刷新）
   if (!newCounts || newCounts.size === 0) {
+    // 【v2.7.90】用户正在上传时跳过"其他设备清除所有图片"的判读
+    // 原因：DB 查询可能因读副本延迟返回空，误判为"其他设备清除"，导致本机上传的图片在 UI 上被清空
+    if (_uploadingCells.size > 0 || _uploadLocks.size > 0) {
+      console.log('[轮询] DB 返回空但有上传中的 cell，跳过清空 UI 判读（避免误清本机上传的图片）');
+      return;
+    }
     const localHasImages = imageCountCache.size > 0 && [...imageCountCache.values()].some(v => v > 0);
     if (!localHasImages) return; // 本机也无图片，无需操作
     // 本机有图片但 DB 无图片 → 其他设备清除了所有图片，强制走全量清空流程
@@ -8380,7 +8459,22 @@ async function _refreshVisibleAreasInner() {
     seatImageStats.clear();
     refreshSeatImageStatsFromCache();
 
-    // 立即刷新受影响的区域和座位（清空样式）- 【v2.7.48】异步合并到下一帧
+    // 【v2.7.71】修复：其他设备清除图片后本机 UI 不更新
+    // 根因：
+    //   1. _cellDataCache 和 _imageCountCache 未清空，refreshSeatThumbsIncrementally
+    //      内部用 _imageCountCache 的旧值做比对，可能导致缩略图不移除
+    //   2. UI 清空操作被 requestAnimationFrame 异步包裹，时序不可控
+    //   3. 缩略图 DOM 移除依赖 refreshSeatThumbsIncrementally 的增量逻辑，可能被跳过
+    // 修复方案：
+    //   - 立即清空 _cellDataCache 和 _imageCountCache 中受影响的 cell
+    //   - 同步执行所有 UI 更新（不用 requestAnimationFrame 包裹）
+    //   - 直接遍历 DOM 强制移除缩略图节点
+    allCellsToClear.forEach(ck => {
+      _cellDataCache.delete(ck);
+      _imageCountCache.delete(ck);
+    });
+
+    // 收集受影响的区域和座位（直接从 allCellsToClear 派生，不依赖 changedCells 二次判断）
     const affectedAreas = new Set();
     const affectedSeats = new Set();
     allCellsToClear.forEach(ck => {
@@ -8388,47 +8482,56 @@ async function _refreshVisibleAreasInner() {
       affectedAreas.add(`${parts[0]}-${parts[1]}`);
       affectedSeats.add(parts.slice(0, 3).join('-'));
     });
-    await new Promise(resolve => {
-      requestAnimationFrame(() => {
-        try {
-          affectedAreas.forEach(ak => {
-            try {
-              const p = ak.split('-');
-              updateAreaVisual(parseInt(p[0]), p[1]);
-            } catch (e) { console.warn('[轮询] updateAreaVisual 异常:', ak, e.message || e); }
-          });
-          affectedSeats.forEach(sk => {
-            try { updateSeatVisual(sk); } catch (e) { console.warn('[轮询] updateSeatVisual 异常:', sk, e.message || e); }
-          });
-        } catch (e) {
-          console.warn('[轮询] UI 清空刷新整体异常:', e.message || e);
-        } finally {
-          resolve();
-        }
-      });
+
+    // 【v2.7.80】同步移除 DOM 中的缩略图节点
+    // 原方案：遍历 state.expandedSeats + affectedAreas 过滤，当 expandedSeats 为空
+    //        或 area key 不匹配时 _domClearedCount=0，缩略图不消失
+    // 新方案：直接用 allCellsToClear 中的 cellKey 全局查询 DOM，不依赖 expandedSeats
+    let _domClearedCount = 0;
+    const _expandedSeatsToRefresh = new Set();
+    allCellsToClear.forEach(ck => {
+      // 用全局选择器查找该 cellKey 对应的卡片（可能在任意已展开座位中）
+      const card = document.querySelector(`.timeslot-card[data-cell-key="${ck}"]`);
+      if (!card) return; // 该 cell 未展开或不存在 DOM
+      if (isUploading(ck)) return; // 保护上传中的 cell
+      const thumbsEl = card.querySelector('.ts-thumbs');
+      if (thumbsEl) {
+        thumbsEl.remove();
+        _domClearedCount++;
+      }
+      card.dataset.hasImages = '0';
+      const cb = card.querySelector('.ts-checkbox');
+      if (cb) { cb.className = 'ts-checkbox disabled'; }
+      // 收集该 cell 所属的 seatKey，用于失效 timeslotDOMCache
+      const parts = ck.split('-');
+      _expandedSeatsToRefresh.add(parts.slice(0, 3).join('-'));
+    });
+    // 失效受影响座位的 timeslotDOMCache（保证下次切换座位时重新渲染）
+    _expandedSeatsToRefresh.forEach(sk => timeslotDOMCache.delete(sk));
+    console.log(`[轮询] 已同步移除 ${_domClearedCount} 个缩略图 DOM 节点`, {
+      待清除cellKey数: allCellsToClear.length,
+      实际匹配DOM数: _domClearedCount,
+      清空后imageCountCache剩余: imageCountCache.size,
+      清空后_cellDataCache剩余: _cellDataCache.size
     });
 
-    // 【v2.7.57】同步已展开座位的缩略图（强制刷新模式 + 增量更新）
-    // 原因：v2.7.56 调用 renderTimeSlots → container.innerHTML = ... → 整座位 DOM 重建
-    //       导致电脑端闪烁、滚动位置丢失、主线程阻塞
-    // 修复：用 refreshSeatThumbsIncrementally 增量更新，只动 .ts-thumbs 子节点
-    for (const sk of state.expandedSeats) {
-      const parts = sk.split('-');
-      const fid = parseInt(parts[0]), aname = parts[1], sidx = parseInt(parts[2]);
-      try {
-        // 批量拉取该座位所有 cell 的最新数据
-        const allKeys = [];
-        for (let t = 0; t < TIME_SLOTS.length; t++) {
-          allKeys.push(cellKey(fid, aname, sidx, t));
-        }
-        const cellDataMap = await getCellDataBatch(allKeys, _getDateRange(), true);
-        // 增量更新 DOM（不调用 renderTimeSlots）
-        await refreshSeatThumbsIncrementally(sk, cellDataMap);
-        // 失效 timeslotDOMCache（保证下次切换座位时重新渲染）
-        timeslotDOMCache.delete(sk);
-        console.log('[轮询] 强制刷新模式已增量更新缩略图:', sk);
-      } catch (e) { console.warn('[轮询] 强制刷新缩略图异常:', sk, e.message || e); }
+    // 【v2.7.71】同步刷新受影响的区域和座位颜色（不用 requestAnimationFrame 包裹）
+    // 直接使用"所有图片被清除"这个条件触发，不依赖 changedCells 二次判断
+    try {
+      affectedAreas.forEach(ak => {
+        try {
+          const p = ak.split('-');
+          updateAreaVisual(parseInt(p[0]), p[1]);
+        } catch (e) { console.warn('[轮询] updateAreaVisual 异常:', ak, e.message || e); }
+      });
+      affectedSeats.forEach(sk => {
+        try { updateSeatVisual(sk); } catch (e) { console.warn('[轮询] updateSeatVisual 异常:', sk, e.message || e); }
+      });
+    } catch (e) {
+      console.warn('[轮询] UI 清空刷新整体异常:', e.message || e);
     }
+
+    console.log(`[轮询] UI 清空完成: ${affectedAreas.size} 个区域, ${affectedSeats.size} 个座位`);
     // 更新脏标记为空 JSON，避免下次重复刷新
     _lastCountsJSON = '[]';
     return;
@@ -8488,12 +8591,32 @@ async function _refreshVisibleAreasInner() {
 
   console.log('[轮询] 检测到变化，changedCells:', changedCells.length, changedCells.slice(0, 5), forceRefresh ? '(强制刷新)' : '');
 
+  // 【v2.7.73】changedCells 为空时跳过所有缓存和 UI 操作
+  // 根因：上传成功后 _lastCountsJSON='' 触发强制刷新，但冷却期内降级为差异比对；
+  // 此时 newCounts 与 imageCountCache 已一致（上传流程自己更新过），changedCells 为空。
+  // 若仍执行 imageCountCache.clear()+重填充+seatImageStats.clear()+重填充，
+  // 会让正确状态被短暂清空，且 affectedAreas/affectedSeats 也为空导致 UI 不会被刷新，
+  // 最终表现为"区域按钮颜色和文字被错误清空"。
+  // 修复：无变化时只更新脏标记（已在 L8533 完成），不修改任何缓存和 UI。
+  if (changedCells.length === 0) {
+    console.log('[轮询] 无变化，跳过缓存和 UI 更新（仅更新脏标记）');
+    return;
+  }
+
   // 4. 更新 imageCountCache
   // 【v2.7.49】保留正在上传/删除的 cell 的旧缓存值，避免被 DB 未写入的"空"状态覆盖
   // 这样新上传的图片在前端缓存中保持不变，直到上传完成并由上传流程自己更新缓存
   const _protectedOldValues = new Map();
   imageCountCache.forEach((cnt, ck) => {
     if (isUploading(ck)) _protectedOldValues.set(ck, cnt);
+  });
+  // 【v2.7.89】额外保护：本地计数>0 但 newCounts 中不存在的 cell（可能因 DB 读延迟临时缺失）
+  // 避免轮询把刚上传完的图片在区域按钮上"抹掉"
+  imageCountCache.forEach((cnt, ck) => {
+    if (cnt > 0 && !newCounts.has(ck) && !isUploading(ck)) {
+      // 本地有图片但 DB 查询没返回该 cell，可能是读副本延迟，保留旧值
+      _protectedOldValues.set(ck, cnt);
+    }
   });
   imageCountCache.clear();
   newCounts.forEach((cnt, ck) => imageCountCache.set(ck, cnt));
@@ -8506,7 +8629,7 @@ async function _refreshVisibleAreasInner() {
       }
     }
   }));
-  // 恢复上传中 cell 的旧缓存值（覆盖前面被 clear 掉或被 FLOORS 重置为 0 的值）
+  // 恢复受保护 cell 的旧缓存值（覆盖前面被 clear 掉或被 FLOORS 重置为 0 的值）
   _protectedOldValues.forEach((cnt, ck) => imageCountCache.set(ck, cnt));
 
   // 5. 更新 seatHasImages + 统计
@@ -8555,6 +8678,33 @@ async function _refreshVisibleAreasInner() {
     });
   });
   console.log('[轮询] UI 已同步刷新，areas:', affectedAreas.size, 'seats:', affectedSeats.size);
+
+  // 【v2.7.82】强制清理计数归零的 cell 缩略图 DOM（不依赖座位展开状态）
+  // 原因：refreshSeatThumbsIncrementally 只处理 state.expandedSeats 中的座位，
+  //       且数量相同时只更新 src 不移除 DOM，可能导致已删除的缩略图残留
+  // 修复：对 changedCells 中计数为 0 的 cell，用 cellKey 全局查找 DOM 并移除缩略图
+  let _clearedZeroCount = 0;
+  changedCells.forEach(ck => {
+    const newCnt = imageCountCache.get(ck) || 0;
+    if (newCnt > 0) return; // 仅处理计数归零的 cell
+    if (isUploading(ck)) return; // 保护上传中的 cell
+    const card = document.querySelector(`.timeslot-card[data-cell-key="${ck}"]`);
+    if (!card) return;
+    const thumbsEl = card.querySelector('.ts-thumbs');
+    if (thumbsEl) {
+      thumbsEl.remove();
+      _clearedZeroCount++;
+    }
+    card.dataset.hasImages = '0';
+    const cb = card.querySelector('.ts-checkbox');
+    if (cb) { cb.className = 'ts-checkbox disabled'; }
+    // 同步清空缓存
+    _cellDataCache.delete(ck);
+    _imageCountCache.delete(ck);
+  });
+  if (_clearedZeroCount > 0) {
+    console.log(`[轮询] 计数归零强制清理: ${_clearedZeroCount} 个 cell 的缩略图 DOM`);
+  }
 
   // 7. 【v2.7.57】同步已展开座位的缩略图（增量更新模式，不调用 renderTimeSlots）
   // 原因：v2.7.56 调用 renderTimeSlots → container.innerHTML = ... → 整座位 DOM 重建
@@ -8605,7 +8755,12 @@ async function refreshSettingsAndUI() {
 }
 // 从后台切回时重新拉取设置
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') refreshSettingsAndUI();
+  if (document.visibilityState !== 'visible') return;
+  // 【v2.7.91】协作登录流程中跳过设置刷新，避免阻塞页面加载
+  try {
+    if (sessionStorage.getItem('collab_login_in_progress') === '1') return;
+  } catch (e) {}
+  refreshSettingsAndUI();
 });
 
 // 【问题1】顶部栏滚动隐藏/显示（200ms防抖）
@@ -8640,18 +8795,31 @@ setInterval(refreshSettingsAndUI, 30000);
 let _selectedDateOffset = 0; // 0=今天, -1=昨天, -2=前天
 const _MAX_DATE_OFFSET = -2; // 最多看3天
 
-function getSelectedDate() {
-  // 返回北京时间日期的 {start: Date, end: Date} UTC范围
-  const now = new Date();
-  const bjMs = now.getTime() + 8 * 3600000;
-  const bjDate = new Date(bjMs);
-  bjDate.setUTCDate(bjDate.getUTCDate() + _selectedDateOffset);
+/** 【v2.7.87】统一北京时间计算：返回北京时间当前的 Date 对象（UTC 偏移后） */
+function getBjNowDate() {
+  return new Date(new Date().getTime() + 8 * 3600000);
+}
+
+/** 【v2.7.87】统一北京时间计算：返回今天北京时间的 UTC 范围 {start, end}
+ *  start = 北京时间今天 00:00:00 对应的 UTC 时间
+ *  end   = 北京时间明天 00:00:00 对应的 UTC 时间
+ *  不受 _selectedDateOffset 影响（始终返回实际的"今天"） */
+function getTodayDateRange() {
+  const bjDate = getBjNowDate();
   const y = bjDate.getUTCFullYear(), m = bjDate.getUTCMonth(), d = bjDate.getUTCDate();
-  // 北京时间日期范围转UTC
   return {
     start: new Date(Date.UTC(y, m, d, 0, 0, 0) - 8 * 3600000),
     end: new Date(Date.UTC(y, m, d + 1, 0, 0, 0) - 8 * 3600000)
   };
+}
+
+function getSelectedDate() {
+  // 返回北京时间日期的 {start: Date, end: Date} UTC范围
+  const range = getTodayDateRange();
+  if (_selectedDateOffset === 0) return range;
+  // 历史日期：在今天的范围上偏移
+  const offsetMs = _selectedDateOffset * 24 * 60 * 60 * 1000;
+  return { start: new Date(range.start.getTime() + offsetMs), end: new Date(range.end.getTime() + offsetMs) };
 }
 
 function isHistoricalDate() {
@@ -8699,9 +8867,8 @@ function initDatePicker() {
   if (!btn || !dropdown) return;
 
   // 渲染日期选项
-  const now = new Date();
-  const bjMs = now.getTime() + 8 * 3600000;
-  const bjNow = new Date(bjMs);
+  const bjNow = getBjNowDate();
+  const bjMs = bjNow.getTime();
 
   dropdown.innerHTML = '';
   for (let offset = 0; offset >= _MAX_DATE_OFFSET; offset--) {
@@ -8740,9 +8907,7 @@ async function onDateOptionClick(offset) {
   _selectedDateOffset = offset;
 
   // 更新按钮文字
-  const now = new Date();
-  const bjMs = now.getTime() + 8 * 3600000;
-  const bjNow = new Date(bjMs);
+  const bjNow = getBjNowDate();
   bjNow.setUTCDate(bjNow.getUTCDate() + offset);
   document.getElementById('date-picker-btn').textContent = formatDateMMDDYYYY(bjNow);
 
