@@ -1,0 +1,13 @@
+{
+  "name": "seat-management",
+  "version": "2.7.91",
+  "private": true,
+  "description": "座位图片管理 PWA - 压缩部署构建配置",
+  "scripts": {
+    "build": "node build/compress.js",
+    "deploy": "echo 'GitHub Actions 会自动部署到 gh-pages，无需手动 deploy'"
+  },
+  "devDependencies": {
+    "terser": "^5.31.0"
+  }
+}

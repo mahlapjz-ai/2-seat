@@ -1,0 +1,60 @@
+# ============================================================
+# GitHub Actions 工作流：压缩部署到 GitHub Pages
+# 触发条件：push 到 master 分支
+# 流程：
+#   1. 检出代码
+#   2. 安装 Node.js 和 Terser
+#   3. 执行 build/compress.js 压缩 JS（保持文件名不变）
+#   4. 注入 commit SHA 到 sw.js 的 CACHE_NAME（强制 SW 更新缓存）
+#   5. 部署 dist/ 到 gh-pages 分支
+#
+# 部署后用户访问的是压缩版，master 分支保留原始未压缩源码
+# 终端用户无需感知，HTML 引用路径不变
+# ============================================================
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: 'deploy-gh-pages'
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          # 没有 package-lock.json 时用 install，有则用 ci
+          if [ -f package-lock.json ]; then npm ci; else npm install --no-save; fi
+
+      - name: Build (compress JS with Terser)
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: node build/compress.js
+
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          allow_empty_commit: false
+          keep_files: false
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'deploy: ${{ github.sha }}'
