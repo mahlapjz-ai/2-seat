@@ -37,11 +37,11 @@
 <!-- defer 保证执行顺序：jszip → supabase → auth → data-layer → qrcode → scripts（scripts.js 在 body 末尾也已加 defer） -->
 <script src="https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js" defer></script>
-<script src="auth.js?v=2.7.92" defer></script>
-<script src="data-layer.js?v=2.7.92" defer></script>
+<script src="auth.js?v=2.7.93" defer></script>
+<script src="data-layer.js?v=2.7.93" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js" defer></script>
 <!-- 拆分自原单文件 - 外部样式 -->
-<link rel="stylesheet" href="styles.css?v=2.7.92">
+<link rel="stylesheet" href="styles.css?v=2.7.93">
 <link rel="stylesheet" href="login.css?v=2.1.0">
 </head>
 <body>
@@ -154,7 +154,7 @@
 </div>
 <!-- 拆分自原单文件 - 外部脚本 -->
 <!-- 【v2.7.75】scripts.js 加 defer：浏览器解析 HTML 时并行下载，不阻塞渲染，HTML 解析完后再执行 -->
-<script src="scripts.js?v=2.7.92" defer></script>
+<script src="scripts.js?v=2.7.93" defer></script>
 <!-- 【v2.7.81】加载缓慢超时检测：改为 DOMContentLoaded 后启动，避免 defer 脚本执行期间误触发 -->
 <script>
 // 【v2.7.79】supabase/scripts 等改为 defer 后，HTML 解析不阻塞，骨架屏会立即显示

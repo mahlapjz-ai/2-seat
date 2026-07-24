@@ -56,7 +56,7 @@ const FLOORS = [
   ]}
 ];
 
-const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
+const TIME_SLOTS = ['09:00','09:30','10:00','10:30','11:00','11:30','12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','18:00','18:30','19:00','19:30','20:00','20:30','21:00'];
 const MAX_IMAGES = 3;
 
 /** 判断指定 cellKey 的拍照/上传按钮是否应禁用（实时读取缓存） */
@@ -75,7 +75,7 @@ function updateCellButtonStates(cellKey) {
   });
 }
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v2.7.92';
+const APP_VERSION = 'v2.7.93';
 // 【v2.7.91】协作登录标记改为 10 秒超时兜底清除（不再立即清除）
 // 原因：iOS Safari 扫码跳转时触发 visibilitychange，若标记已被清除，会执行 loadUserProfile 阻塞页面加载
 // 标记保留 10 秒确保页面完全加载后再让 visibilitychange 恢复正常逻辑
@@ -354,40 +354,52 @@ function getBeijingTime() {
 }
 
 // 【v1.11.0】记录完成时间：根据北京时间判断时段，计算下轮参考时间
-// 返回 { type: 'time'|'fixed', time: 'HH:MM:SS', fixedText: '' } 或 { type: 'fixed', fixedText: '...' }
+// 【v2.7.93】重写六种情况，按优先级顺序判断
+// 返回 { type: 'time', time: 'HH:MM:SS' } 或 { type: 'fixed', fixedText: '...' }
 function calcCompletionTime() {
   const now = new Date();
   const bjOpts = { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false };
   const bjParts = new Intl.DateTimeFormat('zh-CN', bjOpts).formatToParts(now);
   const bjGet = (type) => bjParts.find(p => p.type === type).value;
   const h = parseInt(bjGet('hour')), m = parseInt(bjGet('minute')), s = parseInt(bjGet('second'));
-  const mins = h * 60 + m; // 当天分钟数
+  const secs = h * 3600 + m * 60 + s; // 当天秒数
 
-  // 情况四：21:16–21:59
-  if (h === 21 && m >= 16) return { type: 'fixed', fixedText: '(?｀Д?)我chovy你们都干嘛呢还在做' };
-  // 情况五：22:00–01:00
-  if ((h >= 22) || (h <= 1 && (h < 1 || m <= 0))) return { type: 'fixed', fixedText: '晚安玛卡巴卡ﾍ(=^･ω･^=)ﾉ' };
-  // 情况六：01:01–08:29
-  if ((h === 1 && m >= 1) || (h >= 2 && h <= 7) || (h === 8 && m <= 29)) return { type: 'fixed', fixedText: '大佬早，本页面还没睡醒(。-ω-)💤' };
+  // 情况一（+30分钟）：08:30:00–11:59:59、13:30:00–16:59:59、18:31:00–21:15:59
+  if ((secs >= 30600 && secs <= 43199) ||
+      (secs >= 48600 && secs <= 61199) ||
+      (secs >= 66660 && secs <= 76559)) {
+    const target = new Date(now.getTime() + (30 * 60 + 1) * 1000);
+    const tParts = new Intl.DateTimeFormat('zh-CN', bjOpts).formatToParts(target);
+    const tGet = (type) => tParts.find(p => p.type === type).value;
+    return { type: 'time', time: `${tGet('hour')}:${tGet('minute')}:${tGet('second')}` };
+  }
 
-  // 情况三：13:01–13:29 → 固定 14:00:01
-  if (h === 13 && m >= 1 && m <= 29) return { type: 'time', time: '14:00:01' };
-
-  // 情况二：11:30–13:00、16:30–18:30 → +60分01秒
-  const isCase2 = (h === 11 && m >= 30) || (h === 12) || (h === 13 && m === 0)
-               || (h === 16 && m >= 30) || (h >= 17 && h <= 18 && (h < 18 || m <= 30));
-  if (isCase2) {
+  // 情况二（+60分钟）：12:00:00–13:00:59、17:00:00–18:30:59
+  if ((secs >= 43200 && secs <= 46859) ||
+      (secs >= 61200 && secs <= 66659)) {
     const target = new Date(now.getTime() + (60 * 60 + 1) * 1000);
     const tParts = new Intl.DateTimeFormat('zh-CN', bjOpts).formatToParts(target);
     const tGet = (type) => tParts.find(p => p.type === type).value;
     return { type: 'time', time: `${tGet('hour')}:${tGet('minute')}:${tGet('second')}` };
   }
 
-  // 情况一：08:30–11:29、13:30–16:29、18:31–21:15 → +30分01秒
-  const target = new Date(now.getTime() + (30 * 60 + 1) * 1000);
-  const tParts = new Intl.DateTimeFormat('zh-CN', bjOpts).formatToParts(target);
-  const tGet = (type) => tParts.find(p => p.type === type).value;
-  return { type: 'time', time: `${tGet('hour')}:${tGet('minute')}:${tGet('second')}` };
+  // 情况三（固定14:00:01）：13:01:00–13:29:59
+  if (secs >= 46860 && secs <= 48599) {
+    return { type: 'time', time: '14:00:01' };
+  }
+
+  // 情况四（固定文案）：21:16:00–21:59:59
+  if (secs >= 76560 && secs <= 79199) {
+    return { type: 'fixed', fixedText: '(💢｀Д´)我chovy你们都干嘛呢还不下班' };
+  }
+
+  // 情况五（固定文案）：22:00:00–01:00:59（跨日）
+  if (secs >= 79200 || secs <= 3659) {
+    return { type: 'fixed', fixedText: '晚安玛卡巴卡ﾍ(=^･ω･^=)ﾉ' };
+  }
+
+  // 情况六（固定文案）：01:01:00–08:29:59
+  return { type: 'fixed', fixedText: '本页面还没睡醒' };
 }
 
 // 【v1.12.0】记录完成时间：二次确认弹窗
@@ -750,7 +762,7 @@ function applyDefaultTimeslotFilter() {
   let defaultSlots = [];
   if (bjHours < 12 || (bjHours === 12 && bjMinutes <= 30)) {
     // 上午：09:00 ~ 12:00
-    defaultSlots = ['09:00','09:30','10:00','10:30','11:00','12:00'];
+    defaultSlots = ['09:00','09:30','10:00','10:30','11:00','11:30','12:00'];
   } else if (bjHours < 17 || (bjHours === 17 && bjMinutes <= 30)) {
     // 下午：12:00 ~ 17:00
     defaultSlots = ['12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00'];
@@ -6494,7 +6506,7 @@ document.addEventListener('click', async (e) => {
   }
   const checkbox = target.closest('[data-action="toggle-select"]');
   // 【v1.10.0】限制手动勾选最多22个时段（仅影响打包下载ZIP）
-  if (checkbox) { if (checkbox.classList.contains('disabled')) return; const ck = checkbox.dataset.cellKey, idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); checkbox.classList.remove('checked'); } else { if (state.selectedCells.length >= 22) { showToast('最多可选 22 个时段，如超出请使用"批量下载"'); return; } state.selectedCells.push(ck); checkbox.classList.add('checked'); } updateBottomBar(); return; }
+  if (checkbox) { if (checkbox.classList.contains('disabled')) return; const ck = checkbox.dataset.cellKey, idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); checkbox.classList.remove('checked'); } else { if (state.selectedCells.length >= 23) { showToast('最多可选 23 个时段，如超出请使用"批量下载"'); return; } state.selectedCells.push(ck); checkbox.classList.add('checked'); } updateBottomBar(); return; }
   const captureBtn = target.closest('[data-action="capture"]');
   // 【v1.2.2 iOS修复】先同步触发 click()，再在 change 回调中检查图片数量
   // iOS PWA 中 await 后调用 click() 会被系统阻止，必须在用户交互同步栈中触发
@@ -6700,7 +6712,7 @@ document.addEventListener('click', async (e) => {
   if (previewBtn) { showPreview(previewBtn.dataset.cellKey, parseInt(previewBtn.dataset.imgIdx)); return; }
   // 点击时段卡片空白区域切换勾选
   const card = target.closest('[data-action="toggle-card"]');
-  if (card) { if (card.dataset.hasImages !== '1') return; const ck = card.dataset.cellKey, cb = card.querySelector('.ts-checkbox'); if (!cb || cb.classList.contains('disabled')) return; const idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); cb.classList.remove('checked'); } else { if (state.selectedCells.length >= 22) { showToast('最多可选 22 个时段，如超出请使用"批量下载"'); return; } state.selectedCells.push(ck); cb.classList.add('checked'); } updateBottomBar(); return; }
+  if (card) { if (card.dataset.hasImages !== '1') return; const ck = card.dataset.cellKey, cb = card.querySelector('.ts-checkbox'); if (!cb || cb.classList.contains('disabled')) return; const idx = state.selectedCells.indexOf(ck); if (idx >= 0) { state.selectedCells.splice(idx, 1); cb.classList.remove('checked'); } else { if (state.selectedCells.length >= 23) { showToast('最多可选 23 个时段，如超出请使用"批量下载"'); return; } state.selectedCells.push(ck); cb.classList.add('checked'); } updateBottomBar(); return; }
   const nameEl = target.closest('[data-action="edit-seat-name"]');
   if (nameEl && !isFeatureEnabled('feat_rename_seat')) return;
   if (nameEl) { const sk = nameEl.dataset.seatKey; const nameFid = parseInt(sk.split('-')[0]); if (!canEditFloor(nameFid)) { showToast('无该楼层操作权限'); return; } const curName = nameEl.textContent; const input = document.createElement('input'); input.type = 'text'; input.value = curName; input.className = 'seat-name-edit-input'; const doSave = async () => { const newName = input.value.trim() || curName; if (newName === curName) { const sp = document.createElement('span'); sp.className = 'seat-name-text'; sp.dataset.action = 'edit-seat-name'; sp.dataset.seatKey = sk; sp.textContent = newName; if (input.parentNode) input.replaceWith(sp); return; } if (newName.length > 6) { showToast('编号最多6位'); input.focus(); return; } state.seatNames[sk] = newName; await saveSeatName(sk, newName); const sp = document.createElement('span'); sp.className = 'seat-name-text'; sp.dataset.action = 'edit-seat-name'; sp.dataset.seatKey = sk; sp.textContent = newName; if (input.parentNode) input.replaceWith(sp); updateSeatButtonText(sk, newName); await regenerateWatermarksForSeat(sk); }; input.addEventListener('blur', doSave); input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') input.blur(); }); nameEl.replaceWith(input); input.focus(); input.select(); return; }
@@ -6977,7 +6989,7 @@ function getDefaultTimeslotIndices() {
   const bjMinutes = parseInt(parts.find(p => p.type === 'minute').value);
   let defaultSlots = [];
   if (bjHours < 12 || (bjHours === 12 && bjMinutes <= 30)) {
-    defaultSlots = ['09:00','09:30','10:00','10:30','11:00','12:00'];
+    defaultSlots = ['09:00','09:30','10:00','10:30','11:00','11:30','12:00'];
   } else if (bjHours < 17 || (bjHours === 17 && bjMinutes <= 30)) {
     defaultSlots = ['12:00','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00'];
   } else {
@@ -7011,7 +7023,7 @@ function applyFilters() {
   let visibleSlots;
 
   if (selectAllActive) {
-    // 全选状态：22 个时段全部可见
+    // 全选状态：23 个时段全部可见
     visibleSlots = TIME_SLOTS.map((_, i) => i);
   } else if (showWithImagesActive && !hidePassedActive) {
     // 仅"仅显示有图"激活：从全部时段出发，只隐藏无图时段
