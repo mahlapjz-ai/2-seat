@@ -75,7 +75,7 @@ function updateCellButtonStates(cellKey) {
   });
 }
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v2.7.94';
+const APP_VERSION = 'v2.7.95';
 // 【v2.7.91】协作登录标记改为 10 秒超时兜底清除（不再立即清除）
 // 原因：iOS Safari 扫码跳转时触发 visibilitychange，若标记已被清除，会执行 loadUserProfile 阻塞页面加载
 // 标记保留 10 秒确保页面完全加载后再让 visibilitychange 恢复正常逻辑
@@ -1018,6 +1018,35 @@ function switchToDefault() {
   // 先移除隐藏类，触发反向动画
   floorBtns.forEach(btn => btn.classList.remove('mode2-hide'));
   areaContainers.forEach(c => c.classList.remove('mode2-hide'));
+
+  // 【v2.7.95】清空日期相关缓存并全量刷新
+  // 修复：第二种模式下切换日期后，_cellDataCache/_imageCountCache 残留旧日期数据，
+  // 导致默认模式 DOM（仍是切换前的旧状态）与新缓存数据混合，出现区域/座位提示错乱
+  if (typeof dlClearCache === 'function') dlClearCache();
+  imageCountCache.clear();
+  _lastCountsJSON = '';
+  if (typeof invalidateAllTimeslotCache === 'function') invalidateAllTimeslotCache();
+
+  // 同步日期按钮状态与当前 _selectedDateOffset（防御性同步，确保按钮显示与实际日期一致）
+  const _dpDropdown = document.getElementById('date-picker-dropdown');
+  if (_dpDropdown) {
+    _dpDropdown.querySelectorAll('.date-option').forEach(el => {
+      el.classList.toggle('active', parseInt(el.dataset.dateOffset) === _selectedDateOffset);
+    });
+  }
+  const _dpBtn = document.getElementById('date-picker-btn');
+  if (_dpBtn) {
+    const _bjNow = getBjNowDate();
+    _bjNow.setUTCDate(_bjNow.getUTCDate() + _selectedDateOffset);
+    _dpBtn.textContent = formatDateMMDDYYYY(_bjNow);
+  }
+
+  // 重新加载当前日期数据并立即全量刷新 UI（区域颜色、座位颜色、文字统计）
+  (async () => {
+    await buildSeatHasImages();
+    refreshAllColors();
+    updateBottomBar();
+  })();
 }
 
 /** 渲染第二种模式：已释放座位概览 */
