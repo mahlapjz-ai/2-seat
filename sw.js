@@ -10,7 +10,7 @@
 // 【v2.7.75】从预缓存清单移除 HTML/CSS/JS（带版本号文件预缓存会导致旧版本长期驻留，
 //           即使发版后 SW 仍可能返回缓存的旧 index.html + 新 styles.css，造成"裸体"页面）。
 //           仅保留图标和 manifest.json 预缓存。所有 HTML/CSS/JS 走 Network-First。
-const CACHE_NAME = 'seat-cache-v175';
+const CACHE_NAME = 'seat-cache-v176';
 
 // 预缓存资源列表（仅保留不常变且无版本号的小文件，避免缓存不一致）
 const PRECACHE_ASSETS = [
@@ -64,6 +64,17 @@ self.addEventListener('fetch', e => {
   // 只处理 GET 请求
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
+
+  // --- Supabase Storage 文件下载（xlsx 报表等）：强制 Network-Only ---
+  // 修复：同 origin 的 storage download 请求会走 Stale-While-Revalidate，
+  // 导致 admin.html "手动生成报表"后下载到 SW 缓存的旧 xlsx。
+  // upsert 覆盖后 URL 不变但内容变了，必须每次走网络。
+  if (url.pathname.includes('/storage/v1/object/')) {
+    e.respondWith(
+      fetch(e.request).catch(() => caches.match(e.request))
+    );
+    return;
+  }
 
   // --- 图片请求（原图/缩略图）：仅网络，不缓存到 SW Cache Storage ---
   // 缩略图由 data-layer.js 单独缓存到 seat-thumbnails-v1，原图不缓存

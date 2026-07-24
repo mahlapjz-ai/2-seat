@@ -75,7 +75,7 @@ function updateCellButtonStates(cellKey) {
   });
 }
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v2.7.93';
+const APP_VERSION = 'v2.7.94';
 // 【v2.7.91】协作登录标记改为 10 秒超时兜底清除（不再立即清除）
 // 原因：iOS Safari 扫码跳转时触发 visibilitychange，若标记已被清除，会执行 loadUserProfile 阻塞页面加载
 // 标记保留 10 秒确保页面完全加载后再让 visibilitychange 恢复正常逻辑

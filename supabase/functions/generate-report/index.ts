@@ -12,7 +12,7 @@ const corsHeaders = {
 };
 
 const TIME_SLOTS = [
-  '09:00','09:30','10:00','10:30','11:00','12:00',
+  '09:00','09:30','10:00','10:30','11:00','11:30','12:00',
   '13:00','13:30','14:00','14:30','15:00','15:30',
   '16:00','16:30','17:00','18:00','18:30','19:00',
   '19:30','20:00','20:30','21:00'
@@ -36,33 +36,33 @@ interface AreaMapping {
 }
 
 const AREA_MAPPINGS: AreaMapping[] = [
-  // 一楼 (B列=2, C列=3, L列=12)
-  { floorId:1, areaName:'中庭',     seatPrefix:'中',   headerRow:3,   seatCol:2,  firstTimeCol:3,  earlyShiftCol:3,  lateShiftCol:12,  maxRows:100 },
-  { floorId:1, areaName:'报刊',     seatPrefix:'报',   headerRow:106, seatCol:2,  firstTimeCol:3,  earlyShiftCol:3,  lateShiftCol:12,  maxRows:140 },
-  // 二楼 (AB列=28, AC列=29, AL列=38, AM列=39)
-  { floorId:2, areaName:'北区',     seatPrefix:'北',   headerRow:3,   seatCol:28, firstTimeCol:29, earlyShiftCol:29, lateShiftCol:38, maxRows:70 },
-  { floorId:2, areaName:'青少年区', seatPrefix:'青',   headerRow:70,  seatCol:28, firstTimeCol:29, earlyShiftCol:29, lateShiftCol:39, maxRows:30 },
-  { floorId:2, areaName:'东区',     seatPrefix:'东',   headerRow:100, seatCol:28, firstTimeCol:29, earlyShiftCol:29, lateShiftCol:38, maxRows:90 },
-  { floorId:2, areaName:'东区临时', seatPrefix:'东临', headerRow:186, seatCol:28, firstTimeCol:29, earlyShiftCol:29, lateShiftCol:38, maxRows:15 },
-  { floorId:2, areaName:'南区',     seatPrefix:'南',   headerRow:200, seatCol:28, firstTimeCol:29, earlyShiftCol:29, lateShiftCol:38, maxRows:80 },
-  { floorId:2, areaName:'西区',     seatPrefix:'西',   headerRow:281, seatCol:28, firstTimeCol:29, earlyShiftCol:29, lateShiftCol:38, maxRows:90 },
-  // 三楼 (BB列=54, BC列=55, BL列=64)
-  { floorId:3, areaName:'北区',     seatPrefix:'北',   headerRow:3,   seatCol:54, firstTimeCol:55, earlyShiftCol:55, lateShiftCol:64, maxRows:70 },
-  { floorId:3, areaName:'南区',     seatPrefix:'南',   headerRow:70,  seatCol:54, firstTimeCol:55, earlyShiftCol:55, lateShiftCol:64, maxRows:75 },
-  { floorId:3, areaName:'东区',     seatPrefix:'东',   headerRow:142, seatCol:54, firstTimeCol:55, earlyShiftCol:55, lateShiftCol:64, maxRows:165 },
-  { floorId:3, areaName:'东区临时', seatPrefix:'东临', headerRow:304, seatCol:54, firstTimeCol:55, earlyShiftCol:55, lateShiftCol:64, maxRows:50 },
-  { floorId:3, areaName:'西区',     seatPrefix:'西',   headerRow:353, seatCol:54, firstTimeCol:55, earlyShiftCol:55, lateShiftCol:64, maxRows:115 },
-  // 四楼 (CB列=80, CC列=81, CL列=90)
-  { floorId:4, areaName:'南区',     seatPrefix:'南',   headerRow:3,   seatCol:80, firstTimeCol:81, earlyShiftCol:81, lateShiftCol:90, maxRows:55 },
-  { floorId:4, areaName:'西区',     seatPrefix:'西',   headerRow:58,  seatCol:80, firstTimeCol:81, earlyShiftCol:81, lateShiftCol:90, maxRows:70 },
-  { floorId:4, areaName:'北区',     seatPrefix:'北',   headerRow:128, seatCol:80, firstTimeCol:81, earlyShiftCol:81, lateShiftCol:90, maxRows:45 },
-  { floorId:4, areaName:'东区',     seatPrefix:'东',   headerRow:173, seatCol:80, firstTimeCol:81, earlyShiftCol:81, lateShiftCol:90, maxRows:40 },
-  { floorId:4, areaName:'东区临时', seatPrefix:'东临', headerRow:214, seatCol:80, firstTimeCol:81, earlyShiftCol:81, lateShiftCol:90, maxRows:35 },
-  // 五楼 (DB列=106, DC列=107, DL列=116)
-  { floorId:5, areaName:'西区',     seatPrefix:'西',   headerRow:3,   seatCol:106, firstTimeCol:107, earlyShiftCol:107, lateShiftCol:116, maxRows:70 },
-  { floorId:5, areaName:'南区',     seatPrefix:'南',   headerRow:72,  seatCol:106, firstTimeCol:107, earlyShiftCol:107, lateShiftCol:116, maxRows:20 },
-  { floorId:5, areaName:'东区',     seatPrefix:'东',   headerRow:94,  seatCol:106, firstTimeCol:107, earlyShiftCol:107, lateShiftCol:116, maxRows:120 },
-  { floorId:5, areaName:'东区临时', seatPrefix:'东临', headerRow:215, seatCol:106, firstTimeCol:107, earlyShiftCol:107, lateShiftCol:116, maxRows:30 },
+  // 一楼 (B列=2 座位, C列=3 时段/早班, M列=13 晚班) — scan 确认正确
+  { floorId:1, areaName:'中庭',     seatPrefix:'中',   headerRow:3,   seatCol:2,  firstTimeCol:3,  earlyShiftCol:3,  lateShiftCol:13,  maxRows:97 },
+  { floorId:1, areaName:'报刊',     seatPrefix:'报',   headerRow:106, seatCol:2,  firstTimeCol:3,  earlyShiftCol:3,  lateShiftCol:13,  maxRows:131 },
+  // 二楼 (AC列=29 座位, AD列=30 时段/早班, AN列=40 晚班) — scan 确认 seatCol 28→29, firstTimeCol 29→30
+  { floorId:2, areaName:'北区',     seatPrefix:'北',   headerRow:3,   seatCol:29, firstTimeCol:30, earlyShiftCol:30, lateShiftCol:40, maxRows:62 },
+  { floorId:2, areaName:'青少年区', seatPrefix:'青',   headerRow:70,  seatCol:29, firstTimeCol:30, earlyShiftCol:30, lateShiftCol:40, maxRows:25 },
+  { floorId:2, areaName:'东区',     seatPrefix:'东',   headerRow:100, seatCol:29, firstTimeCol:30, earlyShiftCol:30, lateShiftCol:40, maxRows:81 },
+  { floorId:2, areaName:'东区临时', seatPrefix:'东临', headerRow:186, seatCol:29, firstTimeCol:30, earlyShiftCol:30, lateShiftCol:40, maxRows:10 },
+  { floorId:2, areaName:'南区',     seatPrefix:'南',   headerRow:200, seatCol:29, firstTimeCol:30, earlyShiftCol:30, lateShiftCol:40, maxRows:75 },
+  { floorId:2, areaName:'西区',     seatPrefix:'西',   headerRow:281, seatCol:29, firstTimeCol:30, earlyShiftCol:30, lateShiftCol:40, maxRows:85 },
+  // 三楼 (BD列=56 座位, BE列=57 时段/早班, BO列=67 晚班) — scan 确认 seatCol 54→56, firstTimeCol 55→57
+  { floorId:3, areaName:'北区',     seatPrefix:'北',   headerRow:3,   seatCol:56, firstTimeCol:57, earlyShiftCol:57, lateShiftCol:67, maxRows:63 },
+  { floorId:3, areaName:'南区',     seatPrefix:'南',   headerRow:70,  seatCol:56, firstTimeCol:57, earlyShiftCol:57, lateShiftCol:67, maxRows:67 },
+  { floorId:3, areaName:'东区',     seatPrefix:'东',   headerRow:142, seatCol:56, firstTimeCol:57, earlyShiftCol:57, lateShiftCol:67, maxRows:157 },
+  { floorId:3, areaName:'东区临时', seatPrefix:'东临', headerRow:304, seatCol:56, firstTimeCol:57, earlyShiftCol:57, lateShiftCol:67, maxRows:44 },
+  { floorId:3, areaName:'西区',     seatPrefix:'西',   headerRow:353, seatCol:56, firstTimeCol:57, earlyShiftCol:57, lateShiftCol:67, maxRows:111 },
+  // 四楼 (CE列=83 座位, CF列=84 时段/早班, CP列=94 晚班) — scan 确认 seatCol 80→83, firstTimeCol 81→84
+  { floorId:4, areaName:'南区',     seatPrefix:'南',   headerRow:3,   seatCol:83, firstTimeCol:84, earlyShiftCol:84, lateShiftCol:94, maxRows:51 },
+  { floorId:4, areaName:'西区',     seatPrefix:'西',   headerRow:58,  seatCol:83, firstTimeCol:84, earlyShiftCol:84, lateShiftCol:94, maxRows:65 },
+  { floorId:4, areaName:'北区',     seatPrefix:'北',   headerRow:128, seatCol:83, firstTimeCol:84, earlyShiftCol:84, lateShiftCol:94, maxRows:41 },
+  { floorId:4, areaName:'东区',     seatPrefix:'东',   headerRow:173, seatCol:83, firstTimeCol:84, earlyShiftCol:84, lateShiftCol:94, maxRows:37 },
+  { floorId:4, areaName:'东区临时', seatPrefix:'东临', headerRow:214, seatCol:83, firstTimeCol:84, earlyShiftCol:84, lateShiftCol:94, maxRows:31 },
+  // 五楼 (DF列=110 座位, DG列=111 时段/早班, DQ列=121 晚班) — scan 确认 seatCol 106→110, firstTimeCol 107→111
+  { floorId:5, areaName:'西区',     seatPrefix:'西',   headerRow:3,   seatCol:110, firstTimeCol:111, earlyShiftCol:111, lateShiftCol:121, maxRows:65 },
+  { floorId:5, areaName:'南区',     seatPrefix:'南',   headerRow:72,  seatCol:110, firstTimeCol:111, earlyShiftCol:111, lateShiftCol:121, maxRows:17 },
+  { floorId:5, areaName:'东区',     seatPrefix:'东',   headerRow:94,  seatCol:110, firstTimeCol:111, earlyShiftCol:111, lateShiftCol:121, maxRows:115 },
+  { floorId:5, areaName:'东区临时', seatPrefix:'东临', headerRow:215, seatCol:110, firstTimeCol:111, earlyShiftCol:111, lateShiftCol:121, maxRows:57 },
 ];
 
 // ============ 工具函数 ============
@@ -121,11 +121,32 @@ function getCellText(cell: ExcelJS.Cell): string {
   }
   if (typeof cell.value === 'object') {
     const v = cell.value as any;
+    // richText 数组：拼接每段文本
     if (v.richText) return v.richText.map((r: any) => r.text).join('');
-    if (v.result !== undefined) return String(v.result);
-    if (v.text) return v.text;
+    // 公式单元格：优先用 result，其次用 cached value
+    if (v.result !== undefined && v.result !== null) return String(v.result).trim();
+    if (v.value !== undefined && v.value !== null) return String(v.value).trim();
+    // hyperlink 对象：取 text 或 hyperlink
+    if (v.text) return v.text.toString().trim();
+    if (v.hyperref) return v.hyperref.toString().trim();
+    // sharedFormula：不能转成字符串
+    if (v.sharedFormula) return '';
+    // 兜底：避免返回 "[object Object]"
+    console.warn('[getCellText] 无法识别的 cell.value 对象类型:', JSON.stringify(v));
+    return '';
   }
   return String(cell.value);
+}
+
+/** 将列号转为 Excel 列字母（1=A, 27=AA）用于日志显示 */
+function colToLetter(col: number): string {
+  let result = '';
+  while (col > 0) {
+    const rem = (col - 1) % 26;
+    result = String.fromCharCode(65 + rem) + result;
+    col = Math.floor((col - 1) / 26);
+  }
+  return result;
 }
 
 /** 检查单元格是否为空（可安全填入数据） */
@@ -272,6 +293,10 @@ async function handleGenerate(admin: any, dateStr?: string) {
     stc[p.seat_id][ts] = (stc[p.seat_id][ts] || 0) + 1;
   }
   console.log('[generate-report] 聚合结果：', Object.keys(stc).length, '个座位有数据');
+  // 详细打印 stc 内容，帮助定位 seat_id 匹配问题
+  for (const [sid, ts] of Object.entries(stc)) {
+    console.log(`[stc] seat_id="${sid}" 时段数据:`, JSON.stringify(ts));
+  }
 
   // ---- 6. 收集责任人（独立于座位行匹配，确保不遗漏）----
   const earlyShiftPersons: Record<string, Set<string>> = {};
@@ -379,29 +404,42 @@ async function handleGenerate(admin: any, dateStr?: string) {
     }
 
     // 7b. 扫描座位列，构建 seat_id → 行号 映射
+    // 座位编号格式：中文前缀(中/报/北/青/东/东临/南/西) + 数字，过滤掉"释放数量"等统计行
+    const seatIdPattern = /^[中报北青东南西临]+\d+$/;
     const seatRowMap: Record<string, number> = {};
     for (let r = 0; r < mapping.maxRows; r++) {
       const row = dataStartRow + r;
       const cellVal = worksheet.getCell(row, mapping.seatCol);
       const seatId = getCellText(cellVal);
       if (!seatId) continue;  // 空行跳过
+      if (!seatIdPattern.test(seatId)) continue;  // 非座位编号（如"释放数量"统计行）跳过
       seatRowMap[seatId] = row;
     }
+    // 【调试日志】打印扫描到的座位行映射，帮助定位区域座位读取问题
+    console.log(`[seatRowMap] ${mapping.floorId}-${mapping.areaName}: seatCol=${mapping.seatCol}, dataStartRow=${dataStartRow}, maxRows=${mapping.maxRows}, 扫描到 ${Object.keys(seatRowMap).length} 个座位`, JSON.stringify(seatRowMap));
 
     // 7c. 填充座位标记（× / △）
     for (const [seatId, timeCounts] of Object.entries(stc)) {
       const row = seatRowMap[seatId];
-      if (!row) continue;  // 该座位不在本区域
+      if (!row) {
+        // 调试：打印未匹配的 seat_id，帮助定位格式差异
+        console.warn(`[未匹配] 区域 ${mapping.floorId}-${mapping.areaName} 未找到 seat_id="${seatId}"（前缀应为"${mapping.seatPrefix}"）`);
+        continue;
+      }
 
       for (const [timeSlot, count] of Object.entries(timeCounts)) {
         const col = timeSlotColMap[timeSlot];
-        if (!col) continue;  // 该时段不在模板列中
+        if (!col) {
+          console.warn(`[未匹配时段] ${mapping.floorId}-${mapping.areaName} seat_id="${seatId}" 时段="${timeSlot}" 不在模板中`);
+          continue;
+        }
 
         const cell = worksheet.getCell(row, col);
         if (!isCellEmpty(cell)) continue;  // 只填空单元格
 
         cell.value = count >= 2 ? '△' : '×';
         totalFilled++;
+        console.log(`[填充] ${mapping.floorId}-${mapping.areaName} seat_id="${seatId}" 时段="${timeSlot}" count=${count} → ${colToLetter(col)}${row}`);
       }
     }
 
