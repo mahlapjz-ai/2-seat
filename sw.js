@@ -10,7 +10,7 @@
 // 【v2.7.75】从预缓存清单移除 HTML/CSS/JS（带版本号文件预缓存会导致旧版本长期驻留，
 //           即使发版后 SW 仍可能返回缓存的旧 index.html + 新 styles.css，造成"裸体"页面）。
 //           仅保留图标和 manifest.json 预缓存。所有 HTML/CSS/JS 走 Network-First。
-const CACHE_NAME = 'seat-cache-v173';
+const CACHE_NAME = 'seat-cache-v175';
 
 // 预缓存资源列表（仅保留不常变且无版本号的小文件，避免缓存不一致）
 const PRECACHE_ASSETS = [
