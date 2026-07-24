@@ -75,7 +75,7 @@ function updateCellButtonStates(cellKey) {
   });
 }
 // v1.9.4 像素主题标题去除文字阴影
-const APP_VERSION = 'v2.7.95';
+const APP_VERSION = 'v2.7.96';
 // 【v2.7.91】协作登录标记改为 10 秒超时兜底清除（不再立即清除）
 // 原因：iOS Safari 扫码跳转时触发 visibilitychange，若标记已被清除，会执行 loadUserProfile 阻塞页面加载
 // 标记保留 10 秒确保页面完全加载后再让 visibilitychange 恢复正常逻辑
@@ -7070,7 +7070,8 @@ function applyFilters() {
     visibleSlots = getDefaultTimeslotIndices();
 
     if (hidePassedActive) {
-      visibleSlots = visibleSlots.filter(i => !isTimeSlotPassed(i));
+      // 【v2.7.96】保留最后一个时段"21:00"始终显示，即使已过也不隐藏
+      visibleSlots = visibleSlots.filter(i => !isTimeSlotPassed(i) || TIME_SLOTS[i] === '21:00');
     }
 
     if (showWithImagesActive) {
@@ -7150,8 +7151,8 @@ safeOn('filter-select-all', 'click', () => {
     renderFilterBody();
     scheduleRefreshExpandedSeats();
     refreshOverviewIfActive();
-  } else {
-    // 当前默认或熄灭 → 全选所有时段（按钮亮起，"全选"加粗）
+  } else if (defaultModeActive) {
+    // 当前默认 → 全选所有时段（按钮亮起，"全选"加粗）
     selectAllActive = true;
     defaultModeActive = false;
     // 隐藏已过和仅显示有图自动熄灭
@@ -7160,6 +7161,16 @@ safeOn('filter-select-all', 'click', () => {
     toggleButtonActive('filter-hide-passed', false);
     toggleButtonActive('filter-show-with-images', false);
     applyFilters();
+  } else {
+    // 【v2.7.96】当前熄灭（手动调整或清除后）→ 进入"默认"加粗状态，显示默认时段组
+    // 修复：原逻辑熄灭状态点击直接进入"全选"，现改为先进入"默认"
+    defaultModeActive = true;
+    selectAllActive = false;
+    restoreDefaultTimeslots();
+    saveFilterState(true);
+    renderFilterBody();
+    scheduleRefreshExpandedSeats();
+    refreshOverviewIfActive();
   }
   updateSelectAllButton();
 });
